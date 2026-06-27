@@ -1,0 +1,58 @@
+{
+  "expo": {
+    "name": "BCN Plant Scout",
+    "slug": "bcn-plant-tracker",
+    "version": "1.0.0",
+    "description": "Local-first plant scouting for Base Camp North: photos, GPS, return notes, exports, and Supabase sync.",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#f4f7ee"
+    },
+    "ios": {
+      "bundleIdentifier": "com.basecampnorth.bcnplantscout",
+      "supportsTablet": true,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSCameraUsageDescription": "Use the camera to record plant observation photos.",
+        "NSPhotoLibraryUsageDescription": "Select plant photos for field observations.",
+        "NSLocationWhenInUseUsageDescription": "Record GPS coordinates for plant observations."
+      },
+      "buildNumber": "2"
+    },
+    "android": {
+      "package": "com.basecampnorth.bcnplantscout",
+      "versionCode": 4,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#f4f7ee"
+      },
+      "permissions": [
+        "CAMERA",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "READ_MEDIA_IMAGES",
+        "POST_NOTIFICATIONS"
+      ]
+    },
+    "plugins": [
+      "@react-native-community/datetimepicker",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#17391f"
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "7da0faaf-99a8-43f4-96e9-550e817ebe53"
+      }
+    },
+    "owner": "bcn.pa"
+  }
+}

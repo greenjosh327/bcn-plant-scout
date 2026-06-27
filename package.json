@@ -1,0 +1,36 @@
+{
+  "name": "bcn-plant-tracker",
+  "version": "1.0.0",
+  "private": true,
+  "main": "node_modules/expo/AppEntry.js",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web",
+    "typecheck": "tsc --noEmit",
+    "build:android:preview": "set EAS_NO_VCS=1&& eas build -p android --profile preview",
+    "build:android:production": "set EAS_NO_VCS=1&& eas build -p android --profile production",
+    "build:ios:production": "set EAS_NO_VCS=1&& eas build -p ios --profile production",
+    "submit:ios": "set EAS_NO_VCS=1&& eas submit -p ios --latest"
+  },
+  "dependencies": {
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-native-community/datetimepicker": "8.4.4",
+    "@supabase/supabase-js": "^2.108.2",
+    "expo": "~54.0.0",
+    "expo-file-system": "~19.0.0",
+    "expo-image-picker": "~17.0.0",
+    "expo-location": "~19.0.0",
+    "expo-notifications": "~0.32.17",
+    "expo-sharing": "~14.0.0",
+    "jszip": "^3.10.1",
+    "react": "19.1.0",
+    "react-native": "^0.81.5",
+    "react-native-safe-area-context": "~5.6.0"
+  },
+  "devDependencies": {
+    "@types/react": "~19.1.0",
+    "typescript": "~5.9.2"
+  }
+}
