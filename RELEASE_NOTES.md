@@ -2,6 +2,11 @@
 
 ## Toward 1.0
 
+### Account and sign-in
+- Google sign-in is wired through Supabase Auth for Expo Go testing and built apps.
+- Account screen hides email/password fields after sign-in so signed-in users see a cleaner status view.
+- Account deletion and password reset actions remain available from the Account page.
+
 ### Cloud sync
 - Supabase auth is wired for email/password sign-in.
 - Records can be queued, uploaded, retried, and marked synced locally.
@@ -16,6 +21,10 @@
 - Extra photos can be shared, deleted, and promoted to primary.
 
 ### Field workflow
+- New Plant starts camera-first, then runs plant identification and GPS capture as part of the field flow.
+- Saved Plants includes search, filters, return filters, collection interest filters, and sorting.
+- Returns has quick actions for Ready, Collected, +7 days, Open Map, and Edit.
+- Plant Map uses a stable local list/map-preview mode with filters and Google Maps navigation.
 - New records default to sharing with BCN, with opt-out privacy choices.
 - Saved plants can be edited, mapped, photographed again, shared, and deleted.
 - Delete confirmation now protects against accidental deletion and cancels scheduled return reminders.
@@ -23,12 +32,26 @@
 
 ### Supabase setup
 - `supabase-setup.sql` contains the expected tables, indexes, RLS policies, storage bucket, and storage policies.
+- Google provider setup requires redirect URLs in Supabase:
+  - `bcnplantscout://auth/callback`
+  - `bcnplantscout://**`
+  - `exp://**`
+
+### Build metadata
+- Android package: `com.basecampnorth.bcnplantscout`
+- Android versionCode for the next closed-test build: `7`
+- iOS bundle ID: `com.basecampnorth.bcnplantscout`
+- iOS build number for the next TestFlight build: `3`
+
+Latest production AAB for Google Play closed testing:
+
+https://expo.dev/artifacts/eas/nVl3ng_gIBxgnpqfSAwNYaY1Q-9_AgRH65zDDBDk6xI.aab
 
 ## Next Test Pass
 
 1. Run `supabase-setup.sql` in the Supabase SQL editor.
 2. Start Expo with `npx.cmd expo start --clear --tunnel`.
-3. Sign in on the Account page.
+3. Sign in on the Account page with Google or email/password.
 4. On Cloud Prep, tap `Prepare Local Records for Upload` if local-only records exist.
 5. Tap `Upload Pending Records` or `Retry Failed Syncs`.
 6. Confirm records appear in Supabase `observations` and `observation_photos`.

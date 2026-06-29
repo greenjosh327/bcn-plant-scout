@@ -2,9 +2,12 @@
 
 ## Local Validation
 
-- [ ] `npm.cmd run typecheck` passes.
-- [ ] `npx.cmd expo config --type public` passes.
+- [x] `npm.cmd run typecheck` passes.
+- [x] `npx.cmd expo config --type public` passes.
+- [x] `npx.cmd expo export --platform android --clear` passes.
 - [ ] Expo Go test can save a new record.
+- [ ] Google sign-in returns to the app and shows the correct signed-in email.
+- [ ] Email/password reviewer account still signs in.
 - [ ] Supabase upload reports reachable/synced.
 - [ ] CSV export works.
 - [ ] GeoJSON export works.
@@ -36,11 +39,23 @@ Production AAB:
 
 https://expo.dev/artifacts/eas/d8NmbaXYxEEgtXkDMLb36YvU-bOqABBCV9lyISgDM7I.aab
 
+Latest production AAB for the next closed test:
+
+https://expo.dev/artifacts/eas/nVl3ng_gIBxgnpqfSAwNYaY1Q-9_AgRH65zDDBDk6xI.aab
+
+Build logs:
+
+https://expo.dev/accounts/bcn.pa/projects/bcn-plant-tracker/builds/2c5d2abf-e68b-4e6f-a51e-eee92c7ebdc3
+
+Current local config is Android `versionCode` 7. Google Play needs each
+uploaded AAB to have a version code it has never seen before.
+
 ## Google Play Console
 
 - [ ] Create app: `BCN Plant Scout`.
 - [ ] Package name: `com.basecampnorth.bcnplantscout`.
 - [ ] Upload production `.aab` to closed testing track.
+- [ ] If Play Console says version code was already used, rebuild after confirming `app.json` has a higher `android.versionCode`.
 - [ ] Add app icon/screenshots.
 - [ ] Add short description and full description from `PLAY_STORE_LISTING_DRAFT.md`.
 - [ ] Fill Data Safety using `PLAY_STORE_LISTING_DRAFT.md`.
@@ -52,6 +67,7 @@ https://expo.dev/artifacts/eas/d8NmbaXYxEEgtXkDMLb36YvU-bOqABBCV9lyISgDM7I.aab
 
 - [ ] Install from Play closed testing link.
 - [ ] Create/sign into account.
+- [ ] Sign in with Google.
 - [ ] Take photo.
 - [ ] Confirm plant ID.
 - [ ] Capture GPS.

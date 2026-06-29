@@ -2,6 +2,7 @@
   "expo": {
     "name": "BCN Plant Scout",
     "slug": "bcn-plant-tracker",
+    "scheme": "bcnplantscout",
     "version": "1.0.0",
     "description": "Local-first plant scouting for Base Camp North: photos, GPS, return notes, exports, and Supabase sync.",
     "orientation": "portrait",
@@ -21,11 +22,11 @@
         "NSPhotoLibraryUsageDescription": "Select plant photos for field observations.",
         "NSLocationWhenInUseUsageDescription": "Record GPS coordinates for plant observations."
       },
-      "buildNumber": "2"
+      "buildNumber": "3"
     },
     "android": {
       "package": "com.basecampnorth.bcnplantscout",
-      "versionCode": 4,
+      "versionCode": 7,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#f4f7ee"
@@ -46,7 +47,8 @@
           "icon": "./assets/icon.png",
           "color": "#17391f"
         }
-      ]
+      ],
+      "expo-web-browser"
     ],
     "extra": {
       "eas": {

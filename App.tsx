@@ -1,9 +1,13 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as FileSystem from "expo-file-system/legacy";
 import * as ImagePicker from "expo-image-picker";
+import { makeRedirectUri } from "expo-auth-session";
+import * as QueryParams from "expo-auth-session/build/QueryParams";
 import * as Location from "expo-location";
 import * as Notifications from "expo-notifications";
 import * as Sharing from "expo-sharing";
+import Constants from "expo-constants";
+import * as WebBrowser from "expo-web-browser";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { createClient } from "@supabase/supabase-js";
@@ -24,6 +28,8 @@ import {
   View
 } from "react-native";
 
+WebBrowser.maybeCompleteAuthSession();
+
 const STORAGE_KEY = "bcnPlantTracker.observations.v1";
 const PLANTNET_API_KEY = process.env.EXPO_PUBLIC_PLANTNET_API_KEY ?? "";
 const PLANTNET_ENDPOINT = "https://my-api.plantnet.org/v2/identify/all";
@@ -35,6 +41,13 @@ const LOCAL_OWNER_ID = "local_user";
 const DEFAULT_PRIVACY_LEVEL: PrivacyLevel = "share with BCN";
 const DEFAULT_SYNC_STATUS: SyncStatus = "local only";
 const PLANT_PHOTOS_BUCKET = "plant-photos";
+const DELETE_ACCOUNT_URL =
+  "https://greenjosh327.github.io/bcn-plant-scout/delete-account/";
+const AUTH_REDIRECT_PATH = "auth/callback";
+const AUTH_REDIRECT_URL = makeRedirectUri({
+  scheme: "bcnplantscout",
+  path: AUTH_REDIRECT_PATH
+});
 const supabase =
   SUPABASE_URL && SUPABASE_PUBLISHABLE_KEY
     ? createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
@@ -47,14 +60,19 @@ const supabase =
       })
     : null;
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-    shouldShowBanner: true,
-    shouldShowList: true
-  })
-});
+const isExpoGoAndroid =
+  Constants.appOwnership === "expo" && Platform.OS === "android";
+
+if (!isExpoGoAndroid) {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+      shouldShowBanner: true,
+      shouldShowList: true
+    })
+  });
+}
 
 type CollectionStatus =
   | "not ready"
@@ -87,6 +105,22 @@ type PrivacyLevel = "private" | "share with BCN" | "public approximate";
 type SyncStatus = "local only" | "pending upload" | "synced" | "sync failed";
 type SavedFilter = "all" | "return later" | "ready now" | "needs sync";
 type ReturnFilter = "all" | "upcoming" | "overdue" | "ready now" | "no exact date";
+type SavedReturnFilter = "any" | "has date" | "no date" | "overdue" | "next 30";
+type SavedSort = "date" | "name" | "ready now" | "distance";
+type MapStatusFilter = "all" | CollectionStatus | "need return" | "archived";
+type Region = {
+  latitude: number;
+  longitude: number;
+  latitudeDelta: number;
+  longitudeDelta: number;
+};
+
+type PlantSuggestion = {
+  commonName: string;
+  scientificName: string;
+  otherNames: string[];
+  confidenceScore?: number;
+};
 
 type PlantObservation = {
   id: string;
@@ -123,6 +157,8 @@ type PlantObservation = {
   collectionType?: CollectionType;
   collectionTypes?: CollectionType[];
   collectionStatus?: CollectionStatus;
+  favorite?: boolean;
+  tags?: string[];
 };
 
 type DraftObservation = {
@@ -137,9 +173,12 @@ type DraftObservation = {
   identificationStatus?: PlantObservation["identificationStatus"];
   identificationError?: string;
   identifiedAt?: string;
+  userConfirmed: boolean;
   collectionStatus: CollectionStatus;
   collectionTypes: CollectionType[];
   privacyLevel: PrivacyLevel;
+  favorite: boolean;
+  tagsText: string;
 };
 
 const blankDraft: DraftObservation = {
@@ -150,9 +189,12 @@ const blankDraft: DraftObservation = {
   returnDate: "",
   reminderLeadDays: 3,
   gatherNotes: "",
+  userConfirmed: false,
   collectionStatus: "return later",
   collectionTypes: ["seeds"],
-  privacyLevel: DEFAULT_PRIVACY_LEVEL
+  privacyLevel: DEFAULT_PRIVACY_LEVEL,
+  favorite: false,
+  tagsText: ""
 };
 
 const collectionStatuses: CollectionStatus[] = [
@@ -222,13 +264,16 @@ const csvColumns: {
     header: "Collection Interests",
     value: (row) => row.collectionTypes ?? row.collectionType ?? ""
   },
-  { header: "Collection Status", value: (row) => row.collectionStatus ?? "" }
+  { header: "Collection Status", value: (row) => row.collectionStatus ?? "" },
+  { header: "Favorite", value: (row) => formatBoolean(row.favorite ?? false) },
+  { header: "Tags", value: (row) => row.tags ?? [] }
 ];
 
 type AppScreen =
   | "home"
   | "new"
   | "saved"
+  | "map"
   | "detail"
   | "returns"
   | "cloud"
@@ -240,6 +285,7 @@ const menuItems: { label: string; screen: AppScreen }[] = [
   { label: "Home", screen: "home" },
   { label: "Add New Plant", screen: "new" },
   { label: "Saved Plants", screen: "saved" },
+  { label: "Map", screen: "map" },
   { label: "Returns", screen: "returns" },
   { label: "Cloud Prep", screen: "cloud" },
   { label: "Account", screen: "account" },
@@ -262,6 +308,29 @@ const returnFilters: { label: string; value: ReturnFilter }[] = [
   { label: "No Date", value: "no exact date" }
 ];
 
+const savedReturnFilters: { label: string; value: SavedReturnFilter }[] = [
+  { label: "Any Return", value: "any" },
+  { label: "Has Date", value: "has date" },
+  { label: "No Date", value: "no date" },
+  { label: "Overdue", value: "overdue" },
+  { label: "Next 30", value: "next 30" }
+];
+
+const savedSortOptions: { label: string; value: SavedSort }[] = [
+  { label: "Newest", value: "date" },
+  { label: "Name", value: "name" },
+  { label: "Ready", value: "ready now" },
+  { label: "Distance", value: "distance" }
+];
+
+const mapStatusFilters: { label: string; value: MapStatusFilter }[] = [
+  { label: "All", value: "all" },
+  { label: "Need Return", value: "need return" },
+  { label: "Ready", value: "ready now" },
+  { label: "Collected", value: "collected" },
+  { label: "Archived", value: "archived" }
+];
+
 export default function App() {
   const [observations, setObservations] = useState<PlantObservation[]>([]);
   const [draft, setDraft] = useState<DraftObservation>(blankDraft);
@@ -269,6 +338,8 @@ export default function App() {
   const [location, setLocation] = useState<Location.LocationObject | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isIdentifying, setIsIdentifying] = useState(false);
+  const [plantSuggestions, setPlantSuggestions] = useState<PlantSuggestion[]>([]);
+  const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
   const [screen, setScreen] = useState<AppScreen>("home");
   const [menuOpen, setMenuOpen] = useState(false);
   const [editingObservationId, setEditingObservationId] = useState<string | null>(
@@ -276,6 +347,22 @@ export default function App() {
   );
   const [showReturnDatePicker, setShowReturnDatePicker] = useState(false);
   const [savedFilter, setSavedFilter] = useState<SavedFilter>("all");
+  const [savedSearch, setSavedSearch] = useState("");
+  const [savedCollectionTypeFilter, setSavedCollectionTypeFilter] =
+    useState<CollectionType | "all">("all");
+  const [savedReturnFilter, setSavedReturnFilter] =
+    useState<SavedReturnFilter>("any");
+  const [savedSort, setSavedSort] = useState<SavedSort>("date");
+  const [mapRegion, setMapRegion] = useState<Region | null>(null);
+  const [mapStatusFilter, setMapStatusFilter] = useState<MapStatusFilter>("all");
+  const [mapCollectionTypeFilter, setMapCollectionTypeFilter] =
+    useState<CollectionType | "all">("all");
+  const [mapReturnReadyOnly, setMapReturnReadyOnly] = useState(false);
+  const [mapFavoritesOnly, setMapFavoritesOnly] = useState(false);
+  const [mapSearch, setMapSearch] = useState("");
+  const [mapNearbyOnly, setMapNearbyOnly] = useState(false);
+  const [selectedMapObservationId, setSelectedMapObservationId] =
+    useState<string | null>(null);
   const [returnFilter, setReturnFilter] = useState<ReturnFilter>("all");
   const [selectedObservationId, setSelectedObservationId] = useState<string | null>(
     null
@@ -291,6 +378,8 @@ export default function App() {
   const [authMessage, setAuthMessage] = useState("");
   const [isAuthLoading, setIsAuthLoading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [currentLocation, setCurrentLocation] =
+    useState<Location.LocationObject | null>(null);
   const [lastSyncResult, setLastSyncResult] = useState<{
     status: "success" | "failed";
     records: number;
@@ -302,6 +391,55 @@ export default function App() {
   useEffect(() => {
     loadObservations();
   }, []);
+
+  useEffect(() => {
+    if (screen !== "new") {
+      return;
+    }
+
+    let isActive = true;
+    let subscription: Location.LocationSubscription | undefined;
+
+    async function watchGps() {
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (!permission.granted || !isActive) {
+        return;
+      }
+
+      const current = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High
+      });
+      if (isActive) {
+        setLocation(current);
+      }
+
+      subscription = await Location.watchPositionAsync(
+        {
+          accuracy: Location.Accuracy.Highest,
+          distanceInterval: 1,
+          timeInterval: 2500
+        },
+        (nextLocation) => {
+          setLocation((previous) =>
+            isBetterLocation(previous, nextLocation) ? nextLocation : previous
+          );
+        }
+      );
+    }
+
+    watchGps();
+
+    return () => {
+      isActive = false;
+      subscription?.remove();
+    };
+  }, [screen]);
+
+  useEffect(() => {
+    if (screen === "map" && !mapRegion) {
+      initializeMapRegion();
+    }
+  }, [mapRegion, observations, screen]);
 
   useEffect(() => {
     if (!supabase) {
@@ -335,6 +473,89 @@ export default function App() {
       ),
     [observations]
   );
+
+  const savedBaseObservations = useMemo(() => {
+    const searchText = savedSearch.trim().toLowerCase();
+    const today = startOfDay(new Date());
+    const next30 = new Date(today);
+    next30.setDate(today.getDate() + 30);
+
+    const filtered = observations.filter((observation) => {
+      if (savedFilter === "needs sync") {
+        const syncStatus = observation.syncStatus ?? DEFAULT_SYNC_STATUS;
+        if (syncStatus !== "pending upload" && syncStatus !== "sync failed") {
+          return false;
+        }
+      } else if (
+        savedFilter !== "all" &&
+        observation.collectionStatus !== savedFilter
+      ) {
+        return false;
+      }
+
+      if (
+        savedCollectionTypeFilter !== "all" &&
+        !getCollectionTypes(observation).includes(savedCollectionTypeFilter)
+      ) {
+        return false;
+      }
+
+      const returnDate = observation.returnDate
+        ? parseDateOnly(observation.returnDate)
+        : undefined;
+      if (savedReturnFilter === "has date" && !returnDate) {
+        return false;
+      }
+      if (savedReturnFilter === "no date" && returnDate) {
+        return false;
+      }
+      if (
+        savedReturnFilter === "overdue" &&
+        (!returnDate || returnDate >= today)
+      ) {
+        return false;
+      }
+      if (
+        savedReturnFilter === "next 30" &&
+        (!returnDate || returnDate < today || returnDate > next30)
+      ) {
+        return false;
+      }
+
+      if (!searchText) {
+        return true;
+      }
+
+      return getObservationSearchText(observation).includes(searchText);
+    });
+
+    return filtered.sort((a, b) => {
+      if (savedSort === "name") {
+        return a.commonName.localeCompare(b.commonName);
+      }
+      if (savedSort === "ready now") {
+        const aReady = a.collectionStatus === "ready now" ? 0 : 1;
+        const bReady = b.collectionStatus === "ready now" ? 0 : 1;
+        return aReady - bReady || getObservedTime(b) - getObservedTime(a);
+      }
+      if (savedSort === "distance" && currentLocation) {
+        return (
+          getDistanceMeters(currentLocation.coords, a) -
+            getDistanceMeters(currentLocation.coords, b) ||
+          getObservedTime(b) - getObservedTime(a)
+        );
+      }
+      return getObservedTime(b) - getObservedTime(a);
+    });
+  }, [
+    currentLocation,
+    observations,
+    savedCollectionTypeFilter,
+    savedFilter,
+    savedReturnFilter,
+    savedSearch,
+    savedSort
+  ]);
 
   const homeStats = useMemo(() => {
     const now = new Date();
@@ -449,22 +670,86 @@ export default function App() {
     [observations, selectedObservationId]
   );
 
-  const filteredSavedObservations = useMemo(
-    () =>
-      sortedObservations.filter((observation) => {
-        if (savedFilter === "all") {
-          return true;
-        }
+  const filteredSavedObservations = savedBaseObservations;
 
-        if (savedFilter === "needs sync") {
-          const syncStatus = observation.syncStatus ?? DEFAULT_SYNC_STATUS;
-          return syncStatus === "pending upload" || syncStatus === "sync failed";
-        }
+  const mapObservations = useMemo(() => {
+    const today = startOfDay(new Date());
+    const searchText = mapSearch.trim().toLowerCase();
+    return observations.filter((observation) => {
+      if (!hasValidCoordinates(observation)) {
+        return false;
+      }
 
-        return observation.collectionStatus === savedFilter;
-      }),
-    [savedFilter, sortedObservations]
+      if (searchText && !getObservationSearchText(observation).includes(searchText)) {
+        return false;
+      }
+
+      if (
+        mapCollectionTypeFilter !== "all" &&
+        !getCollectionTypes(observation).includes(mapCollectionTypeFilter)
+      ) {
+        return false;
+      }
+
+      if (mapStatusFilter === "need return") {
+        if (!isNeedReturnObservation(observation, today)) {
+          return false;
+        }
+      } else if (mapStatusFilter === "archived") {
+        if (observation.collectionStatus !== "do not collect") {
+          return false;
+        }
+      } else if (
+        mapStatusFilter !== "all" &&
+        observation.collectionStatus !== mapStatusFilter
+      ) {
+        return false;
+      }
+
+      if (mapReturnReadyOnly && !isNeedReturnObservation(observation, today)) {
+        return false;
+      }
+
+      if (mapFavoritesOnly) {
+        return observation.favorite === true;
+      }
+
+      if (
+        mapNearbyOnly &&
+        currentLocation &&
+        getDistanceMeters(currentLocation.coords, observation) > 1609.344
+      ) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [
+    mapCollectionTypeFilter,
+    currentLocation,
+    mapFavoritesOnly,
+    mapNearbyOnly,
+    mapReturnReadyOnly,
+    mapSearch,
+    mapStatusFilter,
+    observations
+  ]);
+
+  const mapDisplayItems = useMemo(
+    () => getMapDisplayItems(mapObservations, mapRegion),
+    [mapObservations, mapRegion]
   );
+
+  const selectedMapObservation = useMemo(
+    () =>
+      selectedMapObservationId
+        ? observations.find((item) => item.id === selectedMapObservationId)
+        : undefined,
+    [observations, selectedMapObservationId]
+  );
+
+  const activeMapRegion =
+    mapRegion ?? createDatasetRegion(observations) ?? createRegion(40.254, -74.038, 0.08);
 
   async function loadObservations() {
     const stored = await AsyncStorage.getItem(STORAGE_KEY);
@@ -517,7 +802,7 @@ export default function App() {
     if (result && !result.canceled) {
       const selectedPhoto = result.assets[0];
       setPhoto(selectedPhoto);
-      captureLocation();
+      setPlantSuggestions([]);
       identifyPlant(selectedPhoto, { silent: true });
     }
   }
@@ -592,22 +877,18 @@ export default function App() {
       }
 
       const payload = await response.json();
-      const best = payload?.results?.[0];
-      const commonNames = Array.isArray(best?.species?.commonNames)
-        ? best.species.commonNames
-        : [];
-      const commonName = commonNames[0] ?? "";
-      const otherNames = commonNames
-        .filter((name: string) => name && name !== commonName)
-        .slice(0, 8);
-      const scientificName = best?.species?.scientificNameWithoutAuthor ?? "";
-      const confidenceScore =
-        typeof best?.score === "number" ? Math.round(best.score * 1000) / 10 : undefined;
+      const suggestions = parsePlantSuggestions(payload).slice(0, 5);
+      const best = suggestions[0];
+      const commonName = best?.commonName ?? "";
+      const otherNames = best?.otherNames ?? [];
+      const scientificName = best?.scientificName ?? "";
+      const confidenceScore = best?.confidenceScore;
 
       if (!commonName && !scientificName) {
         throw new Error("No plant match was returned.");
       }
 
+      setPlantSuggestions(suggestions);
       setDraft({
         ...draft,
         commonName: commonName || draft.commonName,
@@ -616,7 +897,8 @@ export default function App() {
         confidenceScore,
         identificationStatus: "suggested",
         identificationError: undefined,
-        identifiedAt: new Date().toISOString()
+        identifiedAt: new Date().toISOString(),
+        userConfirmed: false
       });
     } catch (error) {
       setDraft({
@@ -630,6 +912,20 @@ export default function App() {
     } finally {
       setIsIdentifying(false);
     }
+  }
+
+  function applyPlantSuggestion(suggestion: PlantSuggestion, confirmed: boolean) {
+    setDraft((currentDraft) => ({
+      ...currentDraft,
+      commonName: suggestion.commonName || currentDraft.commonName,
+      scientificName: suggestion.scientificName || currentDraft.scientificName,
+      otherNames: suggestion.otherNames,
+      confidenceScore: suggestion.confidenceScore,
+      identificationStatus: "suggested",
+      identificationError: undefined,
+      identifiedAt: new Date().toISOString(),
+      userConfirmed: confirmed
+    }));
   }
 
   async function saveObservation() {
@@ -688,7 +984,7 @@ export default function App() {
         identificationStatus: draft.identificationStatus ?? "manual",
         identificationError: draft.identificationError,
         identifiedAt: draft.identifiedAt,
-        userConfirmed: existingObservation?.userConfirmed ?? false,
+        userConfirmed: draft.userConfirmed,
         photoUri: photo.uri,
         photoFileName: primaryPhotoFileName,
         photoStoragePath: createPhotoStoragePath(
@@ -710,7 +1006,9 @@ export default function App() {
         gatherNotes: draft.gatherNotes.trim() || undefined,
         collectionStatus: draft.collectionStatus,
         collectionType: draft.collectionTypes[0],
-        collectionTypes: draft.collectionTypes
+        collectionTypes: draft.collectionTypes,
+        favorite: draft.favorite,
+        tags: parseTags(draft.tagsText)
       };
 
       const nextObservations = editingObservationId
@@ -746,11 +1044,14 @@ export default function App() {
       identificationStatus: observation.identificationStatus,
       identificationError: observation.identificationError,
       identifiedAt: observation.identifiedAt,
+      userConfirmed: observation.userConfirmed,
       collectionStatus: observation.collectionStatus ?? "return later",
       collectionTypes:
         observation.collectionTypes ??
         (observation.collectionType ? [observation.collectionType] : ["seeds"]),
-      privacyLevel: observation.privacyLevel ?? DEFAULT_PRIVACY_LEVEL
+      privacyLevel: observation.privacyLevel ?? DEFAULT_PRIVACY_LEVEL,
+      favorite: observation.favorite ?? false,
+      tagsText: (observation.tags ?? []).join(", ")
     });
     setPhoto({
       uri: observation.photoUri,
@@ -1173,13 +1474,133 @@ export default function App() {
   }
 
   function navigate(nextScreen: AppScreen) {
+    if (nextScreen === "new" && !editingObservationId) {
+      startNewObservation();
+      return;
+    }
     setScreen(nextScreen);
     setMenuOpen(false);
+  }
+
+  async function startNewObservation() {
+    setDraft(blankDraft);
+    setPhoto(null);
+    setLocation(null);
+    setPlantSuggestions([]);
+    setEditingObservationId(null);
+    setShowAdvancedOptions(false);
+    setMenuOpen(false);
+    setScreen("new");
+    pickPhoto("camera");
   }
 
   function openObservationDetail(observation: PlantObservation) {
     setSelectedObservationId(observation.id);
     setScreen("detail");
+  }
+
+  async function initializeMapRegion() {
+    const latestLocation = await captureLocation();
+    if (latestLocation) {
+      setCurrentLocation(latestLocation);
+      moveMapToRegion(
+        createRegion(
+          latestLocation.coords.latitude,
+          latestLocation.coords.longitude,
+          0.035
+        )
+      );
+      return;
+    }
+
+    const datasetRegion = createDatasetRegion(observations);
+    if (datasetRegion) {
+      moveMapToRegion(datasetRegion);
+    }
+  }
+
+  async function centerMapOnUser() {
+    const latestLocation = await captureLocation();
+    if (!latestLocation) {
+      Alert.alert(
+        "Location unavailable",
+        "Saved plant pins are still available. Turn on location permission to center the map on you."
+      );
+      return;
+    }
+
+    setCurrentLocation(latestLocation);
+    moveMapToRegion(
+      createRegion(
+        latestLocation.coords.latitude,
+        latestLocation.coords.longitude,
+        0.025
+      )
+    );
+  }
+
+  function refreshMapView() {
+    const datasetRegion = createDatasetRegion(mapObservations);
+    if (datasetRegion) {
+      moveMapToRegion(datasetRegion);
+      return;
+    }
+    initializeMapRegion();
+  }
+
+  function moveMapToRegion(nextRegion: Region) {
+    setMapRegion(nextRegion);
+  }
+
+  function zoomMap(multiplier: number) {
+    if (!mapRegion) {
+      return;
+    }
+    moveMapToRegion({
+      ...mapRegion,
+      latitudeDelta: Math.max(0.001, Math.min(80, mapRegion.latitudeDelta * multiplier)),
+      longitudeDelta: Math.max(
+        0.001,
+        Math.min(80, mapRegion.longitudeDelta * multiplier)
+      )
+    });
+  }
+
+  async function updateObservationStatus(
+    observation: PlantObservation,
+    collectionStatus: CollectionStatus
+  ) {
+    const now = new Date().toISOString();
+    const next = observations.map((item) =>
+      item.id === observation.id
+        ? {
+            ...item,
+            collectionStatus,
+            syncStatus: "pending upload" as SyncStatus,
+            syncError: undefined,
+            updatedAt: now
+          }
+        : item
+    );
+    await persistObservations(next);
+  }
+
+  async function snoozeReturnDate(observation: PlantObservation, days: number) {
+    const nextReturnDate = formatDateForInput(addDays(new Date(), days));
+    const now = new Date().toISOString();
+    const next = observations.map((item) =>
+      item.id === observation.id
+        ? {
+            ...item,
+            returnDate: nextReturnDate,
+            collectionStatus: "return later" as CollectionStatus,
+            syncStatus: "pending upload" as SyncStatus,
+            syncError: undefined,
+            updatedAt: now
+          }
+        : item
+    );
+    await persistObservations(next);
   }
 
   async function checkSupabaseConnection() {
@@ -1225,6 +1646,166 @@ export default function App() {
     await persistObservations(nextObservations);
     setSupabaseStatus("configured");
     setSupabaseMessage("Local-only records are queued for upload.");
+  }
+
+  async function refreshCurrentLocationForSorting() {
+    const latestLocation = await captureLocation();
+    if (latestLocation) {
+      setCurrentLocation(latestLocation);
+      setSavedSort("distance");
+    }
+  }
+
+  async function downloadCloudRecords() {
+    if (!supabase) {
+      setSupabaseStatus("failed");
+      setSupabaseMessage("Supabase is not configured.");
+      return;
+    }
+
+    if (!authUserId) {
+      setSupabaseStatus("failed");
+      setSupabaseMessage("Sign in before downloading cloud records.");
+      setScreen("account");
+      return;
+    }
+
+    setIsSyncing(true);
+    setSupabaseStatus("checking");
+    setSupabaseMessage("Downloading cloud records...");
+
+    try {
+      const { data, error } = await supabase
+        .from("observations")
+        .select("*")
+        .order("observed_at", { ascending: false });
+
+      if (error) {
+        throw error;
+      }
+
+      const downloadedAt = new Date().toISOString();
+      const cloudRecords = (data ?? []).map((row) =>
+        fromSupabaseObservationRow(row, authUserId, downloadedAt)
+      );
+      const { merged, importedCount, updatedCount, conflictCount } =
+        mergeCloudObservations(observations, cloudRecords);
+
+      await persistObservations(merged);
+      setSupabaseStatus("reachable");
+      setSupabaseMessage(
+        `Downloaded ${cloudRecords.length} cloud record(s). Imported ${importedCount}, updated ${updatedCount}, conflicts ${conflictCount}.`
+      );
+      setLastSyncResult({
+        status: "success",
+        records: cloudRecords.length,
+        photos: 0,
+        finishedAt: downloadedAt,
+        message:
+          conflictCount > 0
+            ? "Download complete. Local unsynced edits were kept where conflicts were found."
+            : "Download complete."
+      });
+    } catch (error) {
+      const message = getErrorMessage(error);
+      setSupabaseStatus("failed");
+      setSupabaseMessage(message);
+      setLastSyncResult({
+        status: "failed",
+        records: 0,
+        photos: 0,
+        finishedAt: new Date().toISOString(),
+        message
+      });
+    } finally {
+      setIsSyncing(false);
+    }
+  }
+
+  async function syncNow() {
+    if (!authUserId) {
+      setSupabaseStatus("failed");
+      setSupabaseMessage("Sign in before syncing records.");
+      setScreen("account");
+      return;
+    }
+    await uploadPendingRecords();
+    await downloadCloudRecords();
+  }
+
+  async function retryObservationPhotoUploads(observation: PlantObservation) {
+    if (!supabase) {
+      Alert.alert("Supabase not configured", "Cloud sync is not configured.");
+      return;
+    }
+    if (!authUserId) {
+      Alert.alert("Sign in needed", "Sign in before retrying photo uploads.");
+      setScreen("account");
+      return;
+    }
+
+    setIsSyncing(true);
+    setSupabaseStatus("checking");
+    setSupabaseMessage(`Retrying photos for ${observation.commonName}...`);
+
+    try {
+      const uploadedAt = new Date().toISOString();
+      const uploadedObservation = await uploadObservationPhotos(
+        observation,
+        authUserId
+      );
+      const photoRows = toSupabasePhotoRows(uploadedObservation, authUserId);
+
+      const { error: observationError } = await supabase
+        .from("observations")
+        .upsert(
+          [toSupabaseObservationRow(uploadedObservation, authUserId, uploadedAt)],
+          { onConflict: "id" }
+        );
+      if (observationError) {
+        throw observationError;
+      }
+
+      const { error: photoError } = await supabase
+        .from("observation_photos")
+        .upsert(photoRows, { onConflict: "id" });
+      if (photoError) {
+        throw photoError;
+      }
+
+      const next = observations.map((item) =>
+        item.id === observation.id
+          ? {
+              ...uploadedObservation,
+              ownerId: authUserId,
+              syncStatus: "synced" as SyncStatus,
+              syncError: undefined,
+              lastSyncedAt: uploadedAt
+            }
+          : item
+      );
+
+      await persistObservations(next);
+      setSupabaseStatus("reachable");
+      setSupabaseMessage(`Retried ${photoRows.length} photo upload(s).`);
+    } catch (error) {
+      const message = getErrorMessage(error);
+      const next = observations.map((item) =>
+        item.id === observation.id
+          ? {
+              ...item,
+              syncStatus: "sync failed" as SyncStatus,
+              syncError: message
+            }
+          : item
+      );
+      await persistObservations(next);
+      setSupabaseStatus("failed");
+      setSupabaseMessage(message);
+      Alert.alert("Photo retry failed", message);
+    } finally {
+      setIsSyncing(false);
+    }
   }
 
   async function signUpWithEmail() {
@@ -1286,6 +1867,86 @@ export default function App() {
     }
   }
 
+  async function createSessionFromOAuthUrl(url: string) {
+    if (!supabase) {
+      throw new Error("Supabase is not configured.");
+    }
+
+    const { params, errorCode } = QueryParams.getQueryParams(url);
+
+    if (errorCode) {
+      throw new Error(errorCode);
+    }
+
+    if (params.code) {
+      const { error } = await supabase.auth.exchangeCodeForSession(
+        String(params.code)
+      );
+      if (error) {
+        throw error;
+      }
+      return;
+    }
+
+    if (params.access_token && params.refresh_token) {
+      const { error } = await supabase.auth.setSession({
+        access_token: String(params.access_token),
+        refresh_token: String(params.refresh_token)
+      });
+      if (error) {
+        throw error;
+      }
+      return;
+    }
+
+    throw new Error("Google sign-in did not return a session.");
+  }
+
+  async function signInWithGoogle() {
+    if (!supabase) {
+      setAuthMessage("Supabase is not configured.");
+      return;
+    }
+
+    setIsAuthLoading(true);
+    setAuthMessage("Opening Google sign-in...");
+
+    try {
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: AUTH_REDIRECT_URL,
+          skipBrowserRedirect: true
+        }
+      });
+
+      if (error) {
+        throw error;
+      }
+      if (!data?.url) {
+        throw new Error("Google sign-in URL was not returned.");
+      }
+
+      const result = await WebBrowser.openAuthSessionAsync(
+        data.url,
+        AUTH_REDIRECT_URL
+      );
+
+      if (result.type === "success") {
+        await createSessionFromOAuthUrl(result.url);
+        setAuthMessage("Signed in with Google.");
+      } else if (result.type === "cancel") {
+        setAuthMessage("Google sign-in was canceled.");
+      } else {
+        setAuthMessage("Google sign-in did not complete.");
+      }
+    } catch (error) {
+      setAuthMessage(getErrorMessage(error));
+    } finally {
+      setIsAuthLoading(false);
+    }
+  }
+
   async function signOut() {
     if (!supabase) {
       return;
@@ -1306,6 +1967,67 @@ export default function App() {
     } finally {
       setIsAuthLoading(false);
     }
+  }
+
+  async function sendPasswordResetEmail() {
+    if (!supabase) {
+      setAuthMessage("Supabase is not configured.");
+      return;
+    }
+    if (!accountEmail.trim()) {
+      setAuthMessage("Enter your email first.");
+      return;
+    }
+
+    setIsAuthLoading(true);
+    setAuthMessage("Sending password reset email...");
+
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(
+        accountEmail.trim()
+      );
+      if (error) {
+        throw error;
+      }
+      setAuthMessage("Password reset email sent. Check your inbox.");
+    } catch (error) {
+      setAuthMessage(getErrorMessage(error));
+    } finally {
+      setIsAuthLoading(false);
+    }
+  }
+
+  async function openDeleteAccountPage() {
+    await Linking.openURL(DELETE_ACCOUNT_URL);
+  }
+
+  function requestAccountDeletion() {
+    const email = authUserEmail ?? accountEmail.trim() ?? "";
+    Alert.alert(
+      "Request account deletion",
+      "This opens the BCN Plant Scout account deletion page. You can request cloud account and cloud record deletion there.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Open page",
+          onPress: openDeleteAccountPage
+        },
+        {
+          text: "Email request",
+          onPress: () => {
+            const subject = encodeURIComponent(
+              "BCN Plant Scout Account Deletion Request"
+            );
+            const body = encodeURIComponent(
+              `Please delete my BCN Plant Scout account and associated cloud data.\n\nAccount email: ${
+                email || "(enter email)"
+              }`
+            );
+            Linking.openURL(`mailto:?subject=${subject}&body=${body}`);
+          }
+        }
+      ]
+    );
   }
 
   async function uploadPendingRecords() {
@@ -1557,7 +2279,10 @@ export default function App() {
               </View>
 
               <View style={styles.buttonRow}>
-                <ActionButton label="Take Photo" onPress={() => pickPhoto("camera")} />
+                <ActionButton
+                  label={photo ? "Take Another Photo" : "Take Photo"}
+                  onPress={() => pickPhoto("camera")}
+                />
                 <ActionButton
                   label="Select Photo"
                   onPress={() => pickPhoto("library")}
@@ -1573,6 +2298,8 @@ export default function App() {
                 </View>
               )}
 
+              <GpsStatus location={location} />
+
               <ActionButton
                 label={isIdentifying ? "Identifying..." : "Identify Plant"}
                 onPress={identifyPlant}
@@ -1582,13 +2309,57 @@ export default function App() {
 
               {draft.identificationStatus ? (
                 <View style={styles.identificationPanel}>
-                  <Text style={styles.identificationLabel}>
-                    ID status: {draft.identificationStatus}
-                  </Text>
+                  <Text style={styles.identificationLabel}>AI suggestion</Text>
+                  {draft.commonName || draft.scientificName ? (
+                    <Text style={styles.identificationText}>
+                      {draft.commonName || draft.scientificName}
+                      {draft.scientificName ? ` (${draft.scientificName})` : ""}
+                    </Text>
+                  ) : null}
                   {draft.confidenceScore !== undefined ? (
                     <Text style={styles.identificationText}>
                       Confidence: {draft.confidenceScore}%
                     </Text>
+                  ) : null}
+                  <View style={styles.buttonRow}>
+                    <ActionButton
+                      label="Accept ID"
+                      onPress={() =>
+                        plantSuggestions[0]
+                          ? applyPlantSuggestion(plantSuggestions[0], true)
+                          : setDraft({ ...draft, userConfirmed: true })
+                      }
+                      disabled={draft.identificationStatus !== "suggested"}
+                    />
+                    <ActionButton
+                      label="Take Another Photo"
+                      onPress={() => pickPhoto("camera")}
+                      variant="secondary"
+                    />
+                  </View>
+                  {plantSuggestions.length > 1 ? (
+                    <View style={styles.suggestionList}>
+                      <Text style={styles.nameSuggestionsLabel}>
+                        Choose different species:
+                      </Text>
+                      {plantSuggestions.slice(1).map((suggestion) => (
+                        <Pressable
+                          key={`${suggestion.scientificName}-${suggestion.commonName}`}
+                          onPress={() => applyPlantSuggestion(suggestion, true)}
+                          style={styles.suggestionRow}
+                        >
+                          <Text style={styles.suggestionRowTitle}>
+                            {suggestion.commonName || suggestion.scientificName}
+                          </Text>
+                          <Text style={styles.suggestionRowMeta}>
+                            {suggestion.scientificName}
+                            {suggestion.confidenceScore !== undefined
+                              ? ` | ${suggestion.confidenceScore}%`
+                              : ""}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
                   ) : null}
                   {draft.identificationError ? (
                     <Text style={styles.identificationError}>
@@ -1596,27 +2367,6 @@ export default function App() {
                     </Text>
                   ) : null}
                 </View>
-              ) : null}
-
-              <ActionButton
-                label={
-                  location
-                    ? `GPS: ${formatCoordinate(
-                        location.coords.latitude
-                      )}, ${formatCoordinate(location.coords.longitude)}`
-                    : "Capture GPS Location"
-                }
-                onPress={captureLocation}
-                variant={location ? "secondary" : "primary"}
-              />
-
-              {location ? (
-                <Text style={styles.locationText}>
-                  Accuracy:{" "}
-                  {location.coords.accuracy
-                    ? `${Math.round(location.coords.accuracy)} m`
-                    : "unknown"}
-                </Text>
               ) : null}
 
               <Field
@@ -1708,51 +2458,101 @@ export default function App() {
                   />
                 ) : null}
               </View>
-              <ChoiceGroup
-                label="Reminder heads-up"
-                options={[1, 3, 7] as ReminderLeadDays[]}
-                value={draft.reminderLeadDays}
-                onChange={(reminderLeadDays) =>
-                  setDraft({ ...draft, reminderLeadDays })
-                }
-                formatOption={(days) => `${days} day${days === 1 ? "" : "s"}`}
-              />
-              <Field
-                label="Gather notes"
-                value={draft.gatherNotes}
-                onChangeText={(gatherNotes) => setDraft({ ...draft, gatherNotes })}
-                placeholder="Seeds, cuttings, berries, access reminder..."
-                multiline
-              />
+              <Pressable
+                onPress={() => setShowAdvancedOptions((isOpen) => !isOpen)}
+                style={styles.advancedToggle}
+              >
+                <Text style={styles.advancedToggleText}>
+                  {showAdvancedOptions ? "Hide Advanced Options" : "Advanced Options"}
+                </Text>
+              </Pressable>
 
-              <MultiChoiceGroup
-                label="Collection interests"
-                options={collectionTypes}
-                values={draft.collectionTypes}
-                onChange={(collectionTypes) =>
-                  setDraft({ ...draft, collectionTypes })
-                }
-              />
-              <ChoiceGroup
-                label="Collection status"
-                options={collectionStatuses}
-                value={draft.collectionStatus}
-                onChange={(collectionStatus) =>
-                  setDraft({ ...draft, collectionStatus })
-                }
-              />
-              <ChoiceGroup
-                label="Privacy"
-                options={privacyLevels}
-                value={draft.privacyLevel}
-                onChange={(privacyLevel) =>
-                  setDraft({ ...draft, privacyLevel })
-                }
-              />
-              <Text style={styles.helperText}>
-                Share with BCN is the default. Choose Private to keep a record only
-                on this phone.
-              </Text>
+              {showAdvancedOptions ? (
+                <View style={styles.advancedPanel}>
+                  <ChoiceGroup
+                    label="Reminder heads-up"
+                    options={[1, 3, 7] as ReminderLeadDays[]}
+                    value={draft.reminderLeadDays}
+                    onChange={(reminderLeadDays) =>
+                      setDraft({ ...draft, reminderLeadDays })
+                    }
+                    formatOption={(days) => `${days} day${days === 1 ? "" : "s"}`}
+                  />
+                  <Field
+                    label="Gather notes"
+                    value={draft.gatherNotes}
+                    onChangeText={(gatherNotes) =>
+                      setDraft({ ...draft, gatherNotes })
+                    }
+                    placeholder="Seeds, cuttings, berries, access reminder..."
+                    multiline
+                  />
+                  <Field
+                    label="Tags"
+                    value={draft.tagsText}
+                    onChangeText={(tagsText) => setDraft({ ...draft, tagsText })}
+                    placeholder="mother tree, wild source, nursery row..."
+                  />
+                  <Pressable
+                    onPress={() =>
+                      setDraft((currentDraft) => ({
+                        ...currentDraft,
+                        favorite: !currentDraft.favorite
+                      }))
+                    }
+                    style={[
+                      styles.favoriteToggle,
+                      draft.favorite && styles.favoriteToggleActive
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.favoriteToggleText,
+                        draft.favorite && styles.favoriteToggleTextActive
+                      ]}
+                    >
+                      {draft.favorite ? "Favorite plant" : "Mark as favorite"}
+                    </Text>
+                  </Pressable>
+                  <MultiChoiceGroup
+                    label="Collection interests"
+                    options={collectionTypes}
+                    values={draft.collectionTypes}
+                    onChange={(collectionTypes) =>
+                      setDraft({ ...draft, collectionTypes })
+                    }
+                  />
+                  <ChoiceGroup
+                    label="Collection status"
+                    options={collectionStatuses}
+                    value={draft.collectionStatus}
+                    onChange={(collectionStatus) =>
+                      setDraft({ ...draft, collectionStatus })
+                    }
+                  />
+                  <ChoiceGroup
+                    label="Privacy"
+                    options={privacyLevels}
+                    value={draft.privacyLevel}
+                    onChange={(privacyLevel) =>
+                      setDraft({ ...draft, privacyLevel })
+                    }
+                  />
+                  {location ? (
+                    <Text style={styles.locationText}>
+                      GPS: {formatCoordinate(location.coords.latitude)},{" "}
+                      {formatCoordinate(location.coords.longitude)} | Accuracy:{" "}
+                      {location.coords.accuracy
+                        ? `${Math.round(location.coords.accuracy)} m`
+                        : "unknown"}
+                    </Text>
+                  ) : null}
+                  <Text style={styles.helperText}>
+                    Share with BCN is the default. Choose Private to keep a record
+                    only on this phone.
+                  </Text>
+                </View>
+              ) : null}
 
               <ActionButton
                 label={
@@ -1800,11 +2600,114 @@ export default function App() {
                 ))}
               </View>
 
+              <Field
+                label="Search saved plants"
+                value={savedSearch}
+                onChangeText={setSavedSearch}
+                placeholder="Name, notes, status, interest..."
+              />
+
+              <Text style={styles.label}>Collection type</Text>
+              <View style={styles.filterRow}>
+                <Pressable
+                  onPress={() => setSavedCollectionTypeFilter("all")}
+                  style={[
+                    styles.filterChip,
+                    savedCollectionTypeFilter === "all" && styles.filterChipActive
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.filterChipText,
+                      savedCollectionTypeFilter === "all" &&
+                        styles.filterChipTextActive
+                    ]}
+                  >
+                    All Types
+                  </Text>
+                </Pressable>
+                {collectionTypes.map((collectionType) => (
+                  <Pressable
+                    key={collectionType}
+                    onPress={() => setSavedCollectionTypeFilter(collectionType)}
+                    style={[
+                      styles.filterChip,
+                      savedCollectionTypeFilter === collectionType &&
+                        styles.filterChipActive
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.filterChipText,
+                        savedCollectionTypeFilter === collectionType &&
+                          styles.filterChipTextActive
+                      ]}
+                    >
+                      {collectionType}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+
+              <Text style={styles.label}>Return date</Text>
+              <View style={styles.filterRow}>
+                {savedReturnFilters.map((filter) => (
+                  <Pressable
+                    key={filter.value}
+                    onPress={() => setSavedReturnFilter(filter.value)}
+                    style={[
+                      styles.filterChip,
+                      savedReturnFilter === filter.value && styles.filterChipActive
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.filterChipText,
+                        savedReturnFilter === filter.value &&
+                          styles.filterChipTextActive
+                      ]}
+                    >
+                      {filter.label}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+
+              <Text style={styles.label}>Sort</Text>
+              <View style={styles.filterRow}>
+                {savedSortOptions.map((sortOption) => (
+                  <Pressable
+                    key={sortOption.value}
+                    onPress={() => setSavedSort(sortOption.value)}
+                    style={[
+                      styles.filterChip,
+                      savedSort === sortOption.value && styles.filterChipActive
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.filterChipText,
+                        savedSort === sortOption.value &&
+                          styles.filterChipTextActive
+                      ]}
+                    >
+                      {sortOption.label}
+                    </Text>
+                  </Pressable>
+                ))}
+                <Pressable
+                  onPress={refreshCurrentLocationForSorting}
+                  style={styles.filterChip}
+                >
+                  <Text style={styles.filterChipText}>Use GPS</Text>
+                </Pressable>
+              </View>
+
               {filteredSavedObservations.length === 0 ? (
                 <View style={styles.emptyState}>
                   <Text style={styles.emptyStateTitle}>No matching records</Text>
                   <Text style={styles.emptyStateText}>
-                    Try another filter or add a new plant record.
+                    Try another search, filter, or add a new plant record.
                   </Text>
                 </View>
               ) : (
@@ -1829,11 +2732,250 @@ export default function App() {
                         photoItem.id ?? photoItem.uri
                       )
                     }
+                    onRetryPhotos={() => retryObservationPhotoUploads(observation)}
                     onDelete={() => deleteObservation(observation.id)}
                   />
                 ))
               )}
             </>
+          ) : null}
+
+          {screen === "map" ? (
+            <View style={styles.mapPanel}>
+              <View style={styles.header}>
+                <Text style={styles.title}>Plant Map</Text>
+                <Text style={styles.subtitle}>
+                  {mapObservations.length} of {observations.length} saved plant
+                  location{observations.length === 1 ? "" : "s"} shown.
+                </Text>
+                <Text style={styles.hintText}>
+                  Field map preview: saved plant locations are shown in a fast
+                  local list. Navigate opens Google Maps for any record.
+                </Text>
+              </View>
+
+              <View style={styles.mapControls}>
+                <Pressable onPress={centerMapOnUser} style={styles.mapControlButton}>
+                  <Text style={styles.mapControlText}>My Location</Text>
+                </Pressable>
+                <Pressable onPress={refreshMapView} style={styles.mapControlButton}>
+                  <Text style={styles.mapControlText}>Refresh</Text>
+                </Pressable>
+              </View>
+
+              <Text style={styles.label}>Status</Text>
+              <Field
+                label="Search map"
+                value={mapSearch}
+                onChangeText={setMapSearch}
+                placeholder="Species, notes, tags, status..."
+              />
+              <View style={styles.filterRow}>
+                {mapStatusFilters.map((filter) => (
+                  <Pressable
+                    key={filter.value}
+                    onPress={() => setMapStatusFilter(filter.value)}
+                    style={[
+                      styles.filterChip,
+                      mapStatusFilter === filter.value && styles.filterChipActive
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.filterChipText,
+                        mapStatusFilter === filter.value &&
+                          styles.filterChipTextActive
+                      ]}
+                    >
+                      {filter.label}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+
+              <Text style={styles.label}>Collection type</Text>
+              <View style={styles.filterRow}>
+                <Pressable
+                  onPress={() => setMapCollectionTypeFilter("all")}
+                  style={[
+                    styles.filterChip,
+                    mapCollectionTypeFilter === "all" && styles.filterChipActive
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.filterChipText,
+                      mapCollectionTypeFilter === "all" &&
+                        styles.filterChipTextActive
+                    ]}
+                  >
+                    All Types
+                  </Text>
+                </Pressable>
+                {collectionTypes.map((collectionType) => (
+                  <Pressable
+                    key={collectionType}
+                    onPress={() => setMapCollectionTypeFilter(collectionType)}
+                    style={[
+                      styles.filterChip,
+                      mapCollectionTypeFilter === collectionType &&
+                        styles.filterChipActive
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.filterChipText,
+                        mapCollectionTypeFilter === collectionType &&
+                          styles.filterChipTextActive
+                      ]}
+                    >
+                      {collectionType}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+
+              <View style={styles.filterRow}>
+                <Pressable
+                  onPress={() => setMapReturnReadyOnly((value) => !value)}
+                  style={[
+                    styles.filterChip,
+                    mapReturnReadyOnly && styles.filterChipActive
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.filterChipText,
+                      mapReturnReadyOnly && styles.filterChipTextActive
+                    ]}
+                  >
+                    Ready for Return
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setMapFavoritesOnly((value) => !value)}
+                  style={[
+                    styles.filterChip,
+                    mapFavoritesOnly && styles.filterChipActive
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.filterChipText,
+                      mapFavoritesOnly && styles.filterChipTextActive
+                    ]}
+                  >
+                    Favorites
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setMapNearbyOnly((value) => !value)}
+                  style={[
+                    styles.filterChip,
+                    mapNearbyOnly && styles.filterChipActive
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.filterChipText,
+                      mapNearbyOnly && styles.filterChipTextActive
+                    ]}
+                  >
+                    Within 1 mi
+                  </Text>
+                </Pressable>
+              </View>
+              {mapNearbyOnly && !currentLocation ? (
+                <Text style={styles.hintText}>
+                  Tap My Location to use the nearby filter.
+                </Text>
+              ) : null}
+              <View style={styles.mapLegend}>
+                {[
+                  ["#1b7f3a", "ready"],
+                  ["#c47a24", "return"],
+                  ["#5b6f5b", "collected"],
+                  ["#7a7a7a", "archived"],
+                  ["#2f6f3e", "new"]
+                ].map(([color, label]) => (
+                  <View key={label} style={styles.mapLegendItem}>
+                    <View style={[styles.mapLegendDot, { backgroundColor: color }]} />
+                    <Text style={styles.mapLegendText}>{label}</Text>
+                  </View>
+                ))}
+              </View>
+
+              <View style={styles.mapList}>
+                {mapObservations.length === 0 ? (
+                  <View style={styles.emptyState}>
+                    <Text style={styles.emptyStateTitle}>No mapped records</Text>
+                    <Text style={styles.emptyStateText}>
+                      Try another filter or add an observation with GPS.
+                    </Text>
+                  </View>
+                ) : (
+                  mapObservations.slice(0, 80).map((observation) => (
+                    <Pressable
+                      key={observation.id}
+                      onPress={() => setSelectedMapObservationId(observation.id)}
+                      style={[
+                        styles.mapListItem,
+                        selectedMapObservationId === observation.id &&
+                          styles.mapListItemActive
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.mapLegendDot,
+                          { backgroundColor: getMapPinColor(observation) }
+                        ]}
+                      />
+                      <View style={styles.mapListItemText}>
+                        <Text style={styles.mapListTitle}>
+                          {observation.commonName}
+                        </Text>
+                        <Text style={styles.mapListMeta}>
+                          {formatCoordinate(observation.latitude)},{" "}
+                          {formatCoordinate(observation.longitude)}
+                          {currentLocation
+                            ? ` | ${formatDistance(
+                                getDistanceMeters(
+                                  currentLocation.coords,
+                                  observation
+                                )
+                              )}`
+                            : ""}
+                        </Text>
+                      </View>
+                    </Pressable>
+                  ))
+                )}
+              </View>
+              {mapObservations.length > 80 ? (
+                <Text style={styles.hintText}>
+                  Showing first 80 matching records. Use search or filters to narrow
+                  the list.
+                </Text>
+              ) : null}
+
+              {selectedMapObservation ? (
+                <MapObservationSummary
+                  observation={selectedMapObservation}
+                  currentLocation={currentLocation}
+                  onViewDetails={() => openObservationDetail(selectedMapObservation)}
+                  onNavigate={() => openObservationMap(selectedMapObservation)}
+                  onEdit={() => editObservation(selectedMapObservation)}
+                />
+              ) : (
+                <View style={styles.emptyState}>
+                  <Text style={styles.emptyStateTitle}>Select a plant location</Text>
+                  <Text style={styles.emptyStateText}>
+                    Select a record to see the plant summary, route back to it, or
+                    edit the observation.
+                  </Text>
+                </View>
+              )}
+            </View>
           ) : null}
 
           {screen === "detail" ? (
@@ -1926,6 +3068,13 @@ export default function App() {
                         observation={observation}
                         onEdit={() => editObservation(observation)}
                         onOpenMap={() => openObservationMap(observation)}
+                        onMarkReady={() =>
+                          updateObservationStatus(observation, "ready now")
+                        }
+                        onMarkCollected={() =>
+                          updateObservationStatus(observation, "collected")
+                        }
+                        onSnooze={() => snoozeReturnDate(observation, 7)}
                       />
                     ))
                   )}
@@ -1951,7 +3100,7 @@ export default function App() {
                 <StatTile label="share with BCN" value={`${cloudStats.shareCount}`} />
                 <StatTile label="private" value={`${cloudStats.privateCount}`} />
                 <StatTile
-                  label="public approximate"
+                  label="public approx."
                   value={`${cloudStats.publicCount}`}
                 />
               </View>
@@ -1984,6 +3133,9 @@ export default function App() {
                     ? `${cloudStats.pending} pending record(s) waiting for upload.`
                     : "No pending uploads."}
                 </Text>
+                <Text style={styles.hintText}>
+                  Last synced: {formatLastSyncedAt(getLatestSyncedAt(observations))}
+                </Text>
               </View>
               <View style={styles.detailInfoBox}>
                 <Text style={styles.detailInfoLabel}>Supabase connection</Text>
@@ -2011,9 +3163,14 @@ export default function App() {
                 />
               ) : null}
               <ActionButton
+                label={isSyncing ? "Syncing..." : "Sync Now"}
+                onPress={syncNow}
+                disabled={isSyncing}
+              />
+              <ActionButton
                 label={
                   isSyncing
-                    ? "Uploading..."
+                    ? "Syncing..."
                     : cloudStats.failed > 0
                       ? "Retry Failed Syncs"
                       : "Upload Pending Records"
@@ -2022,12 +3179,20 @@ export default function App() {
                 disabled={isSyncing}
                 variant="secondary"
               />
+              <ActionButton
+                label={isSyncing ? "Syncing..." : "Download Cloud Records"}
+                onPress={downloadCloudRecords}
+                disabled={isSyncing}
+                variant="secondary"
+              />
               <Text style={styles.hintText}>
-                This uploads observation records, photo files, and photo metadata.
+                Upload sends observation records, photo files, and photo metadata.
+                Download brings cloud records back to this phone and keeps unsynced
+                local edits when there is a conflict.
               </Text>
               {lastSyncResult ? (
                 <View style={styles.detailInfoBox}>
-                  <Text style={styles.detailInfoLabel}>Last upload</Text>
+                  <Text style={styles.detailInfoLabel}>Last sync</Text>
                   <Text style={styles.detailInfoText}>
                     {lastSyncResult.status === "success" ? "Success" : "Failed"} at{" "}
                     {formatDate(lastSyncResult.finishedAt)}{" "}
@@ -2047,33 +3212,42 @@ export default function App() {
             <View style={styles.panel}>
               <Text style={styles.sectionTitle}>Account</Text>
               <Text style={styles.panelText}>
-                Sign in to sync field records and photo files to Supabase.
-                New records use your account ID when you are signed in.
+                Sign in to upload and download field records, photo files, and
+                photo metadata. If there is an account issue, use password reset or
+                request account deletion from here.
               </Text>
 
               <View style={styles.detailInfoBox}>
                 <Text style={styles.detailInfoLabel}>Current user</Text>
                 <Text style={styles.detailInfoText}>
-                  {authUserEmail ?? "Not signed in"}
+                  {authUserId ? "Signed in" : "Not signed in"}
+                </Text>
+                <Text style={styles.hintText}>
+                  {authUserEmail ??
+                    "Records stay local until you sign in and upload them."}
                 </Text>
                 <Text style={styles.hintText}>
                   Owner ID for new records: {authUserId ?? LOCAL_OWNER_ID}
                 </Text>
               </View>
 
-              <Field
-                label="Email"
-                value={accountEmail}
-                onChangeText={setAccountEmail}
-                placeholder="you@example.com"
-              />
-              <Field
-                label="Password"
-                value={accountPassword}
-                onChangeText={setAccountPassword}
-                placeholder="Password"
-                secureTextEntry
-              />
+              {!authUserId ? (
+                <>
+                  <Field
+                    label="Email"
+                    value={accountEmail}
+                    onChangeText={setAccountEmail}
+                    placeholder="you@example.com"
+                  />
+                  <Field
+                    label="Password"
+                    value={accountPassword}
+                    onChangeText={setAccountPassword}
+                    placeholder="Password"
+                    secureTextEntry
+                  />
+                </>
+              ) : null}
 
               {authMessage ? (
                 <View style={styles.identificationPanel}>
@@ -2091,6 +3265,12 @@ export default function App() {
               ) : (
                 <>
                   <ActionButton
+                    label={isAuthLoading ? "Working..." : "Sign In with Google"}
+                    onPress={signInWithGoogle}
+                    disabled={isAuthLoading}
+                    variant="secondary"
+                  />
+                  <ActionButton
                     label={isAuthLoading ? "Working..." : "Sign In"}
                     onPress={signInWithEmail}
                     disabled={isAuthLoading}
@@ -2103,6 +3283,23 @@ export default function App() {
                   />
                 </>
               )}
+              <ActionButton
+                label="Send Password Reset Email"
+                onPress={sendPasswordResetEmail}
+                disabled={isAuthLoading}
+                variant="secondary"
+              />
+              <ActionButton
+                label="Request Account Deletion"
+                onPress={requestAccountDeletion}
+                disabled={isAuthLoading}
+                variant="secondary"
+              />
+              <Text style={styles.hintText}>
+                Google sign-in and email sign-in both use Supabase Auth. Account
+                deletion opens the BCN Plant Scout deletion request page or an
+                email request.
+              </Text>
             </View>
           ) : null}
 
@@ -2356,6 +3553,77 @@ function ActionButton({
   );
 }
 
+function GpsStatus({ location }: { location: Location.LocationObject | null }) {
+  const status = getGpsStatus(location);
+  return (
+    <View style={styles.gpsStatus}>
+      <View style={[styles.gpsDot, { backgroundColor: status.color }]} />
+      <Text style={styles.gpsStatusText}>{status.label}</Text>
+    </View>
+  );
+}
+
+function MapObservationSummary({
+  observation,
+  currentLocation,
+  onViewDetails,
+  onNavigate,
+  onEdit
+}: {
+  observation: PlantObservation;
+  currentLocation: Location.LocationObject | null;
+  onViewDetails: () => void;
+  onNavigate: () => void;
+  onEdit: () => void;
+}) {
+  const distance =
+    currentLocation && hasValidCoordinates(observation)
+      ? formatDistance(getDistanceMeters(currentLocation.coords, observation))
+      : undefined;
+
+  return (
+    <View style={styles.mapSummaryCard}>
+      <Image source={{ uri: observation.photoUri }} style={styles.mapSummaryImage} />
+      <View style={styles.mapSummaryBody}>
+        <Text style={styles.cardTitle}>{observation.commonName}</Text>
+        {observation.scientificName ? (
+          <Text style={styles.scientificName}>{observation.scientificName}</Text>
+        ) : null}
+        {observation.favorite || observation.tags?.length ? (
+          <Text style={styles.cardMeta}>
+            {[
+              observation.favorite ? "Favorite" : undefined,
+              observation.tags?.length ? observation.tags.join(", ") : undefined
+            ]
+              .filter(Boolean)
+              .join(" | ")}
+          </Text>
+        ) : null}
+        <View style={styles.metaGrid}>
+          <MetaChip label="Status" value={observation.collectionStatus ?? ""} />
+          <MetaChip
+            label="Interest"
+            value={formatCollectionInterests(observation)}
+          />
+          <MetaChip label="Return" value={observation.returnDate ?? ""} />
+          <MetaChip label="Distance" value={distance ?? ""} />
+        </View>
+        <View style={styles.cardActions}>
+          <Pressable onPress={onViewDetails} style={styles.cardActionButton}>
+            <Text style={styles.cardActionButtonText}>View Details</Text>
+          </Pressable>
+          <Pressable onPress={onNavigate} style={styles.cardActionButton}>
+            <Text style={styles.cardActionButtonText}>Navigate</Text>
+          </Pressable>
+          <Pressable onPress={onEdit} style={styles.cardActionButton}>
+            <Text style={styles.cardActionButtonText}>Edit</Text>
+          </Pressable>
+        </View>
+      </View>
+    </View>
+  );
+}
+
 function ObservationCard({
   observation,
   onOpenDetail,
@@ -2366,6 +3634,7 @@ function ObservationCard({
   onShareExtraPhoto,
   onDeleteExtraPhoto,
   onMakePrimary,
+  onRetryPhotos,
   onDelete
 }: {
   observation: PlantObservation;
@@ -2377,6 +3646,7 @@ function ObservationCard({
   onShareExtraPhoto: (photoItem: ObservationPhoto) => void;
   onDeleteExtraPhoto: (photoItem: ObservationPhoto) => void;
   onMakePrimary: (photoItem: ObservationPhoto) => void;
+  onRetryPhotos: () => void;
   onDelete: () => void;
 }) {
   return (
@@ -2406,6 +3676,12 @@ function ObservationCard({
           <Text style={styles.cardMeta}>
             Also called: {observation.otherNames.join(", ")}
           </Text>
+        ) : null}
+        {observation.favorite ? (
+          <Text style={styles.cardMeta}>Favorite plant</Text>
+        ) : null}
+        {observation.tags && observation.tags.length > 0 ? (
+          <Text style={styles.cardMeta}>Tags: {observation.tags.join(", ")}</Text>
         ) : null}
         <View style={styles.metaGrid}>
           <MetaChip label="Date" value={formatDate(observation.observedAt)} />
@@ -2487,6 +3763,11 @@ function ObservationCard({
           <Pressable onPress={onSharePhoto} style={styles.cardActionButton}>
             <Text style={styles.cardActionButtonText}>Share Photo</Text>
           </Pressable>
+          {observation.syncStatus === "sync failed" ? (
+            <Pressable onPress={onRetryPhotos} style={styles.cardActionButton}>
+              <Text style={styles.cardActionButtonText}>Retry Photos</Text>
+            </Pressable>
+          ) : null}
           <Pressable onPress={onDelete} style={styles.deleteButton}>
             <Text style={styles.deleteButtonText}>Delete</Text>
           </Pressable>
@@ -2545,6 +3826,12 @@ function ObservationDetail({
         <Text style={styles.cardMeta}>
           Also called: {observation.otherNames.join(", ")}
         </Text>
+      ) : null}
+      {observation.favorite ? (
+        <Text style={styles.cardMeta}>Favorite plant</Text>
+      ) : null}
+      {observation.tags && observation.tags.length > 0 ? (
+        <Text style={styles.cardMeta}>Tags: {observation.tags.join(", ")}</Text>
       ) : null}
 
       <View style={styles.metaGrid}>
@@ -2632,11 +3919,17 @@ function ObservationDetail({
 function ReturnCard({
   observation,
   onEdit,
-  onOpenMap
+  onOpenMap,
+  onMarkReady,
+  onMarkCollected,
+  onSnooze
 }: {
   observation: PlantObservation;
   onEdit: () => void;
   onOpenMap: () => void;
+  onMarkReady: () => void;
+  onMarkCollected: () => void;
+  onSnooze: () => void;
 }) {
   const exactReturnDate = observation.returnDate
     ? parseDateOnly(observation.returnDate)
@@ -2664,10 +3957,34 @@ function ReturnCard({
           <Text style={styles.returnNotes}>{observation.gatherNotes}</Text>
         ) : null}
         <View style={styles.returnActions}>
-          <Pressable onPress={onOpenMap} style={styles.cardActionButton}>
+          <Pressable
+            onPress={onMarkReady}
+            style={[styles.cardActionButton, styles.returnActionButton]}
+          >
+            <Text style={styles.cardActionButtonText}>Ready</Text>
+          </Pressable>
+          <Pressable
+            onPress={onMarkCollected}
+            style={[styles.cardActionButton, styles.returnActionButton]}
+          >
+            <Text style={styles.cardActionButtonText}>Collected</Text>
+          </Pressable>
+          <Pressable
+            onPress={onSnooze}
+            style={[styles.cardActionButton, styles.returnActionButton]}
+          >
+            <Text style={styles.cardActionButtonText}>+7 days</Text>
+          </Pressable>
+          <Pressable
+            onPress={onOpenMap}
+            style={[styles.cardActionButton, styles.returnActionButton]}
+          >
             <Text style={styles.cardActionButtonText}>Open Map</Text>
           </Pressable>
-          <Pressable onPress={onEdit} style={styles.cardActionButton}>
+          <Pressable
+            onPress={onEdit}
+            style={[styles.cardActionButton, styles.returnActionButton]}
+          >
             <Text style={styles.cardActionButtonText}>Edit</Text>
           </Pressable>
         </View>
@@ -2794,7 +4111,9 @@ function toGeoJson(rows: PlantObservation[]) {
           reminderScheduledFor: row.reminderScheduledFor ?? "",
           gatherNotes: row.gatherNotes ?? "",
           collectionTypes: row.collectionTypes ?? row.collectionType ?? "",
-          collectionStatus: row.collectionStatus ?? ""
+          collectionStatus: row.collectionStatus ?? "",
+          favorite: row.favorite ?? false,
+          tags: row.tags ?? []
         }
       }))
     },
@@ -2841,7 +4160,9 @@ function toSupabaseObservationRow(
     collection_interests:
       observation.collectionTypes ??
       (observation.collectionType ? [observation.collectionType] : []),
-    collection_status: observation.collectionStatus ?? null
+    collection_status: observation.collectionStatus ?? null,
+    favorite: observation.favorite ?? false,
+    tags: observation.tags ?? []
   };
 }
 
@@ -2867,6 +4188,104 @@ function toSupabasePhotoRows(observation: PlantObservation, userId: string) {
     sync_status: "synced",
     sync_error: null
   }));
+}
+
+function fromSupabaseObservationRow(
+  row: Record<string, unknown>,
+  userId: string,
+  downloadedAt: string
+): PlantObservation {
+  const observedAt =
+    stringValue(row.observed_at) ??
+    stringValue(row.created_at) ??
+    downloadedAt;
+  const collectionTypesFromCloud = collectionTypeArray(row.collection_interests);
+  const collectionStatus = collectionStatusValue(row.collection_status);
+
+  return {
+    id: stringValue(row.id) ?? createObservationId(),
+    cloudId: stringValue(row.id),
+    ownerId: stringValue(row.owner_id) ?? stringValue(row.user_id) ?? userId,
+    privacyLevel: privacyLevelValue(row.privacy_level) ?? DEFAULT_PRIVACY_LEVEL,
+    syncStatus: "synced",
+    syncError: undefined,
+    lastSyncedAt: downloadedAt,
+    createdAt: stringValue(row.created_at) ?? observedAt,
+    updatedAt: stringValue(row.updated_at) ?? downloadedAt,
+    commonName: stringValue(row.common_name) ?? "Unknown plant",
+    scientificName: stringValue(row.scientific_name),
+    otherNames: stringArray(row.other_names),
+    confidenceScore: numberValue(row.confidence_score),
+    identificationStatus: identificationStatusValue(row.identification_status),
+    identificationError: stringValue(row.identification_error),
+    identifiedAt: stringValue(row.identified_at),
+    userConfirmed: booleanValue(row.user_confirmed),
+    latitude: numberValue(row.latitude) ?? 0,
+    longitude: numberValue(row.longitude) ?? 0,
+    accuracyMeters: numberValue(row.accuracy_meters),
+    observedAt,
+    photoUri: stringValue(row.photo_uri) ?? "",
+    photoFileName: stringValue(row.photo_file_name),
+    photoStoragePath: stringValue(row.photo_storage_path),
+    notes: stringValue(row.notes),
+    returnDate: stringValue(row.return_date),
+    reminderLeadDays: reminderLeadDaysValue(row.reminder_lead_days),
+    reminderScheduledFor: stringValue(row.reminder_scheduled_for),
+    gatherNotes: stringValue(row.gather_notes),
+    collectionType: collectionTypesFromCloud[0],
+    collectionTypes: collectionTypesFromCloud,
+    collectionStatus,
+    favorite: booleanValue(row.favorite),
+    tags: stringArray(row.tags)
+  };
+}
+
+function mergeCloudObservations(
+  localRecords: PlantObservation[],
+  cloudRecords: PlantObservation[]
+) {
+  let importedCount = 0;
+  let updatedCount = 0;
+  let conflictCount = 0;
+  const mergedById = new Map(localRecords.map((record) => [record.id, record]));
+
+  cloudRecords.forEach((cloudRecord) => {
+    const localRecord = mergedById.get(cloudRecord.id);
+    if (!localRecord) {
+      importedCount += 1;
+      mergedById.set(cloudRecord.id, cloudRecord);
+      return;
+    }
+
+    const localSyncStatus = localRecord.syncStatus ?? DEFAULT_SYNC_STATUS;
+    const localHasUnsyncedWork =
+      localSyncStatus === "pending upload" || localSyncStatus === "sync failed";
+
+    if (localHasUnsyncedWork) {
+      conflictCount += 1;
+      mergedById.set(cloudRecord.id, {
+        ...localRecord,
+        syncError:
+          "Cloud download found this record, but local unsynced edits were kept."
+      });
+      return;
+    }
+
+    if (getUpdatedTime(cloudRecord) >= getUpdatedTime(localRecord)) {
+      updatedCount += 1;
+      mergedById.set(cloudRecord.id, {
+        ...cloudRecord,
+        photoUri: cloudRecord.photoUri || localRecord.photoUri,
+        extraPhotos: localRecord.extraPhotos ?? cloudRecord.extraPhotos
+      });
+    }
+  });
+
+  const merged = [...mergedById.values()].sort(
+    (a, b) => getObservedTime(b) - getObservedTime(a)
+  );
+
+  return { merged, importedCount, updatedCount, conflictCount };
 }
 
 function countObservationPhotos(observations: PlantObservation[]) {
@@ -3071,6 +4490,366 @@ function formatCollectionInterests(observation: PlantObservation) {
   ).join(", ");
 }
 
+function getCollectionTypes(observation: PlantObservation) {
+  return (
+    observation.collectionTypes ??
+    (observation.collectionType ? [observation.collectionType] : [])
+  );
+}
+
+function parsePlantSuggestions(payload: unknown): PlantSuggestion[] {
+  const results =
+    payload && typeof payload === "object" && "results" in payload
+      ? (payload as { results?: unknown }).results
+      : undefined;
+
+  if (!Array.isArray(results)) {
+    return [];
+  }
+
+  return results
+    .map((result) => {
+      const record = result as Record<string, unknown>;
+      const species = record.species as Record<string, unknown> | undefined;
+      const commonNames = Array.isArray(species?.commonNames)
+        ? species.commonNames.filter(
+            (name): name is string => typeof name === "string" && name.length > 0
+          )
+        : [];
+      const commonName = commonNames[0] ?? "";
+      const scientificName =
+        typeof species?.scientificNameWithoutAuthor === "string"
+          ? species.scientificNameWithoutAuthor
+          : "";
+      const confidenceScore =
+        typeof record.score === "number"
+          ? Math.round(record.score * 1000) / 10
+          : undefined;
+
+      return {
+        commonName,
+        scientificName,
+        otherNames: commonNames.filter((name) => name !== commonName).slice(0, 8),
+        confidenceScore
+      };
+    })
+    .filter((suggestion) => suggestion.commonName || suggestion.scientificName);
+}
+
+function getGpsStatus(location: Location.LocationObject | null) {
+  if (!location) {
+    return { label: "Acquiring GPS...", color: "#aeb7a5" };
+  }
+
+  const accuracy = location.coords.accuracy;
+  if (accuracy === null || accuracy === undefined) {
+    return { label: "GPS acquired", color: "#8fa13f" };
+  }
+
+  if (accuracy <= 5) {
+    return { label: `Excellent GPS (${Math.round(accuracy)} m)`, color: "#1b7f3a" };
+  }
+  if (accuracy <= 15) {
+    return { label: `Good GPS (${Math.round(accuracy)} m)`, color: "#2f6f3e" };
+  }
+  if (accuracy <= 35) {
+    return { label: `Fair GPS (${Math.round(accuracy)} m)`, color: "#caa52d" };
+  }
+  return { label: `Poor GPS (${Math.round(accuracy)} m)`, color: "#a33a2b" };
+}
+
+function isBetterLocation(
+  previous: Location.LocationObject | null,
+  next: Location.LocationObject
+) {
+  if (!previous) {
+    return true;
+  }
+  const previousAccuracy = previous.coords.accuracy ?? Number.MAX_SAFE_INTEGER;
+  const nextAccuracy = next.coords.accuracy ?? Number.MAX_SAFE_INTEGER;
+  return nextAccuracy <= previousAccuracy;
+}
+
+function getObservationSearchText(observation: PlantObservation) {
+  return [
+    observation.commonName,
+    observation.scientificName,
+    ...(observation.otherNames ?? []),
+    observation.notes,
+    observation.gatherNotes,
+    observation.collectionStatus,
+    ...getCollectionTypes(observation),
+    ...(observation.tags ?? []),
+    observation.syncStatus,
+    observation.privacyLevel
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function getObservedTime(observation: PlantObservation) {
+  return new Date(observation.observedAt).getTime();
+}
+
+function getUpdatedTime(observation: PlantObservation) {
+  return new Date(observation.updatedAt ?? observation.observedAt).getTime();
+}
+
+function getDistanceMeters(
+  coords: Pick<Location.LocationObjectCoords, "latitude" | "longitude">,
+  observation: PlantObservation
+) {
+  const radiusMeters = 6371000;
+  const lat1 = toRadians(coords.latitude);
+  const lat2 = toRadians(observation.latitude);
+  const deltaLat = toRadians(observation.latitude - coords.latitude);
+  const deltaLon = toRadians(observation.longitude - coords.longitude);
+  const a =
+    Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) +
+    Math.cos(lat1) *
+      Math.cos(lat2) *
+      Math.sin(deltaLon / 2) *
+      Math.sin(deltaLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return radiusMeters * c;
+}
+
+function toRadians(value: number) {
+  return (value * Math.PI) / 180;
+}
+
+function getLatestSyncedAt(observations: PlantObservation[]) {
+  return observations.reduce<string | undefined>((latest, observation) => {
+    if (!observation.lastSyncedAt) {
+      return latest;
+    }
+    if (!latest) {
+      return observation.lastSyncedAt;
+    }
+    return new Date(observation.lastSyncedAt).getTime() >
+      new Date(latest).getTime()
+      ? observation.lastSyncedAt
+      : latest;
+  }, undefined);
+}
+
+function formatLastSyncedAt(value?: string) {
+  if (!value) {
+    return "not synced yet";
+  }
+  return `${formatDate(value)} at ${formatTime(value)}`;
+}
+
+function createRegion(
+  latitude: number,
+  longitude: number,
+  latitudeDelta: number
+): Region {
+  return {
+    latitude,
+    longitude,
+    latitudeDelta,
+    longitudeDelta: latitudeDelta
+  };
+}
+
+function createDatasetRegion(observations: PlantObservation[]) {
+  const locatedObservations = observations.filter(hasValidCoordinates);
+  if (locatedObservations.length === 0) {
+    return undefined;
+  }
+
+  const latitudes = locatedObservations.map((item) => item.latitude);
+  const longitudes = locatedObservations.map((item) => item.longitude);
+  const minLatitude = Math.min(...latitudes);
+  const maxLatitude = Math.max(...latitudes);
+  const minLongitude = Math.min(...longitudes);
+  const maxLongitude = Math.max(...longitudes);
+  const latitudeDelta = Math.max(0.02, (maxLatitude - minLatitude) * 1.8);
+  const longitudeDelta = Math.max(0.02, (maxLongitude - minLongitude) * 1.8);
+
+  return {
+    latitude: (minLatitude + maxLatitude) / 2,
+    longitude: (minLongitude + maxLongitude) / 2,
+    latitudeDelta,
+    longitudeDelta
+  };
+}
+
+function hasValidCoordinates(observation: PlantObservation) {
+  return (
+    Number.isFinite(observation.latitude) &&
+    Number.isFinite(observation.longitude) &&
+    Math.abs(observation.latitude) <= 90 &&
+    Math.abs(observation.longitude) <= 180
+  );
+}
+
+function isNeedReturnObservation(observation: PlantObservation, today: Date) {
+  const returnDate = observation.returnDate
+    ? parseDateOnly(observation.returnDate)
+    : undefined;
+  return (
+    observation.collectionStatus === "return later" ||
+    observation.collectionStatus === "not ready" ||
+    observation.collectionStatus === "ready now" ||
+    (!!returnDate && returnDate <= today)
+  );
+}
+
+function getMapDisplayItems(
+  observations: PlantObservation[],
+  region: Region | null
+) {
+  if (observations.length <= 600) {
+    return observations.map((observation) => ({
+      id: observation.id,
+      latitude: observation.latitude,
+      longitude: observation.longitude,
+      count: 1,
+      observation
+    }));
+  }
+
+  const latitudeDelta = region?.latitudeDelta ?? 0.05;
+  const cellSize = Math.max(0.0004, latitudeDelta / 80);
+  const groups = new Map<
+    string,
+    {
+      id: string;
+      latitude: number;
+      longitude: number;
+      count: number;
+      observation?: PlantObservation;
+    }
+  >();
+
+  observations.forEach((observation) => {
+    const latBucket = Math.round(observation.latitude / cellSize);
+    const lonBucket = Math.round(observation.longitude / cellSize);
+    const key = `${latBucket}:${lonBucket}`;
+    const existing = groups.get(key);
+    if (!existing) {
+      groups.set(key, {
+        id: key,
+        latitude: observation.latitude,
+        longitude: observation.longitude,
+        count: 1,
+        observation
+      });
+      return;
+    }
+
+    existing.latitude =
+      (existing.latitude * existing.count + observation.latitude) /
+      (existing.count + 1);
+    existing.longitude =
+      (existing.longitude * existing.count + observation.longitude) /
+      (existing.count + 1);
+    existing.count += 1;
+    existing.observation = undefined;
+  });
+
+  return [...groups.values()];
+}
+
+function getMapPinColor(observation?: PlantObservation) {
+  if (!observation) {
+    return "#17391f";
+  }
+
+  if (observation.collectionStatus === "ready now") {
+    return "#1b7f3a";
+  }
+  if (observation.collectionStatus === "collected") {
+    return "#5b6f5b";
+  }
+  if (observation.collectionStatus === "do not collect") {
+    return "#7a7a7a";
+  }
+  if (
+    observation.collectionStatus === "return later" ||
+    observation.collectionStatus === "not ready" ||
+    observation.returnDate
+  ) {
+    return "#c47a24";
+  }
+  if ((observation.syncStatus ?? DEFAULT_SYNC_STATUS) === "local only") {
+    return "#2f6f3e";
+  }
+  return "#17391f";
+}
+
+function formatDistance(meters: number) {
+  if (meters >= 1609.344) {
+    return `${(meters / 1609.344).toFixed(1)} mi`;
+  }
+  return `${Math.round(meters)} m`;
+}
+
+function parseTags(value: string) {
+  return value
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter(Boolean)
+    .slice(0, 12);
+}
+
+function stringValue(value: unknown) {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function numberValue(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function booleanValue(value: unknown) {
+  return value === true;
+}
+
+function stringArray(value: unknown) {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
+function collectionTypeArray(value: unknown): CollectionType[] {
+  return stringArray(value).filter((item): item is CollectionType =>
+    collectionTypes.includes(item as CollectionType)
+  );
+}
+
+function collectionStatusValue(value: unknown) {
+  return typeof value === "string" &&
+    collectionStatuses.includes(value as CollectionStatus)
+    ? (value as CollectionStatus)
+    : undefined;
+}
+
+function privacyLevelValue(value: unknown) {
+  return typeof value === "string" && privacyLevels.includes(value as PrivacyLevel)
+    ? (value as PrivacyLevel)
+    : undefined;
+}
+
+function identificationStatusValue(value: unknown) {
+  const statuses: PlantObservation["identificationStatus"][] = [
+    "manual",
+    "suggested",
+    "needs ID",
+    "failed"
+  ];
+  return typeof value === "string" &&
+    statuses.includes(value as PlantObservation["identificationStatus"])
+    ? (value as PlantObservation["identificationStatus"])
+    : undefined;
+}
+
+function reminderLeadDaysValue(value: unknown) {
+  return value === 1 || value === 3 || value === 7 ? value : undefined;
+}
+
 function addDays(value: Date, days: number) {
   const next = new Date(value);
   next.setDate(next.getDate() + days);
@@ -3125,6 +4904,8 @@ function getScreenTitle(screen: AppScreen) {
       return "New plant";
     case "saved":
       return "Saved plants";
+    case "map":
+      return "Map";
     case "detail":
       return "Plant detail";
     case "returns":
@@ -3539,6 +5320,50 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700"
   },
+  gpsStatus: {
+    alignItems: "center",
+    backgroundColor: "#f8faf4",
+    borderColor: "#d9e2cf",
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8
+  },
+  gpsDot: {
+    borderRadius: 6,
+    height: 12,
+    width: 12
+  },
+  gpsStatusText: {
+    color: "#263b22",
+    fontSize: 13,
+    fontWeight: "800"
+  },
+  suggestionList: {
+    gap: 7,
+    marginTop: 4
+  },
+  suggestionRow: {
+    backgroundColor: "#eef4e8",
+    borderColor: "#d4dfca",
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 8
+  },
+  suggestionRowTitle: {
+    color: "#17391f",
+    fontSize: 14,
+    fontWeight: "900"
+  },
+  suggestionRowMeta: {
+    color: "#53654c",
+    fontSize: 12,
+    fontWeight: "700",
+    marginTop: 2
+  },
   field: {
     gap: 7
   },
@@ -3605,6 +5430,49 @@ const styles = StyleSheet.create({
     color: "#214c2b",
     fontSize: 13,
     fontWeight: "800"
+  },
+  favoriteToggle: {
+    alignItems: "center",
+    backgroundColor: "#eef4e8",
+    borderColor: "#d4dfca",
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10
+  },
+  favoriteToggleActive: {
+    backgroundColor: "#17391f",
+    borderColor: "#17391f"
+  },
+  favoriteToggleText: {
+    color: "#214c2b",
+    fontSize: 14,
+    fontWeight: "800"
+  },
+  favoriteToggleTextActive: {
+    color: "#ffffff"
+  },
+  advancedToggle: {
+    alignItems: "center",
+    backgroundColor: "#f8faf4",
+    borderColor: "#d9e2cf",
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10
+  },
+  advancedToggleText: {
+    color: "#214c2b",
+    fontSize: 14,
+    fontWeight: "900"
+  },
+  advancedPanel: {
+    backgroundColor: "#f8faf4",
+    borderColor: "#e3eadb",
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 10,
+    padding: 10
   },
   chipRow: {
     flexDirection: "row",
@@ -3714,6 +5582,153 @@ const styles = StyleSheet.create({
   },
   filterChipTextActive: {
     color: "#ffffff"
+  },
+  mapPanel: {
+    backgroundColor: "#ffffff",
+    borderColor: "#d9e2cf",
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 10,
+    padding: 12
+  },
+  mapControls: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8
+  },
+  mapControlButton: {
+    backgroundColor: "#e7efdf",
+    borderColor: "#d4dfca",
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 8
+  },
+  mapControlText: {
+    color: "#214c2b",
+    fontSize: 13,
+    fontWeight: "800"
+  },
+  mapIconButton: {
+    alignItems: "center",
+    backgroundColor: "#17391f",
+    borderRadius: 999,
+    height: 36,
+    justifyContent: "center",
+    width: 36
+  },
+  mapIconText: {
+    color: "#ffffff",
+    fontSize: 20,
+    fontWeight: "900",
+    lineHeight: 22
+  },
+  mapFrame: {
+    backgroundColor: "#eef4e8",
+    borderColor: "#d9e2cf",
+    borderRadius: 8,
+    borderWidth: 1,
+    height: 430,
+    overflow: "hidden"
+  },
+  mapLegend: {
+    backgroundColor: "#f8faf4",
+    borderColor: "#e3eadb",
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 9,
+    padding: 9
+  },
+  mapLegendItem: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 5
+  },
+  mapLegendDot: {
+    borderRadius: 6,
+    height: 12,
+    width: 12
+  },
+  mapLegendText: {
+    color: "#53654c",
+    fontSize: 12,
+    fontWeight: "800"
+  },
+  mapList: {
+    backgroundColor: "#f8faf4",
+    borderColor: "#e3eadb",
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 7,
+    padding: 8
+  },
+  mapListItem: {
+    alignItems: "center",
+    backgroundColor: "#ffffff",
+    borderColor: "#e3eadb",
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 9,
+    padding: 10
+  },
+  mapListItemActive: {
+    borderColor: "#17391f",
+    borderWidth: 2
+  },
+  mapListItemText: {
+    flex: 1
+  },
+  mapListTitle: {
+    color: "#17391f",
+    fontSize: 15,
+    fontWeight: "900"
+  },
+  mapListMeta: {
+    color: "#53654c",
+    fontSize: 12,
+    fontWeight: "700",
+    marginTop: 2
+  },
+  map: {
+    flex: 1
+  },
+  clusterMarker: {
+    alignItems: "center",
+    backgroundColor: "#17391f",
+    borderColor: "#ffffff",
+    borderRadius: 18,
+    borderWidth: 2,
+    height: 36,
+    justifyContent: "center",
+    width: 36
+  },
+  clusterMarkerText: {
+    color: "#ffffff",
+    fontSize: 13,
+    fontWeight: "900"
+  },
+  mapSummaryCard: {
+    backgroundColor: "#ffffff",
+    borderColor: "#d9e2cf",
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 10,
+    overflow: "hidden",
+    padding: 10
+  },
+  mapSummaryImage: {
+    backgroundColor: "#e7efdf",
+    borderRadius: 8,
+    height: 92,
+    width: 92
+  },
+  mapSummaryBody: {
+    flex: 1,
+    gap: 7
   },
   card: {
     backgroundColor: "#ffffff",
@@ -3961,7 +5976,16 @@ const styles = StyleSheet.create({
   },
   returnActions: {
     flexDirection: "row",
-    gap: 14,
+    flexWrap: "wrap",
+    gap: 8,
     marginTop: 4
+  },
+  returnActionButton: {
+    backgroundColor: "#eef4e8",
+    borderColor: "#d9e2cf",
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 6
   }
 });

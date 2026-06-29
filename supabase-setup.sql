@@ -40,8 +40,16 @@ create table if not exists public.observations (
   reminder_scheduled_for timestamptz,
   gather_notes text,
   collection_interests text[] not null default '{}',
-  collection_status text
+  collection_status text,
+  favorite boolean not null default false,
+  tags text[] not null default '{}'
 );
+
+alter table public.observations
+  add column if not exists favorite boolean not null default false;
+
+alter table public.observations
+  add column if not exists tags text[] not null default '{}';
 
 create table if not exists public.observation_photos (
   id text primary key,
