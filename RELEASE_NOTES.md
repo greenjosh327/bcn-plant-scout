@@ -39,13 +39,13 @@
 
 ### Build metadata
 - Android package: `com.basecampnorth.bcnplantscout`
-- Android versionCode for the next closed-test build: `7`
+- Android versionCode for the next closed-test build: `8`
 - iOS bundle ID: `com.basecampnorth.bcnplantscout`
 - iOS build number for the next TestFlight build: `3`
 
 Latest production AAB for Google Play closed testing:
 
-https://expo.dev/artifacts/eas/nVl3ng_gIBxgnpqfSAwNYaY1Q-9_AgRH65zDDBDk6xI.aab
+https://expo.dev/artifacts/eas/5GxF4y5AhK7YyGstSMPf4FPfbIpdcL9MRU2NRHROpbU.aab
 
 ## Next Test Pass
 

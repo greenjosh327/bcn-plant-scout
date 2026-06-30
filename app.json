@@ -26,7 +26,7 @@
     },
     "android": {
       "package": "com.basecampnorth.bcnplantscout",
-      "versionCode": 7,
+      "versionCode": 8,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#f4f7ee"

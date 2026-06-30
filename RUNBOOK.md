@@ -22,7 +22,7 @@ npm.cmd run typecheck
 - Project: `@bcn.pa/bcn-plant-tracker`
 - Project URL: https://expo.dev/accounts/bcn.pa/projects/bcn-plant-tracker
 - Android package: `com.basecampnorth.bcnplantscout`
-- Current Android versionCode: `7`
+- Current Android versionCode: `8`
 - Current iOS buildNumber: `3`
 
 ## Build For Closed Testing
@@ -46,11 +46,11 @@ If Google Play says the version code has already been used, increase
 
 Latest production AAB:
 
-https://expo.dev/artifacts/eas/nVl3ng_gIBxgnpqfSAwNYaY1Q-9_AgRH65zDDBDk6xI.aab
+https://expo.dev/artifacts/eas/5GxF4y5AhK7YyGstSMPf4FPfbIpdcL9MRU2NRHROpbU.aab
 
 Latest production build logs:
 
-https://expo.dev/accounts/bcn.pa/projects/bcn-plant-tracker/builds/2c5d2abf-e68b-4e6f-a51e-eee92c7ebdc3
+https://expo.dev/accounts/bcn.pa/projects/bcn-plant-tracker/builds/21d09304-879e-4fa5-a8db-b5595a7c0a9f
 
 ## Supabase Setup
 
