@@ -52,6 +52,10 @@ Latest production build logs:
 
 https://expo.dev/accounts/bcn.pa/projects/bcn-plant-tracker/builds/21d09304-879e-4fa5-a8db-b5595a7c0a9f
 
+Latest preview APK for direct Android phone testing:
+
+https://expo.dev/accounts/bcn.pa/projects/bcn-plant-tracker/builds/ceeb519f-e96e-4962-b8b7-a8890754e2c4
+
 ## Supabase Setup
 
 1. Open the Supabase project.

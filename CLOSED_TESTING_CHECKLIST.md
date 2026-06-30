@@ -27,6 +27,10 @@ Preview build:
 
 https://expo.dev/accounts/bcn.pa/projects/bcn-plant-tracker/builds/d1956280-14b8-4272-a371-9d5a2d223d4a
 
+Latest map preview build:
+
+https://expo.dev/accounts/bcn.pa/projects/bcn-plant-tracker/builds/ceeb519f-e96e-4962-b8b7-a8890754e2c4
+
 - [ ] Install preview APK on Android phone and run smoke test.
 - [x] Build production AAB:
 
