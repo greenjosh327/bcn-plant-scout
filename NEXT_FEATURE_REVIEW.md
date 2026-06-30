@@ -10,7 +10,9 @@
 - Saved Plants search by name, scientific name, alternate names, notes, gather notes, status, collection interests, privacy, and sync status.
 - Saved Plants filters for collection type and return date.
 - Saved Plants sorting by newest, name, ready-now status, and GPS distance.
-- Plant Map screen with a stable local location list, status/collection filters, search, nearby filter, legend, and Google Maps navigation actions.
+- Plant Map screen now uses a native phone map with saved plant markers, cluster count bubbles, status/collection filters, search, nearby filter, legend, selected plant cards, and Google Maps navigation actions.
+- Map controls include My Location, Nearest Plant, Fit Plants, Zoom In, Zoom Out, and Standard/Satellite toggle.
+- Selected map cards can mark a plant Ready or Collected without leaving the map.
 - Favorites and tags fields for local records, exports, search, map filtering, and Supabase rows.
 - Return list quick actions for Ready, Collected, and +7 days.
 - Account screen password reset support through Supabase Auth.
@@ -61,8 +63,10 @@ alter table public.observations
 
 ## Phone test checklist
 
-- Open Plant Map and confirm saved plant locations appear in the local list.
-- Select a map record and test View Details, Navigate, and Edit.
+- Open Plant Map and confirm saved plant markers appear on the native map.
+- Tap markers and list records to confirm the map centers on the selected plant.
+- Test My Location, Nearest Plant, Fit Plants, Zoom In, Zoom Out, and Satellite/Standard.
+- Select a map record and test Ready, Collected, View Details, Navigate, and Edit.
 - Try map status, collection type, nearby, favorites, and search filters.
 - Search Saved Plants by plant name, notes, status, and collection interest.
 - Filter Saved Plants by collection type and return date.

@@ -74,6 +74,9 @@ uploaded AAB to have a version code it has never seen before.
 - [ ] Save plant.
 - [ ] Add extra photo.
 - [ ] Open map.
+- [ ] Tap map markers and confirm selected plant card appears.
+- [ ] Test map controls: My Location, Nearest Plant, Fit Plants, Zoom In/Out, Satellite.
+- [ ] Mark a mapped plant Ready and Collected from the map card.
 - [ ] Export ZIP.
 - [ ] Sync to Supabase.
 - [ ] Delete test record if needed.

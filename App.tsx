@@ -9,10 +9,11 @@ import * as Sharing from "expo-sharing";
 import Constants from "expo-constants";
 import * as WebBrowser from "expo-web-browser";
 import DateTimePicker from "@react-native-community/datetimepicker";
+import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { createClient } from "@supabase/supabase-js";
 import JSZip from "jszip";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Image,
@@ -332,6 +333,7 @@ const mapStatusFilters: { label: string; value: MapStatusFilter }[] = [
 ];
 
 export default function App() {
+  const mapRef = useRef<MapView | null>(null);
   const [observations, setObservations] = useState<PlantObservation[]>([]);
   const [draft, setDraft] = useState<DraftObservation>(blankDraft);
   const [photo, setPhoto] = useState<ImagePicker.ImagePickerAsset | null>(null);
@@ -361,6 +363,7 @@ export default function App() {
   const [mapFavoritesOnly, setMapFavoritesOnly] = useState(false);
   const [mapSearch, setMapSearch] = useState("");
   const [mapNearbyOnly, setMapNearbyOnly] = useState(false);
+  const [mapType, setMapType] = useState<"standard" | "satellite">("standard");
   const [selectedMapObservationId, setSelectedMapObservationId] =
     useState<string | null>(null);
   const [returnFilter, setReturnFilter] = useState<ReturnFilter>("all");
@@ -738,6 +741,21 @@ export default function App() {
   const mapDisplayItems = useMemo(
     () => getMapDisplayItems(mapObservations, mapRegion),
     [mapObservations, mapRegion]
+  );
+
+  const sortedMapObservations = useMemo(
+    () =>
+      [...mapObservations].sort((a, b) => {
+        if (currentLocation) {
+          return (
+            getDistanceMeters(currentLocation.coords, a) -
+              getDistanceMeters(currentLocation.coords, b) ||
+            getObservedTime(b) - getObservedTime(a)
+          );
+        }
+        return getObservedTime(b) - getObservedTime(a);
+      }),
+    [currentLocation, mapObservations]
   );
 
   const selectedMapObservation = useMemo(
@@ -1550,6 +1568,7 @@ export default function App() {
 
   function moveMapToRegion(nextRegion: Region) {
     setMapRegion(nextRegion);
+    mapRef.current?.animateToRegion(nextRegion, 350);
   }
 
   function zoomMap(multiplier: number) {
@@ -1564,6 +1583,26 @@ export default function App() {
         Math.min(80, mapRegion.longitudeDelta * multiplier)
       )
     });
+  }
+
+  function focusMapOnObservation(observation: PlantObservation) {
+    setSelectedMapObservationId(observation.id);
+    moveMapToRegion(
+      createRegion(
+        observation.latitude,
+        observation.longitude,
+        Math.min(mapRegion?.latitudeDelta ?? 0.01, 0.01)
+      )
+    );
+  }
+
+  function focusNearestMappedPlant() {
+    const nearest = sortedMapObservations[0];
+    if (!nearest) {
+      Alert.alert("No mapped plants", "No saved plant locations match this map view.");
+      return;
+    }
+    focusMapOnObservation(nearest);
   }
 
   async function updateObservationStatus(
@@ -2758,8 +2797,38 @@ export default function App() {
                 <Pressable onPress={centerMapOnUser} style={styles.mapControlButton}>
                   <Text style={styles.mapControlText}>My Location</Text>
                 </Pressable>
+                <Pressable
+                  onPress={focusNearestMappedPlant}
+                  style={styles.mapControlButton}
+                >
+                  <Text style={styles.mapControlText}>Nearest Plant</Text>
+                </Pressable>
                 <Pressable onPress={refreshMapView} style={styles.mapControlButton}>
-                  <Text style={styles.mapControlText}>Refresh</Text>
+                  <Text style={styles.mapControlText}>Fit Plants</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => zoomMap(0.5)}
+                  style={styles.mapControlButton}
+                >
+                  <Text style={styles.mapControlText}>Zoom In</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => zoomMap(2)}
+                  style={styles.mapControlButton}
+                >
+                  <Text style={styles.mapControlText}>Zoom Out</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() =>
+                    setMapType((current) =>
+                      current === "standard" ? "satellite" : "standard"
+                    )
+                  }
+                  style={styles.mapControlButton}
+                >
+                  <Text style={styles.mapControlText}>
+                    {mapType === "standard" ? "Satellite" : "Standard"}
+                  </Text>
                 </Pressable>
               </View>
 
@@ -2905,6 +2974,64 @@ export default function App() {
                 ))}
               </View>
 
+              <View style={styles.mapFrame}>
+                <MapView
+                  ref={mapRef}
+                  provider={Platform.OS === "android" ? PROVIDER_GOOGLE : undefined}
+                  style={styles.map}
+                  region={activeMapRegion}
+                  mapType={mapType}
+                  showsUserLocation
+                  showsMyLocationButton={false}
+                  onRegionChangeComplete={setMapRegion}
+                  onPress={() => setSelectedMapObservationId(null)}
+                >
+                  {mapDisplayItems.map((item) =>
+                    item.observation ? (
+                      <Marker
+                        key={item.id}
+                        coordinate={{
+                          latitude: item.latitude,
+                          longitude: item.longitude
+                        }}
+                        title={item.observation.commonName}
+                        description={
+                          item.observation.scientificName ||
+                          item.observation.collectionStatus ||
+                          "Plant observation"
+                        }
+                        onPress={(event) => {
+                          event.stopPropagation();
+                          if (item.observation) {
+                            focusMapOnObservation(item.observation);
+                          }
+                        }}
+                      >
+                        <MapPin
+                          color={getMapPinColor(item.observation)}
+                          selected={selectedMapObservationId === item.observation.id}
+                        />
+                      </Marker>
+                    ) : (
+                      <Marker
+                        key={item.id}
+                        coordinate={{
+                          latitude: item.latitude,
+                          longitude: item.longitude
+                        }}
+                        title={`${item.count} nearby plants`}
+                        description="Zoom in or filter to separate these records."
+                      >
+                        <ClusterMarker count={item.count} />
+                      </Marker>
+                    )
+                  )}
+                </MapView>
+              </View>
+
+              <Text style={styles.label}>
+                {currentLocation ? "Nearest mapped plants" : "Mapped plants"}
+              </Text>
               <View style={styles.mapList}>
                 {mapObservations.length === 0 ? (
                   <View style={styles.emptyState}>
@@ -2914,10 +3041,10 @@ export default function App() {
                     </Text>
                   </View>
                 ) : (
-                  mapObservations.slice(0, 80).map((observation) => (
+                  sortedMapObservations.slice(0, 80).map((observation) => (
                     <Pressable
                       key={observation.id}
-                      onPress={() => setSelectedMapObservationId(observation.id)}
+                      onPress={() => focusMapOnObservation(observation)}
                       style={[
                         styles.mapListItem,
                         selectedMapObservationId === observation.id &&
@@ -2965,6 +3092,12 @@ export default function App() {
                   onViewDetails={() => openObservationDetail(selectedMapObservation)}
                   onNavigate={() => openObservationMap(selectedMapObservation)}
                   onEdit={() => editObservation(selectedMapObservation)}
+                  onMarkReady={() =>
+                    updateObservationStatus(selectedMapObservation, "ready now")
+                  }
+                  onMarkCollected={() =>
+                    updateObservationStatus(selectedMapObservation, "collected")
+                  }
                 />
               ) : (
                 <View style={styles.emptyState}>
@@ -3520,6 +3653,28 @@ function NameSuggestions({
   );
 }
 
+function MapPin({ color, selected }: { color: string; selected: boolean }) {
+  return (
+    <View
+      style={[
+        styles.mapPin,
+        { backgroundColor: color },
+        selected && styles.mapPinSelected
+      ]}
+    >
+      <View style={styles.mapPinCore} />
+    </View>
+  );
+}
+
+function ClusterMarker({ count }: { count: number }) {
+  return (
+    <View style={styles.clusterMarker}>
+      <Text style={styles.clusterMarkerText}>{count > 99 ? "99+" : count}</Text>
+    </View>
+  );
+}
+
 function ActionButton({
   label,
   onPress,
@@ -3568,13 +3723,17 @@ function MapObservationSummary({
   currentLocation,
   onViewDetails,
   onNavigate,
-  onEdit
+  onEdit,
+  onMarkReady,
+  onMarkCollected
 }: {
   observation: PlantObservation;
   currentLocation: Location.LocationObject | null;
   onViewDetails: () => void;
   onNavigate: () => void;
   onEdit: () => void;
+  onMarkReady: () => void;
+  onMarkCollected: () => void;
 }) {
   const distance =
     currentLocation && hasValidCoordinates(observation)
@@ -3609,6 +3768,12 @@ function MapObservationSummary({
           <MetaChip label="Distance" value={distance ?? ""} />
         </View>
         <View style={styles.cardActions}>
+          <Pressable onPress={onMarkReady} style={styles.cardActionButton}>
+            <Text style={styles.cardActionButtonText}>Ready</Text>
+          </Pressable>
+          <Pressable onPress={onMarkCollected} style={styles.cardActionButton}>
+            <Text style={styles.cardActionButtonText}>Collected</Text>
+          </Pressable>
           <Pressable onPress={onViewDetails} style={styles.cardActionButton}>
             <Text style={styles.cardActionButtonText}>View Details</Text>
           </Pressable>
@@ -5694,6 +5859,32 @@ const styles = StyleSheet.create({
   },
   map: {
     flex: 1
+  },
+  mapPin: {
+    alignItems: "center",
+    borderColor: "#ffffff",
+    borderRadius: 14,
+    borderWidth: 2,
+    elevation: 3,
+    height: 28,
+    justifyContent: "center",
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    width: 28
+  },
+  mapPinSelected: {
+    borderColor: "#f4d35e",
+    borderWidth: 3,
+    height: 34,
+    width: 34
+  },
+  mapPinCore: {
+    backgroundColor: "rgba(255, 255, 255, 0.85)",
+    borderRadius: 4,
+    height: 8,
+    width: 8
   },
   clusterMarker: {
     alignItems: "center",

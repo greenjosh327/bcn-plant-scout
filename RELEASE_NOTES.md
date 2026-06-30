@@ -24,7 +24,7 @@
 - New Plant starts camera-first, then runs plant identification and GPS capture as part of the field flow.
 - Saved Plants includes search, filters, return filters, collection interest filters, and sorting.
 - Returns has quick actions for Ready, Collected, +7 days, Open Map, and Edit.
-- Plant Map uses a stable local list/map-preview mode with filters and Google Maps navigation.
+- Plant Map uses a native phone map with saved plant markers, cluster count bubbles, filters, nearest-plant jump, selected plant cards, quick Ready/Collected actions, and Google Maps navigation.
 - New records default to sharing with BCN, with opt-out privacy choices.
 - Saved plants can be edited, mapped, photographed again, shared, and deleted.
 - Delete confirmation now protects against accidental deletion and cancels scheduled return reminders.
