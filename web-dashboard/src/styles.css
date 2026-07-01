@@ -136,6 +136,13 @@ button {
   padding: 10px 18px;
 }
 
+button.link-button {
+  background: transparent;
+  color: #28753d;
+  min-height: auto;
+  padding: 0;
+}
+
 button.secondary {
   background: #e8f2df;
   color: #113d22;
@@ -209,6 +216,38 @@ button.full {
   display: grid;
   gap: 18px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.return-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.return-card {
+  align-items: end;
+  background: #113d22;
+  border-radius: 8px;
+  color: #ffffff;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding: 18px;
+}
+
+.return-card .eyebrow,
+.return-card .muted,
+.return-card a,
+.return-card .link-button {
+  color: #e8f2df;
+}
+
+.return-card h3 {
+  color: #ffffff;
+}
+
+.compact-panel {
+  grid-column: 1 / -1;
 }
 
 .plant-card {
@@ -292,6 +331,50 @@ button.full {
   margin-top: 16px;
 }
 
+.modal-backdrop {
+  align-items: center;
+  background: rgba(10, 22, 12, 0.58);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 24px;
+  position: fixed;
+  z-index: 1000;
+}
+
+.detail-panel {
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.25);
+  max-height: min(820px, 92vh);
+  max-width: 920px;
+  overflow: auto;
+  padding: 28px;
+  position: relative;
+  width: min(920px, 100%);
+}
+
+.modal-close {
+  position: absolute;
+  right: 18px;
+  top: 18px;
+}
+
+.photo-strip {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 18px;
+}
+
+.photo-strip img,
+.photo-strip .photo-placeholder {
+  aspect-ratio: 4 / 3;
+  border-radius: 8px;
+  object-fit: cover;
+  width: 100%;
+}
+
 code {
   background: #edf5e8;
   border-radius: 4px;
@@ -314,7 +397,9 @@ code {
   }
 
   .toolbar,
-  .card-grid {
+  .card-grid,
+  .return-grid,
+  .photo-strip {
     grid-template-columns: 1fr;
   }
 

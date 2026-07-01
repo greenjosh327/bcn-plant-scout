@@ -21,6 +21,7 @@ let activeFilters = {
 };
 let map = null;
 let markerLayer = null;
+let selectedRecordId = null;
 
 if (supabaseUrl && supabaseKey) {
   supabase = createClient(supabaseUrl, supabaseKey);
@@ -179,12 +180,21 @@ function renderDashboard() {
 
       <section class="section-heading">
         <div>
+          <p class="eyebrow">Return Planning</p>
+          <h2>Return Soon</h2>
+        </div>
+      </section>
+      <section class="return-grid" id="return-soon"></section>
+
+      <section class="section-heading">
+        <div>
           <p class="eyebrow">Field Records</p>
           <h2 id="record-count">Loading records...</h2>
         </div>
       </section>
       <section class="card-grid" id="records"></section>
     </main>
+    <div id="detail-modal"></div>
   `;
 }
 
@@ -269,8 +279,10 @@ async function createSignedPhotoUrlMap(photoRows) {
 function redrawDashboardData() {
   const filtered = getFilteredObservations();
   renderStats(filtered);
+  renderReturnSoon(filtered);
   renderRecords(filtered);
   renderMap(filtered);
+  renderDetailModal();
 }
 
 function getFilteredObservations() {
@@ -334,6 +346,12 @@ function renderRecords(filtered) {
   }
 
   records.innerHTML = filtered.map(renderRecordCard).join("");
+  document.querySelectorAll("[data-detail-id]").forEach((button) => {
+    button.addEventListener("click", () => {
+      selectedRecordId = button.getAttribute("data-detail-id");
+      renderDetailModal();
+    });
+  });
 }
 
 function renderRecordCard(record) {
@@ -365,12 +383,123 @@ function renderRecordCard(record) {
         ${record.notes ? `<p>${escapeHtml(record.notes)}</p>` : ""}
         ${record.gather_notes ? `<p class="muted"><strong>Gather notes:</strong> ${escapeHtml(record.gather_notes)}</p>` : ""}
         <div class="actions">
+          <button class="link-button" type="button" data-detail-id="${escapeHtml(record.id)}">View Details</button>
           <a href="${mapsUrl}" target="_blank" rel="noreferrer">Open Map</a>
           ${photoUrl ? `<a href="${photoUrl}" target="_blank" rel="noreferrer">Open Photo</a>` : ""}
         </div>
       </div>
     </article>
   `;
+}
+
+function renderReturnSoon(filtered) {
+  const returnSoon = filtered
+    .map((record) => ({ record, status: getReturnStatus(record.return_date) }))
+    .filter(({ record, status }) =>
+      record.collection_status === "ready now" ||
+      status.bucket === "overdue" ||
+      status.bucket === "soon"
+    )
+    .sort((a, b) => a.status.sortValue - b.status.sortValue)
+    .slice(0, 6);
+
+  const container = document.querySelector("#return-soon");
+  if (returnSoon.length === 0) {
+    container.innerHTML = `
+      <article class="panel compact-panel">
+        <p class="muted">No return dates due soon. Field notebook is quiet for the moment.</p>
+      </article>
+    `;
+    return;
+  }
+
+  container.innerHTML = returnSoon
+    .map(({ record, status }) => {
+      const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${record.latitude},${record.longitude}`)}`;
+      return `
+        <article class="return-card">
+          <div>
+            <p class="eyebrow">${escapeHtml(status.label)}</p>
+            <h3>${escapeHtml(record.common_name)}</h3>
+            <p class="muted">${escapeHtml(record.collection_status ?? "unknown")} | ${escapeHtml((record.collection_interests ?? []).join(", ") || "no interest set")}</p>
+          </div>
+          <div class="actions">
+            <button class="link-button" type="button" data-detail-id="${escapeHtml(record.id)}">Details</button>
+            <a href="${mapsUrl}" target="_blank" rel="noreferrer">Map</a>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+
+  container.querySelectorAll("[data-detail-id]").forEach((button) => {
+    button.addEventListener("click", () => {
+      selectedRecordId = button.getAttribute("data-detail-id");
+      renderDetailModal();
+    });
+  });
+}
+
+function renderDetailModal() {
+  const modal = document.querySelector("#detail-modal");
+  if (!modal) return;
+
+  const record = selectedRecordId
+    ? observations.find((item) => item.id === selectedRecordId)
+    : undefined;
+
+  if (!record) {
+    modal.innerHTML = "";
+    return;
+  }
+
+  const photos = photosByObservation.get(record.id) ?? [];
+  const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${record.latitude},${record.longitude}`)}`;
+  const photoTiles = photos
+    .map((photo) => {
+      const photoUrl = signedPhotoUrls.get(photo.id);
+      return photoUrl
+        ? `<a href="${photoUrl}" target="_blank" rel="noreferrer"><img src="${photoUrl}" alt="${escapeHtml(photo.file_name ?? record.common_name)}" /></a>`
+        : "";
+    })
+    .join("");
+
+  modal.innerHTML = `
+    <div class="modal-backdrop" role="presentation">
+      <article class="detail-panel" role="dialog" aria-modal="true" aria-label="${escapeHtml(record.common_name)} details">
+        <button class="modal-close" type="button" id="close-detail">Close</button>
+        <p class="eyebrow">Plant Record</p>
+        <h2>${escapeHtml(record.common_name)}</h2>
+        ${record.scientific_name ? `<p class="scientific">${escapeHtml(record.scientific_name)}</p>` : ""}
+        ${record.other_names?.length ? `<p class="muted">Also called: ${escapeHtml(record.other_names.join(", "))}</p>` : ""}
+        <div class="meta-grid">
+          ${renderMeta("Observed", formatDate(record.observed_at))}
+          ${renderMeta("Status", record.collection_status ?? "unknown")}
+          ${renderMeta("Interest", (record.collection_interests ?? []).join(", ") || "none")}
+          ${renderMeta("Return", record.return_date || "not set")}
+          ${renderMeta("Accuracy", record.accuracy_meters ? `${Number(record.accuracy_meters).toFixed(1)} m` : "n/a")}
+          ${renderMeta("Privacy", record.privacy_level ?? "private")}
+        </div>
+        ${record.notes ? `<p><strong>Notes:</strong> ${escapeHtml(record.notes)}</p>` : ""}
+        ${record.gather_notes ? `<p><strong>Gather notes:</strong> ${escapeHtml(record.gather_notes)}</p>` : ""}
+        <div class="photo-strip">${photoTiles || `<div class="photo-placeholder">No synced photos</div>`}</div>
+        <div class="actions">
+          <a href="${mapsUrl}" target="_blank" rel="noreferrer">Open in Google Maps</a>
+        </div>
+      </article>
+    </div>
+  `;
+
+  document.querySelector("#close-detail").addEventListener("click", () => {
+    selectedRecordId = null;
+    renderDetailModal();
+  });
+  document.querySelector(".modal-backdrop").addEventListener("click", (event) => {
+    if (event.target.classList.contains("modal-backdrop")) {
+      selectedRecordId = null;
+      renderDetailModal();
+    }
+  });
 }
 
 function renderMap(filtered) {
@@ -476,6 +605,44 @@ function formatDate(value) {
     day: "numeric",
     year: "numeric"
   }).format(new Date(value));
+}
+
+function getReturnStatus(returnDate) {
+  if (!returnDate) {
+    return { bucket: "none", label: "No date", sortValue: Number.POSITIVE_INFINITY };
+  }
+
+  const parsedDate = parseReturnDate(returnDate);
+  if (!parsedDate) {
+    return { bucket: "text", label: returnDate, sortValue: Number.POSITIVE_INFINITY - 1 };
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  parsedDate.setHours(0, 0, 0, 0);
+  const daysAway = Math.round((parsedDate.getTime() - today.getTime()) / 86400000);
+
+  if (daysAway < 0) {
+    return { bucket: "overdue", label: `${Math.abs(daysAway)} days overdue`, sortValue: daysAway };
+  }
+  if (daysAway === 0) {
+    return { bucket: "soon", label: "Due today", sortValue: 0 };
+  }
+  if (daysAway <= 14) {
+    return { bucket: "soon", label: `Due in ${daysAway} days`, sortValue: daysAway };
+  }
+
+  return { bucket: "later", label: formatDate(parsedDate.toISOString()), sortValue: daysAway };
+}
+
+function parseReturnDate(returnDate) {
+  const trimmed = String(returnDate).trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return null;
+  }
+
+  const parsed = new Date(`${trimmed}T00:00:00`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
 function setMessage(id, message, isError = false) {
