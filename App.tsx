@@ -1039,6 +1039,9 @@ export default function App() {
         : [observation, ...observations];
 
       await persistObservations(nextObservations);
+      if (authUserId && supabase) {
+        await uploadPendingRecords(nextObservations);
+      }
       setDraft(blankDraft);
       setPhoto(null);
       setLocation(null);
@@ -2083,7 +2086,7 @@ export default function App() {
     await Linking.openURL(`mailto:${recipient}?subject=${subject}&body=${body}`);
   }
 
-  async function uploadPendingRecords() {
+  async function uploadPendingRecords(sourceObservations = observations) {
     if (!supabase) {
       setSupabaseStatus("failed");
       setSupabaseMessage("Supabase is not configured.");
@@ -2097,7 +2100,7 @@ export default function App() {
       return;
     }
 
-    const pendingRecords = observations.filter((observation) => {
+    const pendingRecords = sourceObservations.filter((observation) => {
       const syncStatus = observation.syncStatus ?? DEFAULT_SYNC_STATUS;
       return syncStatus === "pending upload" || syncStatus === "sync failed";
     });
@@ -2150,7 +2153,7 @@ export default function App() {
       }
 
       const uploadedIds = new Set(pendingRecords.map((record) => record.id));
-      const nextObservations = observations.map((observation) =>
+      const nextObservations = sourceObservations.map((observation) =>
         uploadedIds.has(observation.id)
           ? {
               ...(recordsWithUploadedPhotos.find(
@@ -2180,7 +2183,7 @@ export default function App() {
     } catch (error) {
       const message = getErrorMessage(error);
       const pendingIds = new Set(pendingRecords.map((record) => record.id));
-      const nextObservations = observations.map((observation) =>
+      const nextObservations = sourceObservations.map((observation) =>
         pendingIds.has(observation.id)
           ? {
               ...observation,
@@ -4356,9 +4359,7 @@ function toSupabaseObservationRow(
     collection_interests:
       observation.collectionTypes ??
       (observation.collectionType ? [observation.collectionType] : []),
-    collection_status: observation.collectionStatus ?? null,
-    favorite: observation.favorite ?? false,
-    tags: observation.tags ?? []
+    collection_status: observation.collectionStatus ?? null
   };
 }
 

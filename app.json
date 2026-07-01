@@ -22,11 +22,11 @@
         "NSPhotoLibraryUsageDescription": "Select plant photos for field observations.",
         "NSLocationWhenInUseUsageDescription": "Record GPS coordinates for plant observations."
       },
-      "buildNumber": "4"
+      "buildNumber": "5"
     },
     "android": {
       "package": "com.basecampnorth.bcnplantscout",
-      "versionCode": 9,
+      "versionCode": 10,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#f4f7ee"
