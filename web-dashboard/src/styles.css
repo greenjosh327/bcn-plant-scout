@@ -143,6 +143,10 @@ button.link-button {
   padding: 0;
 }
 
+button.danger-link {
+  color: #a23b2a;
+}
+
 button.secondary {
   background: #e8f2df;
   color: #113d22;

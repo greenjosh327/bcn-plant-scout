@@ -45,6 +45,7 @@ const PLANT_PHOTOS_BUCKET = "plant-photos";
 const LOCAL_PHOTO_FOLDER_NAME = "bcn-plant-photos";
 const DELETE_ACCOUNT_URL =
   "https://greenjosh327.github.io/bcn-plant-scout/delete-account/";
+const WEB_DASHBOARD_URL = "https://scout.basecampnorthpa.com";
 const AUTH_REDIRECT_PATH = "auth/callback";
 const AUTH_REDIRECT_URL = makeRedirectUri({
   scheme: "bcnplantscout",
@@ -2071,6 +2072,17 @@ export default function App() {
     );
   }
 
+  async function emailDashboardLink() {
+    const email = authUserEmail ?? accountEmail.trim();
+    const subject = encodeURIComponent("BCN Plant Scout Dashboard");
+    const body = encodeURIComponent(
+      `Here is your private BCN Plant Scout web dashboard:\n\n${WEB_DASHBOARD_URL}\n\nSign in with the same account you use in the mobile app to review synced plant records, photos, return notes, and the private map.`
+    );
+    const recipient = email ? encodeURIComponent(email) : "";
+
+    await Linking.openURL(`mailto:${recipient}?subject=${subject}&body=${body}`);
+  }
+
   async function uploadPendingRecords() {
     if (!supabase) {
       setSupabaseStatus("failed");
@@ -3351,6 +3363,17 @@ export default function App() {
                 photo metadata. If there is an account issue, use password reset or
                 request account deletion from here.
               </Text>
+              <View style={styles.detailInfoBox}>
+                <Text style={styles.detailInfoLabel}>Web dashboard</Text>
+                <Text style={styles.detailInfoText}>
+                  scout.basecampnorthpa.com
+                </Text>
+                <Text style={styles.hintText}>
+                  Use the private website on a laptop to review synced plants,
+                  photos, return notes, and your map. Sign in with this same
+                  account.
+                </Text>
+              </View>
 
               <View style={styles.detailInfoBox}>
                 <Text style={styles.detailInfoLabel}>Current user</Text>
@@ -3421,6 +3444,12 @@ export default function App() {
               <ActionButton
                 label="Send Password Reset Email"
                 onPress={sendPasswordResetEmail}
+                disabled={isAuthLoading}
+                variant="secondary"
+              />
+              <ActionButton
+                label="Email Me Web Dashboard Link"
+                onPress={emailDashboardLink}
                 disabled={isAuthLoading}
                 variant="secondary"
               />

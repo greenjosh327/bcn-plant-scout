@@ -352,6 +352,11 @@ function renderRecords(filtered) {
       renderDetailModal();
     });
   });
+  document.querySelectorAll("[data-delete-id]").forEach((button) => {
+    button.addEventListener("click", () => {
+      deleteCloudObservation(button.getAttribute("data-delete-id"));
+    });
+  });
 }
 
 function renderRecordCard(record) {
@@ -386,6 +391,7 @@ function renderRecordCard(record) {
           <button class="link-button" type="button" data-detail-id="${escapeHtml(record.id)}">View Details</button>
           <a href="${mapsUrl}" target="_blank" rel="noreferrer">Open Map</a>
           ${photoUrl ? `<a href="${photoUrl}" target="_blank" rel="noreferrer">Open Photo</a>` : ""}
+          <button class="link-button danger-link" type="button" data-delete-id="${escapeHtml(record.id)}">Delete</button>
         </div>
       </div>
     </article>
@@ -485,6 +491,7 @@ function renderDetailModal() {
         <div class="photo-strip">${photoTiles || `<div class="photo-placeholder">No synced photos</div>`}</div>
         <div class="actions">
           <a href="${mapsUrl}" target="_blank" rel="noreferrer">Open in Google Maps</a>
+          <button class="link-button danger-link" type="button" id="delete-detail">Delete Plant</button>
         </div>
       </article>
     </div>
@@ -500,6 +507,53 @@ function renderDetailModal() {
       renderDetailModal();
     }
   });
+  document.querySelector("#delete-detail").addEventListener("click", () => {
+    deleteCloudObservation(record.id);
+  });
+}
+
+async function deleteCloudObservation(recordId) {
+  if (!recordId) return;
+
+  const record = observations.find((item) => item.id === recordId);
+  if (!record) return;
+
+  const confirmed = window.confirm(
+    `Delete ${record.common_name} from the cloud dashboard? This removes the synced plant record and synced photo files.`
+  );
+  if (!confirmed) return;
+
+  const photos = photosByObservation.get(recordId) ?? [];
+  const storagePaths = photos.map((photo) => photo.storage_path).filter(Boolean);
+
+  try {
+    if (storagePaths.length > 0) {
+      const { error: storageError } = await supabase.storage
+        .from(PLANT_PHOTOS_BUCKET)
+        .remove(storagePaths);
+      if (storageError) throw storageError;
+    }
+
+    const { error: photoError } = await supabase
+      .from("observation_photos")
+      .delete()
+      .eq("observation_id", recordId);
+    if (photoError) throw photoError;
+
+    const { error: observationError } = await supabase
+      .from("observations")
+      .delete()
+      .eq("id", recordId);
+    if (observationError) throw observationError;
+
+    selectedRecordId = null;
+    observations = observations.filter((item) => item.id !== recordId);
+    photosByObservation.delete(recordId);
+    photos.forEach((photo) => signedPhotoUrls.delete(photo.id));
+    redrawDashboardData();
+  } catch (error) {
+    window.alert(`Delete failed: ${getErrorMessage(error)}`);
+  }
 }
 
 function renderMap(filtered) {
@@ -659,6 +713,16 @@ function renderError(message) {
       <p>${escapeHtml(message)}</p>
     </article>
   `;
+}
+
+function getErrorMessage(error) {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === "object" && error && "message" in error) {
+    return String(error.message);
+  }
+  return String(error ?? "Something went wrong.");
 }
 
 function escapeHtml(value) {
