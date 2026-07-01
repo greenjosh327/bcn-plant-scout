@@ -225,6 +225,7 @@ async function loadDashboard() {
   const { data: observationRows, error: observationError } = await supabase
     .from("observations")
     .select("*")
+    .is("deleted_at", null)
     .order("observed_at", { ascending: false });
 
   if (observationError) {
@@ -243,8 +244,12 @@ async function loadDashboard() {
   }
 
   observations = observationRows ?? [];
-  photosByObservation = groupBy(photoRows ?? [], "observation_id");
-  signedPhotoUrls = await createSignedPhotoUrlMap(photoRows ?? []);
+  const visibleObservationIds = new Set(observations.map((record) => record.id));
+  const visiblePhotoRows = (photoRows ?? []).filter((photo) =>
+    visibleObservationIds.has(photo.observation_id)
+  );
+  photosByObservation = groupBy(visiblePhotoRows, "observation_id");
+  signedPhotoUrls = await createSignedPhotoUrlMap(visiblePhotoRows);
   renderDashboard();
   hydrateDashboard();
   redrawDashboardData();
@@ -519,30 +524,22 @@ async function deleteCloudObservation(recordId) {
   if (!record) return;
 
   const confirmed = window.confirm(
-    `Delete ${record.common_name} from the cloud dashboard? This removes the synced plant record and synced photo files.`
+    `Delete ${record.common_name} from the cloud dashboard? This hides it from synced records and removes it from phones the next time they download cloud records.`
   );
   if (!confirmed) return;
 
   const photos = photosByObservation.get(recordId) ?? [];
-  const storagePaths = photos.map((photo) => photo.storage_path).filter(Boolean);
 
   try {
-    if (storagePaths.length > 0) {
-      const { error: storageError } = await supabase.storage
-        .from(PLANT_PHOTOS_BUCKET)
-        .remove(storagePaths);
-      if (storageError) throw storageError;
-    }
-
-    const { error: photoError } = await supabase
-      .from("observation_photos")
-      .delete()
-      .eq("observation_id", recordId);
-    if (photoError) throw photoError;
-
+    const deletedAt = new Date().toISOString();
     const { error: observationError } = await supabase
       .from("observations")
-      .delete()
+      .update({
+        deleted_at: deletedAt,
+        sync_status: "synced",
+        sync_error: null,
+        updated_at: deletedAt
+      })
       .eq("id", recordId);
     if (observationError) throw observationError;
 

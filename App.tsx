@@ -135,6 +135,7 @@ type PlantObservation = {
   lastSyncedAt?: string;
   createdAt?: string;
   updatedAt?: string;
+  deletedAt?: string;
   commonName: string;
   scientificName?: string;
   otherNames?: string[];
@@ -470,13 +471,18 @@ export default function App() {
     };
   }, []);
 
+  const activeObservations = useMemo(
+    () => observations.filter((observation) => !observation.deletedAt),
+    [observations]
+  );
+
   const sortedObservations = useMemo(
     () =>
-      [...observations].sort(
+      [...activeObservations].sort(
         (a, b) =>
           new Date(b.observedAt).getTime() - new Date(a.observedAt).getTime()
       ),
-    [observations]
+    [activeObservations]
   );
 
   const savedBaseObservations = useMemo(() => {
@@ -485,7 +491,7 @@ export default function App() {
     const next30 = new Date(today);
     next30.setDate(today.getDate() + 30);
 
-    const filtered = observations.filter((observation) => {
+    const filtered = activeObservations.filter((observation) => {
       if (savedFilter === "needs sync") {
         const syncStatus = observation.syncStatus ?? DEFAULT_SYNC_STATUS;
         if (syncStatus !== "pending upload" && syncStatus !== "sync failed") {
@@ -554,7 +560,7 @@ export default function App() {
     });
   }, [
     currentLocation,
-    observations,
+    activeObservations,
     savedCollectionTypeFilter,
     savedFilter,
     savedReturnFilter,
@@ -567,18 +573,18 @@ export default function App() {
     const next30Days = new Date(now);
     next30Days.setDate(now.getDate() + 30);
 
-    const needsReturn = observations.filter((observation) => {
+    const needsReturn = activeObservations.filter((observation) => {
       const returnDate = observation.returnDate
         ? parseDateOnly(observation.returnDate)
         : undefined;
       return returnDate && returnDate >= now && returnDate <= next30Days;
     }).length;
 
-    const identified = observations.filter(
+    const identified = activeObservations.filter(
       (observation) => observation.identificationStatus === "suggested"
     ).length;
 
-    const extraPhotos = observations.reduce(
+    const extraPhotos = activeObservations.reduce(
       (total, observation) => total + (observation.extraPhotos?.length ?? 0),
       0
     );
@@ -586,14 +592,14 @@ export default function App() {
     return {
       needsReturn,
       identified,
-      totalPhotos: observations.length + extraPhotos,
+      totalPhotos: activeObservations.length + extraPhotos,
       latest: sortedObservations[0]
     };
-  }, [observations, sortedObservations]);
+  }, [activeObservations, sortedObservations]);
 
   const returnObservations = useMemo(
     () =>
-      [...observations]
+      [...activeObservations]
         .filter(
           (observation) =>
             observation.returnDate ||
@@ -601,7 +607,7 @@ export default function App() {
             observation.collectionStatus === "not ready"
         )
         .sort((a, b) => getReturnSortTime(a) - getReturnSortTime(b)),
-    [observations]
+    [activeObservations]
   );
 
   const filteredReturnObservations = useMemo(
@@ -680,7 +686,7 @@ export default function App() {
   const mapObservations = useMemo(() => {
     const today = startOfDay(new Date());
     const searchText = mapSearch.trim().toLowerCase();
-    return observations.filter((observation) => {
+    return activeObservations.filter((observation) => {
       if (!hasValidCoordinates(observation)) {
         return false;
       }
@@ -737,7 +743,7 @@ export default function App() {
     mapReturnReadyOnly,
     mapSearch,
     mapStatusFilter,
-    observations
+    activeObservations
   ]);
 
   const mapDisplayItems = useMemo(
@@ -769,7 +775,7 @@ export default function App() {
   );
 
   const activeMapRegion =
-    mapRegion ?? createDatasetRegion(observations) ?? createRegion(40.254, -74.038, 0.08);
+    mapRegion ?? createDatasetRegion(activeObservations) ?? createRegion(40.254, -74.038, 0.08);
 
   async function loadObservations() {
     const stored = await AsyncStorage.getItem(STORAGE_KEY);
@@ -1157,7 +1163,7 @@ export default function App() {
 
     Alert.alert(
       "Delete saved plant?",
-      `Delete ${observation.commonName}? This removes the local record and any scheduled return reminder.`,
+      `Delete ${observation.commonName}? If this record is synced, the delete will also sync to the cloud.`,
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -1169,6 +1175,24 @@ export default function App() {
                 observation.reminderNotificationId
               );
             }
+            if (authUserId && supabase) {
+              const deletedAt = new Date().toISOString();
+              const nextObservations = observations.map((item) =>
+                item.id === id
+                  ? {
+                      ...item,
+                      deletedAt,
+                      syncStatus: "pending upload" as SyncStatus,
+                      syncError: undefined,
+                      updatedAt: deletedAt
+                    }
+                  : item
+              );
+              await persistObservations(nextObservations);
+              await uploadPendingRecords(nextObservations);
+              return;
+            }
+
             await persistObservations(observations.filter((item) => item.id !== id));
           }
         }
@@ -1733,13 +1757,13 @@ export default function App() {
       const cloudRecords = (data ?? []).map((row) =>
         fromSupabaseObservationRow(row, authUserId, downloadedAt)
       );
-      const { merged, importedCount, updatedCount, conflictCount } =
+      const { merged, importedCount, updatedCount, conflictCount, deletedCount } =
         mergeCloudObservations(observations, cloudRecords);
 
       await persistObservations(merged);
       setSupabaseStatus("reachable");
       setSupabaseMessage(
-        `Downloaded ${cloudRecords.length} cloud record(s). Imported ${importedCount}, updated ${updatedCount}, conflicts ${conflictCount}.`
+        `Downloaded ${cloudRecords.length} cloud record(s). Imported ${importedCount}, updated ${updatedCount}, deleted ${deletedCount}, conflicts ${conflictCount}.`
       );
       setLastSyncResult({
         status: "success",
@@ -2117,17 +2141,21 @@ export default function App() {
 
     try {
       const uploadedAt = new Date().toISOString();
-      const pendingPhotoCount = countObservationPhotos(pendingRecords);
+      const pendingPhotoCount = countObservationPhotos(
+        pendingRecords.filter((observation) => !observation.deletedAt)
+      );
       setSupabaseMessage(`Uploading photos for ${pendingRecords.length} record(s)...`);
       const recordsWithUploadedPhotos = await Promise.all(
         pendingRecords.map((observation) =>
-          uploadObservationPhotos(observation, authUserId)
+          observation.deletedAt
+            ? Promise.resolve(observation)
+            : uploadObservationPhotos(observation, authUserId)
         )
       );
 
-      const photoRows = recordsWithUploadedPhotos.flatMap((observation) =>
-        toSupabasePhotoRows(observation, authUserId)
-      );
+      const photoRows = recordsWithUploadedPhotos
+        .filter((observation) => !observation.deletedAt)
+        .flatMap((observation) => toSupabasePhotoRows(observation, authUserId));
 
       setSupabaseMessage(`Uploading ${pendingRecords.length} record(s)...`);
       const { error } = await supabase.from("observations").upsert(
@@ -2153,20 +2181,22 @@ export default function App() {
       }
 
       const uploadedIds = new Set(pendingRecords.map((record) => record.id));
-      const nextObservations = sourceObservations.map((observation) =>
-        uploadedIds.has(observation.id)
-          ? {
-              ...(recordsWithUploadedPhotos.find(
-                (uploaded) => uploaded.id === observation.id
-              ) ?? observation),
-              ownerId: authUserId,
-              syncStatus: "synced" as SyncStatus,
-              syncError: undefined,
-              lastSyncedAt: uploadedAt,
-              updatedAt: observation.updatedAt ?? uploadedAt
-            }
-          : observation
-      );
+      const nextObservations = sourceObservations
+        .map((observation) =>
+          uploadedIds.has(observation.id)
+            ? {
+                ...(recordsWithUploadedPhotos.find(
+                  (uploaded) => uploaded.id === observation.id
+                ) ?? observation),
+                ownerId: authUserId,
+                syncStatus: "synced" as SyncStatus,
+                syncError: undefined,
+                lastSyncedAt: uploadedAt,
+                updatedAt: observation.updatedAt ?? uploadedAt
+              }
+            : observation
+        )
+        .filter((observation) => !observation.deletedAt);
 
       await persistObservations(nextObservations);
       setSupabaseStatus("reachable");
@@ -4336,6 +4366,7 @@ function toSupabaseObservationRow(
     last_synced_at: uploadedAt,
     created_at: observation.createdAt ?? observation.observedAt,
     updated_at: observation.updatedAt ?? uploadedAt,
+    deleted_at: observation.deletedAt ?? null,
     common_name: observation.commonName,
     scientific_name: observation.scientificName ?? null,
     other_names: observation.otherNames ?? [],
@@ -4409,6 +4440,7 @@ function fromSupabaseObservationRow(
     lastSyncedAt: downloadedAt,
     createdAt: stringValue(row.created_at) ?? observedAt,
     updatedAt: stringValue(row.updated_at) ?? downloadedAt,
+    deletedAt: stringValue(row.deleted_at),
     commonName: stringValue(row.common_name) ?? "Unknown plant",
     scientificName: stringValue(row.scientific_name),
     otherNames: stringArray(row.other_names),
@@ -4444,10 +4476,19 @@ function mergeCloudObservations(
   let importedCount = 0;
   let updatedCount = 0;
   let conflictCount = 0;
+  let deletedCount = 0;
   const mergedById = new Map(localRecords.map((record) => [record.id, record]));
 
   cloudRecords.forEach((cloudRecord) => {
     const localRecord = mergedById.get(cloudRecord.id);
+    if (cloudRecord.deletedAt) {
+      if (localRecord) {
+        deletedCount += 1;
+        mergedById.delete(cloudRecord.id);
+      }
+      return;
+    }
+
     if (!localRecord) {
       importedCount += 1;
       mergedById.set(cloudRecord.id, cloudRecord);
@@ -4478,11 +4519,11 @@ function mergeCloudObservations(
     }
   });
 
-  const merged = [...mergedById.values()].sort(
-    (a, b) => getObservedTime(b) - getObservedTime(a)
-  );
+  const merged = [...mergedById.values()]
+    .filter((record) => !record.deletedAt)
+    .sort((a, b) => getObservedTime(b) - getObservedTime(a));
 
-  return { merged, importedCount, updatedCount, conflictCount };
+  return { merged, importedCount, updatedCount, conflictCount, deletedCount };
 }
 
 function countObservationPhotos(observations: PlantObservation[]) {
