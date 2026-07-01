@@ -132,6 +132,7 @@ async function signInWithGoogle() {
 }
 
 function renderDashboard() {
+  resetMap();
   app.innerHTML = `
     <main class="page">
       <header class="topbar">
@@ -379,7 +380,7 @@ function renderMap(filtered) {
   }
 
   if (!map) {
-    map = L.map("map", { scrollWheelZoom: true });
+    map = L.map(mapElement, { scrollWheelZoom: true });
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 19,
       attribution: "&copy; OpenStreetMap contributors"
@@ -418,6 +419,14 @@ function renderMap(filtered) {
   }
 
   window.setTimeout(() => map?.invalidateSize(), 150);
+}
+
+function resetMap() {
+  if (map) {
+    map.remove();
+  }
+  map = null;
+  markerLayer = null;
 }
 
 function renderMeta(label, value) {
