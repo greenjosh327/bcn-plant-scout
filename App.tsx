@@ -42,6 +42,7 @@ const LOCAL_OWNER_ID = "local_user";
 const DEFAULT_PRIVACY_LEVEL: PrivacyLevel = "share with BCN";
 const DEFAULT_SYNC_STATUS: SyncStatus = "local only";
 const PLANT_PHOTOS_BUCKET = "plant-photos";
+const LOCAL_PHOTO_FOLDER_NAME = "bcn-plant-photos";
 const DELETE_ACCOUNT_URL =
   "https://greenjosh327.github.io/bcn-plant-scout/delete-account/";
 const AUTH_REDIRECT_PATH = "auth/callback";
@@ -818,7 +819,7 @@ export default function App() {
     const result = await launchPhotoPicker(source);
 
     if (result && !result.canceled) {
-      const selectedPhoto = result.assets[0];
+      const selectedPhoto = await copyPickedPhotoToAppStorage(result.assets[0]);
       setPhoto(selectedPhoto);
       setPlantSuggestions([]);
       identifyPlant(selectedPhoto, { silent: true });
@@ -982,7 +983,8 @@ export default function App() {
       );
       const now = new Date().toISOString();
       const observationId = existingObservation?.id ?? createObservationId();
-      const primaryPhotoFileName = getFileName(photo.uri);
+      const savedPhoto = await copyPickedPhotoToAppStorage(photo);
+      const primaryPhotoFileName = getFileName(savedPhoto.uri);
       const ownerId = existingObservation?.ownerId ?? authUserId ?? LOCAL_OWNER_ID;
 
       const observation: PlantObservation = {
@@ -1003,7 +1005,7 @@ export default function App() {
         identificationError: draft.identificationError,
         identifiedAt: draft.identifiedAt,
         userConfirmed: draft.userConfirmed,
-        photoUri: photo.uri,
+        photoUri: savedPhoto.uri,
         photoFileName: primaryPhotoFileName,
         photoStoragePath: createPhotoStoragePath(
           ownerId,
@@ -1213,7 +1215,7 @@ export default function App() {
       return;
     }
 
-    const selectedPhoto = result.assets[0];
+    const selectedPhoto = await copyPickedPhotoToAppStorage(result.assets[0]);
     const next = observations.map((observation) => {
       if (observation.id !== id) {
         return observation;
@@ -4514,6 +4516,13 @@ async function uploadFileUriToSupabaseStorage(uri: string, storagePath: string) 
     return;
   }
 
+  const fileInfo = await FileSystem.getInfoAsync(uri);
+  if (!fileInfo.exists) {
+    throw new Error(
+      "Photo file is no longer on this device. Add or replace the photo, then retry sync."
+    );
+  }
+
   const base64 = await FileSystem.readAsStringAsync(uri, {
     encoding: FileSystem.EncodingType.Base64
   });
@@ -4561,6 +4570,43 @@ function csvEscape(value: unknown) {
 
 function getFileName(uri: string) {
   return uri.split("/").pop() ?? uri;
+}
+
+async function copyPickedPhotoToAppStorage(
+  photoAsset: ImagePicker.ImagePickerAsset
+) {
+  const localUri = await copyPhotoUriToAppStorage(
+    photoAsset.uri,
+    photoAsset.fileName ?? undefined
+  );
+
+  return {
+    ...photoAsset,
+    uri: localUri,
+    fileName: getFileName(localUri)
+  };
+}
+
+async function copyPhotoUriToAppStorage(uri: string, fileName?: string) {
+  const documentDirectory = FileSystem.documentDirectory;
+  if (!documentDirectory || uri.startsWith(documentDirectory)) {
+    return uri;
+  }
+
+  const sourceInfo = await FileSystem.getInfoAsync(uri);
+  if (!sourceInfo.exists) {
+    throw new Error(
+      "Photo file is no longer on this device. Take or select the photo again before saving."
+    );
+  }
+
+  const photosDirectory = `${documentDirectory}${LOCAL_PHOTO_FOLDER_NAME}/`;
+  await FileSystem.makeDirectoryAsync(photosDirectory, { intermediates: true });
+
+  const extension = getFileExtension(fileName ?? uri);
+  const destination = `${photosDirectory}${Date.now()}-${createPhotoId()}.${extension}`;
+  await FileSystem.copyAsync({ from: uri, to: destination });
+  return destination;
 }
 
 function createObservationId() {
