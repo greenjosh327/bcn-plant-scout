@@ -10,6 +10,21 @@ https://greenjosh327.github.io/bcn-plant-scout/privacy-policy/
 
 BCN Plant Scout is an Expo/React Native app, so iOS TestFlight builds use EAS Build and EAS Submit.
 
+## Private Web Dashboard
+
+The private web dashboard lives in `web-dashboard/`. It is a separate Vite app that reads synced Supabase records, creates signed photo URLs from the private `plant-photos` bucket, and shows field cards plus a private map.
+
+Local run:
+
+```powershell
+cd C:\BCNPlantTracker\web-dashboard
+npm install
+Copy-Item .env.example .env.local
+npm run dev
+```
+
+For Vercel, import this repo and set the project root directory to `web-dashboard`.
+
 ### App Details
 
 - App name: `BCN Plant Scout`
