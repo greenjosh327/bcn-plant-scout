@@ -1,4 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 import "./styles.css";
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -372,19 +374,20 @@ function renderRecordCard(record) {
 
 function renderMap(filtered) {
   const mapElement = document.querySelector("#map");
-  if (!mapElement || !window.L) {
+  if (!mapElement) {
     return;
   }
 
   if (!map) {
-    map = window.L.map("map", { scrollWheelZoom: true });
-    window.L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    map = L.map("map", { scrollWheelZoom: true });
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 19,
       attribution: "&copy; OpenStreetMap contributors"
     }).addTo(map);
-    markerLayer = window.L.layerGroup().addTo(map);
+    markerLayer = L.layerGroup().addTo(map);
   }
 
+  map.invalidateSize();
   markerLayer.clearLayers();
   const points = filtered
     .filter((record) => Number.isFinite(record.latitude) && Number.isFinite(record.longitude))
@@ -392,7 +395,7 @@ function renderMap(filtered) {
 
   points.forEach(([lat, lon, record]) => {
     const color = statusColor(record.collection_status);
-    const marker = window.L.circleMarker([lat, lon], {
+    const marker = L.circleMarker([lat, lon], {
       radius: 9,
       color: "#ffffff",
       weight: 2,
@@ -408,11 +411,13 @@ function renderMap(filtered) {
   });
 
   if (points.length > 0) {
-    const bounds = window.L.latLngBounds(points.map(([lat, lon]) => [lat, lon]));
+    const bounds = L.latLngBounds(points.map(([lat, lon]) => [lat, lon]));
     map.fitBounds(bounds.pad(0.2), { maxZoom: 15 });
   } else {
     map.setView([40.254, -74.038], 11);
   }
+
+  window.setTimeout(() => map?.invalidateSize(), 150);
 }
 
 function renderMeta(label, value) {
