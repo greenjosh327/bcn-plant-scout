@@ -212,6 +212,7 @@ a {
 }
 
 .reviews-section,
+.tester-section,
 .login-shell {
   margin-top: 28px;
 }
@@ -242,6 +243,48 @@ a {
   font-size: 1.15rem;
   letter-spacing: 0.08em;
   margin-bottom: 10px;
+}
+
+.tester-panel {
+  background: #ffffff;
+}
+
+.tester-panel h2 {
+  color: #113d22;
+}
+
+.tester-steps {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 22px 0 12px;
+}
+
+.tester-steps a {
+  align-items: center;
+  background: #edf5e8;
+  border: 1px solid #d8e3cf;
+  border-radius: 8px;
+  color: #113d22;
+  display: flex;
+  gap: 12px;
+  min-height: 72px;
+  padding: 14px;
+}
+
+.tester-steps strong {
+  align-items: center;
+  background: #113d22;
+  border-radius: 999px;
+  color: #ffffff;
+  display: inline-flex;
+  flex: 0 0 34px;
+  height: 34px;
+  justify-content: center;
+}
+
+.tester-steps span {
+  font-weight: 950;
 }
 
 .login-shell {
@@ -637,7 +680,8 @@ code {
 
   .hero,
   .about-grid,
-  .reviews-grid {
+  .reviews-grid,
+  .tester-steps {
     grid-template-columns: 1fr;
   }
 

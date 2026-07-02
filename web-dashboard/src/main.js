@@ -8,7 +8,11 @@ const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 const app = document.querySelector("#app");
 const PLANT_PHOTOS_BUCKET = "plant-photos";
 const APP_STORE_URL = "#";
-const PLAY_STORE_URL = "#";
+const GOOGLE_GROUP_URL = "https://groups.google.com/g/bcn-plant-scout";
+const PLAY_TESTING_URL =
+  "https://play.google.com/apps/testing/com.basecampnorth.bcnplantscout";
+const PLAY_STORE_URL =
+  "https://play.google.com/store/apps/details?id=com.basecampnorth.bcnplantscout";
 
 let supabase = null;
 let session = null;
@@ -87,7 +91,7 @@ function renderSignIn() {
           <p class="hero-lede">A rugged field notebook for tree nursery work: capture plant photos, GPS points, return notes, seed sources, and synced records you can review from the computer.</p>
           <div class="hero-actions">
             <a class="store-button" href="${APP_STORE_URL}" aria-disabled="true">App Store Coming Soon</a>
-            <a class="store-button secondary-store" href="${PLAY_STORE_URL}" aria-disabled="true">Google Play Coming Soon</a>
+            <a class="store-button secondary-store" href="${PLAY_TESTING_URL}" target="_blank" rel="noreferrer">Join Android Test</a>
           </div>
           <p class="muted small-note">Already using the app? Sign in below to continue your field work.</p>
         </div>
@@ -104,6 +108,29 @@ function renderSignIn() {
             <strong>Dirt</strong>
             <strong>Trees</strong>
           </div>
+        </div>
+      </section>
+
+      <section class="tester-section">
+        <div class="panel tester-panel">
+          <p class="eyebrow">Help test BCN Plant Scout</p>
+          <h2>Android closed testing</h2>
+          <p>Testing is open to invited Google accounts. Join the tester group first, enroll in the closed test, then install the app from Google Play.</p>
+          <div class="tester-steps">
+            <a href="${GOOGLE_GROUP_URL}" target="_blank" rel="noreferrer">
+              <strong>1</strong>
+              <span>Join Google Group</span>
+            </a>
+            <a href="${PLAY_TESTING_URL}" target="_blank" rel="noreferrer">
+              <strong>2</strong>
+              <span>Enroll in Testing</span>
+            </a>
+            <a href="${PLAY_STORE_URL}" target="_blank" rel="noreferrer">
+              <strong>3</strong>
+              <span>Open App Listing</span>
+            </a>
+          </div>
+          <p class="muted small-note">If Google says the app is not available, make sure you joined the tester group with the same Google account used on your phone.</p>
         </div>
       </section>
 
