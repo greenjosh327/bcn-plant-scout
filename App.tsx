@@ -411,6 +411,7 @@ export default function App() {
   const [shareCardObservation, setShareCardObservation] =
     useState<PlantObservation | null>(null);
   const shareCardRef = useRef<View | null>(null);
+  const shareCardReadyResolver = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     loadObservations();
@@ -1294,8 +1295,9 @@ export default function App() {
         return;
       }
 
+      const cardReady = waitForShareCardReady();
       setShareCardObservation(observation);
-      await waitForNextFrame();
+      await cardReady;
 
       if (!shareCardRef.current) {
         throw new Error("Plant card preview was not ready.");
@@ -1314,8 +1316,32 @@ export default function App() {
     } catch (error) {
       Alert.alert("Plant card export failed", getErrorMessage(error));
     } finally {
+      shareCardReadyResolver.current = null;
       setShareCardObservation(null);
     }
+  }
+
+  function notifyShareCardReady() {
+    shareCardReadyResolver.current?.();
+    shareCardReadyResolver.current = null;
+  }
+
+  async function waitForShareCardReady() {
+    await new Promise<void>((resolve) => {
+      let didResolve = false;
+      const finish = () => {
+        if (didResolve) {
+          return;
+        }
+        didResolve = true;
+        shareCardReadyResolver.current = null;
+        resolve();
+      };
+
+      shareCardReadyResolver.current = finish;
+      setTimeout(finish, 1200);
+    });
+    await waitForNextFrame();
   }
 
   async function sharePhotoUri(photoUri: string, dialogTitle: string) {
@@ -2485,7 +2511,10 @@ export default function App() {
           collapsable={false}
           style={styles.shareCardCapture}
         >
-          <PlantShareCard observation={shareCardObservation} />
+          <PlantShareCard
+            observation={shareCardObservation}
+            onImageReady={notifyShareCardReady}
+          />
         </View>
       ) : null}
       <KeyboardAvoidingView
@@ -4062,12 +4091,24 @@ function MapObservationSummary({
   );
 }
 
-function PlantShareCard({ observation }: { observation: PlantObservation }) {
+function PlantShareCard({
+  observation,
+  onImageReady
+}: {
+  observation: PlantObservation;
+  onImageReady?: () => void;
+}) {
   const note = observation.notes || observation.gatherNotes || "";
 
   return (
     <View style={styles.shareCard}>
-      <Image source={{ uri: observation.photoUri }} style={styles.shareCardImage} />
+      <Image
+        source={{ uri: observation.photoUri }}
+        style={styles.shareCardImage}
+        fadeDuration={0}
+        onLoadEnd={onImageReady}
+        resizeMode="cover"
+      />
       <View style={styles.shareCardBody}>
         <Text style={styles.shareCardKicker}>BASE CAMP NORTH</Text>
         <Text style={styles.shareCardTitle} numberOfLines={2}>
@@ -4100,8 +4141,8 @@ function PlantShareCard({ observation }: { observation: PlantObservation }) {
           </View>
         ) : null}
         <View style={styles.shareCardFooter}>
-          <Text style={styles.shareCardFooterTitle}>BCN Plant Scout</Text>
-          <Text style={styles.shareCardFooterText}>basecampnorthpa.com</Text>
+          <Text style={styles.shareCardFooterTitle}>Get the app</Text>
+          <Text style={styles.shareCardFooterText}>scout.basecampnorthpa.com</Text>
         </View>
       </View>
     </View>
@@ -6459,10 +6500,12 @@ const styles = StyleSheet.create({
     overflow: "hidden"
   },
   shareCardCapture: {
-    left: -1400,
+    elevation: 999,
+    left: -2200,
+    opacity: 1,
     position: "absolute",
     top: 0,
-    zIndex: -1
+    zIndex: 999
   },
   shareCard: {
     backgroundColor: "#f5f8ef",
