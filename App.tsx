@@ -10,6 +10,7 @@ import Constants from "expo-constants";
 import * as WebBrowser from "expo-web-browser";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
+import { captureRef } from "react-native-view-shot";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { createClient } from "@supabase/supabase-js";
 import JSZip from "jszip";
@@ -407,6 +408,9 @@ export default function App() {
     message: string;
     finishedAt: string;
   } | null>(null);
+  const [shareCardObservation, setShareCardObservation] =
+    useState<PlantObservation | null>(null);
+  const shareCardRef = useRef<View | null>(null);
 
   useEffect(() => {
     loadObservations();
@@ -1290,20 +1294,27 @@ export default function App() {
         return;
       }
 
-      const cardSvg = await createPlantCardSvg(observation);
-      const fileName = `${toSafeFileName(observation.commonName)}-plant-card.svg`;
-      const fileUri = `${FileSystem.documentDirectory}${fileName}`;
+      setShareCardObservation(observation);
+      await waitForNextFrame();
 
-      await FileSystem.writeAsStringAsync(fileUri, cardSvg, {
-        encoding: FileSystem.EncodingType.UTF8
+      if (!shareCardRef.current) {
+        throw new Error("Plant card preview was not ready.");
+      }
+
+      const fileUri = await captureRef(shareCardRef.current, {
+        format: "png",
+        quality: 1,
+        result: "tmpfile"
       });
 
       await Sharing.shareAsync(fileUri, {
-        mimeType: "image/svg+xml",
+        mimeType: "image/png",
         dialogTitle: `Share ${observation.commonName} plant card`
       });
     } catch (error) {
       Alert.alert("Plant card export failed", getErrorMessage(error));
+    } finally {
+      setShareCardObservation(null);
     }
   }
 
@@ -2468,6 +2479,15 @@ export default function App() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="dark-content" />
+      {shareCardObservation ? (
+        <View
+          ref={shareCardRef}
+          collapsable={false}
+          style={styles.shareCardCapture}
+        >
+          <PlantShareCard observation={shareCardObservation} />
+        </View>
+      ) : null}
       <KeyboardAvoidingView
         behavior={Platform.select({ ios: "padding", android: undefined })}
         style={styles.container}
@@ -4042,6 +4062,63 @@ function MapObservationSummary({
   );
 }
 
+function PlantShareCard({ observation }: { observation: PlantObservation }) {
+  const note = observation.notes || observation.gatherNotes || "";
+
+  return (
+    <View style={styles.shareCard}>
+      <Image source={{ uri: observation.photoUri }} style={styles.shareCardImage} />
+      <View style={styles.shareCardBody}>
+        <Text style={styles.shareCardKicker}>BASE CAMP NORTH</Text>
+        <Text style={styles.shareCardTitle} numberOfLines={2}>
+          {observation.commonName || "Plant observation"}
+        </Text>
+        {observation.scientificName ? (
+          <Text style={styles.shareCardScientific} numberOfLines={1}>
+            {observation.scientificName}
+          </Text>
+        ) : null}
+        <View style={styles.shareCardChipGrid}>
+          <ShareCardChip label="Date" value={formatDate(observation.observedAt)} />
+          <ShareCardChip
+            label="Status"
+            value={observation.collectionStatus ?? "field record"}
+          />
+          <ShareCardChip
+            label="Interest"
+            value={formatCollectionInterests(observation) || "observation"}
+          />
+          <ShareCardChip label="Return" value={observation.returnDate || "not set"} />
+          <ShareCardChip label="Location" value="saved in app" />
+        </View>
+        {note ? (
+          <View style={styles.shareCardNoteBox}>
+            <Text style={styles.shareCardNoteLabel}>FIELD NOTE</Text>
+            <Text style={styles.shareCardNote} numberOfLines={3}>
+              {note}
+            </Text>
+          </View>
+        ) : null}
+        <View style={styles.shareCardFooter}>
+          <Text style={styles.shareCardFooterTitle}>BCN Plant Scout</Text>
+          <Text style={styles.shareCardFooterText}>basecampnorthpa.com</Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function ShareCardChip({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.shareCardChip}>
+      <Text style={styles.shareCardChipLabel}>{label}</Text>
+      <Text style={styles.shareCardChipValue} numberOfLines={1}>
+        {value || "not set"}
+      </Text>
+    </View>
+  );
+}
+
 function ObservationCard({
   observation,
   onOpenDetail,
@@ -4552,117 +4629,12 @@ function toGeoJson(rows: PlantObservation[]) {
   );
 }
 
-async function createPlantCardSvg(observation: PlantObservation) {
-  let imageTag = `
-    <rect x="64" y="64" width="952" height="520" rx="28" fill="#e7ecde"/>
-    <text x="540" y="330" text-anchor="middle" font-size="42" font-family="Arial, sans-serif" font-weight="800" fill="#4b5d42">Plant photo saved</text>
-  `;
-
-  try {
-    const photoInfo = await FileSystem.getInfoAsync(observation.photoUri);
-    if (photoInfo.exists) {
-      const photoBase64 = await FileSystem.readAsStringAsync(observation.photoUri, {
-        encoding: FileSystem.EncodingType.Base64
-      });
-      imageTag = `
-        <clipPath id="photoClip"><rect x="64" y="64" width="952" height="520" rx="28"/></clipPath>
-        <image x="64" y="64" width="952" height="520" preserveAspectRatio="xMidYMid slice" href="data:image/jpeg;base64,${photoBase64}" clip-path="url(#photoClip)"/>
-      `;
-    }
-  } catch {
-    // If the cached original photo is gone, the card still shares the saved record.
-  }
-
-  const commonName = escapeXml(observation.commonName || "Plant observation");
-  const scientificName = escapeXml(observation.scientificName ?? "");
-  const date = escapeXml(formatDate(observation.observedAt));
-  const status = escapeXml(observation.collectionStatus ?? "field record");
-  const interest = escapeXml(formatCollectionInterests(observation) || "observation");
-  const returnDate = escapeXml(observation.returnDate || "not set");
-  const notes = observation.notes || observation.gatherNotes || "";
-  const noteLines = wrapSvgText(notes, 44, 3);
-
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350" viewBox="0 0 1080 1350">
-  <rect width="1080" height="1350" rx="64" fill="#f5f8ef"/>
-  <rect x="32" y="32" width="1016" height="1286" rx="48" fill="#fbfdf8" stroke="#d8e3cf" stroke-width="4"/>
-  ${imageTag}
-  <text x="72" y="660" font-size="30" font-family="Arial, sans-serif" font-weight="800" letter-spacing="3" fill="#6a765f">BASE CAMP NORTH</text>
-  <text x="72" y="736" font-size="76" font-family="Arial, sans-serif" font-weight="900" fill="#113d22">${commonName}</text>
-  ${
-    scientificName
-      ? `<text x="72" y="798" font-size="42" font-family="Arial, sans-serif" font-style="italic" fill="#4b5d42">${scientificName}</text>`
-      : ""
-  }
-  ${svgChip(72, 858, "Date", date)}
-  ${svgChip(346, 858, "Status", status)}
-  ${svgChip(620, 858, "Interest", interest)}
-  ${svgChip(72, 1010, "Return", returnDate)}
-  ${svgChip(346, 1010, "Location", "saved in app")}
-  ${
-    noteLines.length
-      ? `<text x="72" y="1188" font-size="28" font-family="Arial, sans-serif" font-weight="800" fill="#6a765f">FIELD NOTE</text>${noteLines
-          .map(
-            (line, index) =>
-              `<text x="72" y="${1230 + index * 36}" font-size="30" font-family="Arial, sans-serif" fill="#324832">${escapeXml(line)}</text>`
-          )
-          .join("")}`
-      : ""
-  }
-  <rect x="680" y="1168" width="320" height="86" rx="24" fill="#113d22"/>
-  <text x="840" y="1208" text-anchor="middle" font-size="24" font-family="Arial, sans-serif" font-weight="900" fill="#f5f8ef">BCN Plant Scout</text>
-  <text x="840" y="1240" text-anchor="middle" font-size="20" font-family="Arial, sans-serif" font-weight="700" fill="#d2be97">basecampnorthpa.com</text>
-</svg>`;
-}
-
-function svgChip(x: number, y: number, label: string, value: string) {
-  const displayValue = value.length > 20 ? `${value.slice(0, 18)}...` : value;
-  return `
-    <rect x="${x}" y="${y}" width="240" height="112" rx="18" fill="#eef5e9" stroke="#d8e3cf" stroke-width="3"/>
-    <text x="${x + 24}" y="${y + 42}" font-size="24" font-family="Arial, sans-serif" font-weight="900" letter-spacing="2" fill="#6a765f">${escapeXml(label.toUpperCase())}</text>
-    <text x="${x + 24}" y="${y + 82}" font-size="28" font-family="Arial, sans-serif" font-weight="900" fill="#113d22">${escapeXml(displayValue)}</text>
-  `;
-}
-
-function wrapSvgText(value: string, maxChars: number, maxLines: number) {
-  const words = value.trim().split(/\s+/).filter(Boolean);
-  const lines: string[] = [];
-  let current = "";
-
-  for (const word of words) {
-    const next = current ? `${current} ${word}` : word;
-    if (next.length > maxChars) {
-      if (current) {
-        lines.push(current);
-      }
-      current = word;
-    } else {
-      current = next;
-    }
-
-    if (lines.length === maxLines) {
-      break;
-    }
-  }
-
-  if (current && lines.length < maxLines) {
-    lines.push(current);
-  }
-
-  if (words.join(" ").length > lines.join(" ").length && lines.length > 0) {
-    lines[lines.length - 1] = `${lines[lines.length - 1].replace(/\.*$/, "")}...`;
-  }
-
-  return lines;
-}
-
-function escapeXml(value: string) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
+function waitForNextFrame() {
+  return new Promise<void>((resolve) => {
+    requestAnimationFrame(() => {
+      setTimeout(resolve, 120);
+    });
+  });
 }
 
 function toSupabaseObservationRow(
@@ -6485,6 +6457,121 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     overflow: "hidden"
+  },
+  shareCardCapture: {
+    left: -1400,
+    position: "absolute",
+    top: 0,
+    zIndex: -1
+  },
+  shareCard: {
+    backgroundColor: "#f5f8ef",
+    borderColor: "#d8e3cf",
+    borderRadius: 48,
+    borderWidth: 4,
+    height: 1350,
+    overflow: "hidden",
+    padding: 32,
+    width: 1080
+  },
+  shareCardImage: {
+    backgroundColor: "#e7ecde",
+    borderRadius: 28,
+    height: 520,
+    width: "100%"
+  },
+  shareCardBody: {
+    backgroundColor: "#fbfdf8",
+    flex: 1,
+    paddingHorizontal: 8,
+    paddingTop: 52
+  },
+  shareCardKicker: {
+    color: "#6a765f",
+    fontSize: 30,
+    fontWeight: "900",
+    letterSpacing: 3,
+    textTransform: "uppercase"
+  },
+  shareCardTitle: {
+    color: "#113d22",
+    fontSize: 76,
+    fontWeight: "900",
+    lineHeight: 86,
+    marginTop: 18
+  },
+  shareCardScientific: {
+    color: "#4b5d42",
+    fontSize: 42,
+    fontStyle: "italic",
+    marginTop: 10
+  },
+  shareCardChipGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 34,
+    marginTop: 44
+  },
+  shareCardChip: {
+    backgroundColor: "#eef5e9",
+    borderColor: "#d8e3cf",
+    borderRadius: 18,
+    borderWidth: 3,
+    height: 112,
+    justifyContent: "center",
+    paddingHorizontal: 24,
+    width: 240
+  },
+  shareCardChipLabel: {
+    color: "#6a765f",
+    fontSize: 24,
+    fontWeight: "900",
+    letterSpacing: 2,
+    textTransform: "uppercase"
+  },
+  shareCardChipValue: {
+    color: "#113d22",
+    fontSize: 28,
+    fontWeight: "900",
+    marginTop: 8
+  },
+  shareCardNoteBox: {
+    marginTop: 52,
+    maxWidth: 600
+  },
+  shareCardNoteLabel: {
+    color: "#6a765f",
+    fontSize: 28,
+    fontWeight: "900",
+    textTransform: "uppercase"
+  },
+  shareCardNote: {
+    color: "#324832",
+    fontSize: 30,
+    lineHeight: 36,
+    marginTop: 12
+  },
+  shareCardFooter: {
+    alignItems: "center",
+    backgroundColor: "#113d22",
+    borderRadius: 24,
+    bottom: 64,
+    height: 86,
+    justifyContent: "center",
+    position: "absolute",
+    right: 48,
+    width: 320
+  },
+  shareCardFooterTitle: {
+    color: "#f5f8ef",
+    fontSize: 24,
+    fontWeight: "900"
+  },
+  shareCardFooterText: {
+    color: "#d2be97",
+    fontSize: 20,
+    fontWeight: "700",
+    marginTop: 4
   },
   detailPanel: {
     backgroundColor: "#ffffff",
