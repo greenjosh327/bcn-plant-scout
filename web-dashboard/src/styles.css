@@ -193,6 +193,10 @@ a {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.about-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .about-panel {
   background: #fbfdf8;
   overflow: hidden;
@@ -212,9 +216,48 @@ a {
 }
 
 .reviews-section,
+.species-section,
 .tester-section,
 .login-shell {
   margin-top: 28px;
+}
+
+.species-section {
+  background: #fbfdf8;
+}
+
+.species-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.species-tile {
+  background: #ffffff;
+  border: 1px solid #dfe8d7;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.species-tile img {
+  aspect-ratio: 16 / 10;
+  display: block;
+  object-fit: cover;
+  width: 100%;
+}
+
+.species-tile div {
+  padding: 14px;
+}
+
+.species-tile h3 {
+  margin-bottom: 4px;
+}
+
+.species-tile p {
+  color: #4b5d42;
+  font-weight: 750;
+  margin: 0;
 }
 
 .marketing-heading {
@@ -728,6 +771,7 @@ code {
   .hero,
   .tester-grid,
   .about-grid,
+  .species-grid,
   .reviews-grid,
   .tester-steps {
     grid-template-columns: 1fr;

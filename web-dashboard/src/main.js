@@ -159,23 +159,38 @@ function renderSignIn() {
           <p>BCN Plant Scout turns a field photo into a useful nursery record: what it is, where it is, why it matters, when to come back, and whether it is ready for seeds, cuttings, fruit, nuts, or scion wood.</p>
         </article>
         <article class="panel about-panel">
-          <img class="about-image" src="/images/scout-field-kit.webp" alt="Field notebook kit with scouting tools" />
+          <img class="about-image" src="/images/scout-cuttings-bundle.webp" alt="Bundle of plant cuttings with field tag" />
           <p class="eyebrow">Field workflow</p>
           <h2>Take the photo. Keep the trail.</h2>
           <p>Start with the plant in front of you, then build the record around it: GPS, photos, notes, return plans, harvest status, and the details that make the spot worth finding again.</p>
         </article>
         <article class="panel about-panel">
-          <img class="about-image" src="/images/scout-nut-pile.webp" alt="Collected nuts and seeds" />
+          <img class="about-image" src="/images/scout-field-map.webp" alt="Field map with location pin" />
           <p class="eyebrow">Desktop companion</p>
           <h2>Scout in the field. Review at the desk.</h2>
           <p>Use the mobile app outside, then open the web dashboard later to review photos, map points, return dates, and collection notes on a bigger screen.</p>
         </article>
         <article class="panel about-panel">
-          <img class="about-image" src="/images/scout-berry-branch.webp" alt="Berry branch ready for field scouting" />
+          <img class="about-image" src="/images/scout-greenhouse-tools.webp" alt="Greenhouse and nursery tools" />
           <p class="eyebrow">Base Camp North</p>
           <h2>Nursery work, not just plant ID.</h2>
           <p>This is for real scouting: native trees, seed collecting, berry checks, return trips, and building a better memory of the land one observation at a time.</p>
         </article>
+      </section>
+
+      <section class="species-section panel">
+        <div class="section-heading marketing-heading">
+          <div>
+            <p class="eyebrow">Scout-worthy finds</p>
+            <h2>Track seed, cutting, fruit, and nut sources.</h2>
+          </div>
+        </div>
+        <div class="species-grid">
+          ${renderSpeciesTile("/images/scout-elderberry.webp", "Elderberry", "berries and cuttings")}
+          ${renderSpeciesTile("/images/scout-chestnut.webp", "Chestnut", "nuts and parent trees")}
+          ${renderSpeciesTile("/images/scout-crabapple.webp", "Crabapple", "fruit and scion wood")}
+          ${renderSpeciesTile("/images/scout-evergreen-cones.webp", "Evergreen", "cones and seed sources")}
+        </div>
       </section>
 
       <section class="reviews-section">
@@ -226,6 +241,18 @@ function renderReview(text, author) {
       <p class="stars">★★★★★</p>
       <p>"${escapeHtml(text)}"</p>
       <strong>${escapeHtml(author)}</strong>
+    </article>
+  `;
+}
+
+function renderSpeciesTile(src, name, detail) {
+  return `
+    <article class="species-tile">
+      <img src="${src}" alt="${escapeHtml(name)} field scouting illustration" />
+      <div>
+        <h3>${escapeHtml(name)}</h3>
+        <p>${escapeHtml(detail)}</p>
+      </div>
     </article>
   `;
 }
