@@ -85,10 +85,6 @@ function renderSignIn() {
           <p class="eyebrow">Base Camp North</p>
           <h1>BCN Plant Scout</h1>
           <p class="hero-lede">A rugged field notebook for tree nursery work: capture plant photos, GPS points, return notes, seed sources, and synced records you can review from the computer.</p>
-          <div class="trial-banner">
-            <strong>Full access free trial</strong>
-            <span>30 days, 100 plant records, or 250 photos. Then $6/year.</span>
-          </div>
           <div class="hero-actions">
             <a class="store-button" href="${APP_STORE_URL}" aria-disabled="true">App Store Coming Soon</a>
             <a class="store-button secondary-store" href="${PLAY_STORE_URL}" aria-disabled="true">Google Play Coming Soon</a>
@@ -112,21 +108,17 @@ function renderSignIn() {
       </section>
 
       <section class="about-grid">
-        <article class="panel about-panel pricing-panel">
-          <p class="eyebrow">Launch pricing</p>
-          <h2>Try the whole field kit first.</h2>
-          <p>Start with every feature unlocked: mobile scouting, cloud sync, photos, maps, return notes, exports, and the web dashboard.</p>
-          <div class="price-row">
-            <strong>$6</strong>
-            <span>per year after trial</span>
-          </div>
-          <p class="muted">Free until 30 days, 100 records, or 250 photos, whichever comes first.</p>
-        </article>
         <article class="panel about-panel">
           <img class="about-image" src="/images/scout-seedling-tray.webp" alt="Seedling tray for nursery work" />
           <p class="eyebrow">About the app</p>
           <h2>Built for finding the plant again.</h2>
           <p>BCN Plant Scout turns a field photo into a useful nursery record: what it is, where it is, why it matters, when to come back, and whether it is ready for seeds, cuttings, fruit, nuts, or scion wood.</p>
+        </article>
+        <article class="panel about-panel">
+          <img class="about-image" src="/images/scout-field-kit.webp" alt="Field notebook kit with scouting tools" />
+          <p class="eyebrow">Field workflow</p>
+          <h2>Take the photo. Keep the trail.</h2>
+          <p>Start with the plant in front of you, then build the record around it: GPS, photos, notes, return plans, harvest status, and the details that make the spot worth finding again.</p>
         </article>
         <article class="panel about-panel">
           <img class="about-image" src="/images/scout-nut-pile.webp" alt="Collected nuts and seeds" />
