@@ -7,6 +7,8 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 const app = document.querySelector("#app");
 const PLANT_PHOTOS_BUCKET = "plant-photos";
+const APP_STORE_URL = "#";
+const PLAY_STORE_URL = "#";
 
 let supabase = null;
 let session = null;
@@ -76,16 +78,72 @@ function render() {
 
 function renderSignIn() {
   app.innerHTML = `
-    <main class="page narrow">
-      <section class="brand-panel">
-        <p class="eyebrow">Base Camp North</p>
-        <h1>BCN Plant Scout</h1>
-        <p>Private field dashboard for synced plant observations, photos, return notes, and map review.</p>
+    <main class="marketing-page">
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Base Camp North</p>
+          <h1>BCN Plant Scout</h1>
+          <p class="hero-lede">A rugged field notebook for tree nursery work: capture plant photos, GPS points, return notes, seed sources, and synced records you can review from the computer.</p>
+          <div class="hero-actions">
+            <a class="store-button" href="${APP_STORE_URL}" aria-disabled="true">App Store Coming Soon</a>
+            <a class="store-button secondary-store" href="${PLAY_STORE_URL}" aria-disabled="true">Google Play Coming Soon</a>
+          </div>
+          <p class="muted small-note">Already using the app? Sign in below to open your private dashboard.</p>
+        </div>
+        <div class="hero-card" aria-label="BCN Plant Scout feature preview">
+          <p class="eyebrow">Field Kit</p>
+          <div class="notebook-lines">
+            <span>Photo records with GPS</span>
+            <span>Return and harvest notes</span>
+            <span>Private synced dashboard</span>
+          </div>
+          <div class="hero-stat-row">
+            <strong>Plants</strong>
+            <strong>Dirt</strong>
+            <strong>Trees</strong>
+          </div>
+        </div>
       </section>
 
-      <section class="panel">
-        <h2>Sign In</h2>
-        <p class="muted">Use the same Supabase account as the mobile app. Records stay private under your account.</p>
+      <section class="about-grid">
+        <article class="panel about-panel">
+          <p class="eyebrow">About the app</p>
+          <h2>Built for finding the plant again.</h2>
+          <p>BCN Plant Scout turns a field photo into a useful nursery record: what it is, where it is, why it matters, when to come back, and whether it is ready for seeds, cuttings, fruit, nuts, or scion wood.</p>
+        </article>
+        <article class="panel about-panel">
+          <p class="eyebrow">Private first</p>
+          <h2>Your records stay behind login.</h2>
+          <p>The web dashboard is for signed-in users. Exact GPS points, photos, notes, and return planning are visible only after you log in with the same account used in the mobile app.</p>
+        </article>
+        <article class="panel about-panel">
+          <p class="eyebrow">Base Camp North</p>
+          <h2>Nursery work, not just plant ID.</h2>
+          <p>This is for real scouting: native trees, seed collecting, berry checks, return trips, and building a better memory of the land one observation at a time.</p>
+        </article>
+      </section>
+
+      <section class="reviews-section">
+        <div class="section-heading marketing-heading">
+          <div>
+            <p class="eyebrow">Field notes from very real imaginary reviewers</p>
+            <h2>Early praise</h2>
+          </div>
+        </div>
+        <div class="reviews-grid">
+          ${renderReview("Five stars for saving me from saying 'that tree by the rock' for the 400th time.", "Return Trip Professional")}
+          ${renderReview("Finally, a plant app that understands I came back for acorns and forgot where I parked.", "Slightly Lost Seed Collector")}
+          ${renderReview("My notes, photos, and map points are all in one place. My clipboard is jealous.", "Nursery Notebook Enthusiast")}
+        </div>
+      </section>
+
+      <section class="login-shell">
+        <div class="panel login-panel">
+          <p class="eyebrow">Private dashboard</p>
+          <h2>Sign In</h2>
+          <p class="muted">Use the same account as the mobile app. Records stay private under your account.</p>
+          <button id="google-sign-in" class="google-button full">Sign In With Google</button>
+          <div class="login-divider"><span>or use email</span></div>
         <form id="email-form" class="form">
           <label>
             Email
@@ -97,14 +155,24 @@ function renderSignIn() {
           </label>
           <button type="submit">Sign In</button>
         </form>
-        <button id="google-sign-in" class="secondary full">Sign In With Google</button>
         <p id="auth-message" class="message"></p>
+        </div>
       </section>
     </main>
   `;
 
   document.querySelector("#email-form").addEventListener("submit", signInWithEmail);
   document.querySelector("#google-sign-in").addEventListener("click", signInWithGoogle);
+}
+
+function renderReview(text, author) {
+  return `
+    <article class="review-card">
+      <p class="stars">★★★★★</p>
+      <p>"${escapeHtml(text)}"</p>
+      <strong>${escapeHtml(author)}</strong>
+    </article>
+  `;
 }
 
 async function signInWithEmail(event) {
