@@ -8,12 +8,9 @@ const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 const app = document.querySelector("#app");
 const PLANT_PHOTOS_BUCKET = "plant-photos";
 const APP_STORE_URL = "#";
-const APPLE_TEST_EMAIL = "basecampsouth.pa@gmail.com";
-const APPLE_TEST_SUBJECT = encodeURIComponent("BCN Plant Scout iOS closed testing request");
-const APPLE_TEST_BODY = encodeURIComponent(
-  "Hi Base Camp North,\n\nI would like to join the BCN Plant Scout iOS closed test through TestFlight.\n\nApple ID email to invite:\n\nName:\n\nThanks!"
-);
-const APPLE_TEST_MAILTO = `mailto:${APPLE_TEST_EMAIL}?subject=${APPLE_TEST_SUBJECT}&body=${APPLE_TEST_BODY}`;
+const BCN_FACEBOOK_URL = "https://www.facebook.com/profile.php?id=61581856435743";
+const IOS_TEST_DM_TEXT =
+  "Hi Base Camp North, I would like to join the BCN Plant Scout iOS closed test through TestFlight. My Apple ID email is:";
 const GOOGLE_GROUP_URL = "https://groups.google.com/g/bcn-plant-scout";
 const PLAY_TESTING_URL =
   "https://play.google.com/apps/testing/com.basecampnorth.bcnplantscout";
@@ -100,6 +97,7 @@ function renderSignIn() {
           <div class="hero-actions">
             <a class="store-button" href="${APP_STORE_URL}" aria-disabled="true">App Store Coming Soon</a>
             <a class="store-button secondary-store" href="${PLAY_TESTING_URL}" target="_blank" rel="noreferrer">Join Android Test</a>
+            <a class="store-button secondary-store" href="${BCN_FACEBOOK_URL}" target="_blank" rel="noreferrer">BCN on Facebook</a>
           </div>
           <p class="muted small-note">Already using the app? Sign in below to continue your field work.</p>
         </div>
@@ -144,9 +142,12 @@ function renderSignIn() {
           <div class="panel tester-panel">
             <p class="eyebrow">Apple TestFlight</p>
             <h2>iPhone closed testing</h2>
-            <p>Want to test on iPhone? Send an email and include the Apple ID email address you use for TestFlight. BCN will invite you when the next iOS build is ready.</p>
-            <a class="store-button tester-mail-button" href="${APPLE_TEST_MAILTO}">Email to Join iOS Test</a>
-            <p class="muted small-note">This opens a ready-to-send email request to ${APPLE_TEST_EMAIL}.</p>
+            <p>Want to test on iPhone? Message the Base Camp North Facebook page and include the Apple ID email address you use for TestFlight.</p>
+            <a class="store-button tester-mail-button" href="${BCN_FACEBOOK_URL}" target="_blank" rel="noreferrer">Message BCN on Facebook</a>
+            <div class="message-template">
+              <p class="eyebrow">Copy this message</p>
+              <p>${escapeHtml(IOS_TEST_DM_TEXT)}</p>
+            </div>
           </div>
         </div>
       </section>

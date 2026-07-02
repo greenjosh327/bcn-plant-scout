@@ -327,6 +327,20 @@ a {
   width: 100%;
 }
 
+.message-template {
+  background: #f5f8ef;
+  border: 1px solid #d8e3cf;
+  border-radius: 8px;
+  margin-top: 14px;
+  padding: 14px;
+}
+
+.message-template p:last-child {
+  color: #263a28;
+  font-weight: 750;
+  margin-bottom: 0;
+}
+
 .tester-steps strong {
   align-items: center;
   background: #113d22;
