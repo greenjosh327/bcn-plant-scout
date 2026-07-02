@@ -85,6 +85,10 @@ function renderSignIn() {
           <p class="eyebrow">Base Camp North</p>
           <h1>BCN Plant Scout</h1>
           <p class="hero-lede">A rugged field notebook for tree nursery work: capture plant photos, GPS points, return notes, seed sources, and synced records you can review from the computer.</p>
+          <div class="trial-banner">
+            <strong>Full access free trial</strong>
+            <span>30 days, 100 plant records, or 250 photos. Then $6/year.</span>
+          </div>
           <div class="hero-actions">
             <a class="store-button" href="${APP_STORE_URL}" aria-disabled="true">App Store Coming Soon</a>
             <a class="store-button secondary-store" href="${PLAY_STORE_URL}" aria-disabled="true">Google Play Coming Soon</a>
@@ -108,6 +112,16 @@ function renderSignIn() {
       </section>
 
       <section class="about-grid">
+        <article class="panel about-panel pricing-panel">
+          <p class="eyebrow">Launch pricing</p>
+          <h2>Try the whole field kit first.</h2>
+          <p>Start with every feature unlocked: mobile scouting, cloud sync, photos, maps, return notes, exports, and the web dashboard.</p>
+          <div class="price-row">
+            <strong>$6</strong>
+            <span>per year after trial</span>
+          </div>
+          <p class="muted">Free until 30 days, 100 records, or 250 photos, whichever comes first.</p>
+        </article>
         <article class="panel about-panel">
           <img class="about-image" src="/images/scout-seedling-tray.webp" alt="Seedling tray for nursery work" />
           <p class="eyebrow">About the app</p>

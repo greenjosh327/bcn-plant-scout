@@ -2275,6 +2275,14 @@ export default function App() {
                 Sign in to capture plant photos, GPS points, return notes, and
                 synced field records.
               </Text>
+              <View style={styles.trialCard}>
+                <Text style={styles.trialKicker}>Full access free trial</Text>
+                <Text style={styles.trialTitle}>30 days, 100 records, or 250 photos</Text>
+                <Text style={styles.trialText}>
+                  Then keep scouting with cloud sync, maps, photos, return
+                  notes, exports, and the web dashboard for $6/year.
+                </Text>
+              </View>
             </View>
 
             <View style={styles.panel}>
@@ -5328,6 +5336,31 @@ const styles = StyleSheet.create({
     color: "#344535",
     fontSize: 18,
     lineHeight: 27
+  },
+  trialCard: {
+    backgroundColor: "#113d22",
+    borderRadius: 8,
+    gap: 6,
+    marginTop: 10,
+    padding: 14
+  },
+  trialKicker: {
+    color: "#d2be97",
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 0.8,
+    textTransform: "uppercase"
+  },
+  trialTitle: {
+    color: "#ffffff",
+    fontSize: 19,
+    fontWeight: "900",
+    lineHeight: 24
+  },
+  trialText: {
+    color: "#edf5e8",
+    fontSize: 15,
+    lineHeight: 22
   },
   textLinkButton: {
     alignItems: "center",

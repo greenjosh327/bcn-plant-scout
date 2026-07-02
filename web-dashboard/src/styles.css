@@ -89,6 +89,29 @@ a {
   max-width: 780px;
 }
 
+.trial-banner {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #d8e3cf;
+  border-radius: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin-top: 24px;
+  max-width: 720px;
+  padding: 14px 16px;
+}
+
+.trial-banner strong {
+  color: #113d22;
+  font-size: 1.05rem;
+}
+
+.trial-banner span {
+  color: #5d422b;
+  font-weight: 800;
+}
+
 .hero-actions {
   display: flex;
   flex-wrap: wrap;
@@ -200,6 +223,35 @@ a {
 
 .about-panel h2 {
   color: #113d22;
+}
+
+.pricing-panel {
+  background: #113d22;
+  color: #f4f7ee;
+}
+
+.pricing-panel h2,
+.pricing-panel .eyebrow,
+.pricing-panel .muted {
+  color: #f4f7ee;
+}
+
+.price-row {
+  align-items: baseline;
+  display: flex;
+  gap: 12px;
+  margin: 18px 0 8px;
+}
+
+.price-row strong {
+  color: #ffffff;
+  font-size: 3.5rem;
+  line-height: 0.95;
+}
+
+.price-row span {
+  color: #d2be97;
+  font-weight: 900;
 }
 
 .about-image {
