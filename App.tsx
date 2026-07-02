@@ -382,7 +382,9 @@ export default function App() {
   const [authUserId, setAuthUserId] = useState<string | null>(null);
   const [authUserEmail, setAuthUserEmail] = useState<string | null>(null);
   const [authMessage, setAuthMessage] = useState("");
+  const [isAuthReady, setIsAuthReady] = useState(!supabase);
   const [isAuthLoading, setIsAuthLoading] = useState(false);
+  const [showEmailAuth, setShowEmailAuth] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [currentLocation, setCurrentLocation] =
     useState<Location.LocationObject | null>(null);
@@ -449,6 +451,7 @@ export default function App() {
 
   useEffect(() => {
     if (!supabase) {
+      setIsAuthReady(true);
       return;
     }
 
@@ -457,6 +460,7 @@ export default function App() {
       setAuthUserId(user?.id ?? null);
       setAuthUserEmail(user?.email ?? null);
       setAccountEmail(user?.email ?? "");
+      setIsAuthReady(true);
     });
 
     const { data } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -464,6 +468,7 @@ export default function App() {
       setAuthUserId(user?.id ?? null);
       setAuthUserEmail(user?.email ?? null);
       setAccountEmail(user?.email ?? "");
+      setIsAuthReady(true);
     });
 
     return () => {
@@ -1929,6 +1934,7 @@ export default function App() {
       }
       setAuthMessage("Signed in.");
       setAccountPassword("");
+      setScreen("home");
     } catch (error) {
       setAuthMessage(getErrorMessage(error));
     } finally {
@@ -2004,6 +2010,7 @@ export default function App() {
       if (result.type === "success") {
         await createSessionFromOAuthUrl(result.url);
         setAuthMessage("Signed in with Google.");
+        setScreen("home");
       } else if (result.type === "cancel") {
         setAuthMessage("Google sign-in was canceled.");
       } else {
@@ -2031,6 +2038,7 @@ export default function App() {
       }
       setAuthMessage("Signed out. New records will use local_user.");
       setAccountPassword("");
+      setScreen("home");
     } catch (error) {
       setAuthMessage(getErrorMessage(error));
     } finally {
@@ -2237,6 +2245,114 @@ export default function App() {
     } finally {
       setIsSyncing(false);
     }
+  }
+
+  if (!isAuthReady) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <StatusBar barStyle="dark-content" />
+        <View style={styles.lockedShell}>
+          <Image source={BCN_LOGO} style={styles.lockedLogo} />
+          <Text style={styles.lockedTitle}>BCN Plant Scout</Text>
+          <Text style={styles.lockedSubtitle}>Loading your field notebook...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!authUserId) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <StatusBar barStyle="dark-content" />
+        <KeyboardAvoidingView
+          behavior={Platform.select({ ios: "padding", android: undefined })}
+          style={styles.container}
+        >
+          <ScrollView contentContainerStyle={styles.lockedContent}>
+            <Image source={BCN_LOGO} style={styles.lockedLogo} />
+            <View style={styles.lockedHero}>
+              <Text style={styles.coverKicker}>Base Camp North</Text>
+              <Text style={styles.lockedTitle}>BCN Plant Scout</Text>
+              <Text style={styles.lockedSubtitle}>
+                Sign in to capture plant photos, GPS points, return notes, and
+                synced field records.
+              </Text>
+            </View>
+
+            <View style={styles.panel}>
+              <Text style={styles.sectionTitle}>Sign in to continue</Text>
+              <Text style={styles.panelText}>
+                Your field records sync with the private BCN dashboard at
+                scout.basecampnorthpa.com. Google sign-in is the fastest way in.
+              </Text>
+
+              {authMessage ? (
+                <View style={styles.identificationPanel}>
+                  <Text style={styles.identificationText}>{authMessage}</Text>
+                </View>
+              ) : null}
+
+              <ActionButton
+                label={isAuthLoading ? "Working..." : "Sign In with Google"}
+                onPress={signInWithGoogle}
+                disabled={isAuthLoading || !supabase}
+              />
+
+              <Pressable
+                onPress={() => setShowEmailAuth((isVisible) => !isVisible)}
+                style={styles.textLinkButton}
+              >
+                <Text style={styles.textLinkButtonText}>
+                  {showEmailAuth ? "Hide email sign-in" : "Use email instead"}
+                </Text>
+              </Pressable>
+
+              {showEmailAuth ? (
+                <>
+                  <Field
+                    label="Email"
+                    value={accountEmail}
+                    onChangeText={setAccountEmail}
+                    placeholder="you@example.com"
+                  />
+                  <Field
+                    label="Password"
+                    value={accountPassword}
+                    onChangeText={setAccountPassword}
+                    placeholder="Password"
+                    secureTextEntry
+                  />
+                  <ActionButton
+                    label={isAuthLoading ? "Working..." : "Sign In"}
+                    onPress={signInWithEmail}
+                    disabled={isAuthLoading || !supabase}
+                    variant="secondary"
+                  />
+                  <ActionButton
+                    label="Create Account"
+                    onPress={signUpWithEmail}
+                    disabled={isAuthLoading || !supabase}
+                    variant="secondary"
+                  />
+                  <ActionButton
+                    label="Send Password Reset Email"
+                    onPress={sendPasswordResetEmail}
+                    disabled={isAuthLoading || !supabase}
+                    variant="secondary"
+                  />
+                </>
+              ) : null}
+
+              {!supabase ? (
+                <Text style={styles.hintText}>
+                  Supabase is not configured, so sign-in is unavailable.
+                </Text>
+              ) : null}
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    );
   }
 
   return (
@@ -5258,6 +5374,52 @@ const styles = StyleSheet.create({
     paddingBottom: 36,
     paddingTop: 30,
     gap: 10
+  },
+  lockedShell: {
+    alignItems: "center",
+    flex: 1,
+    justifyContent: "center",
+    padding: 24
+  },
+  lockedContent: {
+    gap: 12,
+    padding: 16,
+    paddingBottom: 36,
+    paddingTop: 42
+  },
+  lockedLogo: {
+    alignSelf: "center",
+    height: 88,
+    resizeMode: "contain",
+    width: "100%"
+  },
+  lockedHero: {
+    backgroundColor: "#ffffff",
+    borderColor: "#d9e2cf",
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 8,
+    padding: 18
+  },
+  lockedTitle: {
+    color: "#103d21",
+    fontSize: 33,
+    fontWeight: "900",
+    lineHeight: 38
+  },
+  lockedSubtitle: {
+    color: "#344535",
+    fontSize: 18,
+    lineHeight: 27
+  },
+  textLinkButton: {
+    alignItems: "center",
+    paddingVertical: 10
+  },
+  textLinkButtonText: {
+    color: "#1f6d35",
+    fontSize: 15,
+    fontWeight: "800"
   },
   topBar: {
     alignItems: "center",
