@@ -32,6 +32,7 @@ import {
 WebBrowser.maybeCompleteAuthSession();
 
 const STORAGE_KEY = "bcnPlantTracker.observations.v1";
+const TRIAL_STARTED_AT_KEY = "bcnPlantTracker.trialStartedAt.v1";
 const PLANTNET_API_KEY = process.env.EXPO_PUBLIC_PLANTNET_API_KEY ?? "";
 const PLANTNET_ENDPOINT = "https://my-api.plantnet.org/v2/identify/all";
 const BCN_LOGO = require("./assets/bcn-logo.png");
@@ -47,6 +48,13 @@ const DELETE_ACCOUNT_URL =
   "https://greenjosh327.github.io/bcn-plant-scout/delete-account/";
 const WEB_DASHBOARD_URL = "https://scout.basecampnorthpa.com";
 const AUTH_REDIRECT_PATH = "auth/callback";
+const TRIAL_DAYS = 30;
+const TRIAL_RECORD_LIMIT = 100;
+const TRIAL_PHOTO_LIMIT = 250;
+const SUPER_ACCOUNT_EMAILS = [
+  "greenjosh327@gmail.com",
+  "basecampnorth.pa@gmail.com"
+];
 const AUTH_REDIRECT_URL = makeRedirectUri({
   scheme: "bcnplantscout",
   path: AUTH_REDIRECT_PATH
@@ -381,6 +389,7 @@ export default function App() {
   const [authUserEmail, setAuthUserEmail] = useState<string | null>(null);
   const [authMessage, setAuthMessage] = useState("");
   const [isAuthReady, setIsAuthReady] = useState(!supabase);
+  const [trialStartedAt, setTrialStartedAt] = useState<string | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(false);
   const [showEmailAuth, setShowEmailAuth] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -396,6 +405,10 @@ export default function App() {
 
   useEffect(() => {
     loadObservations();
+  }, []);
+
+  useEffect(() => {
+    loadTrialStart();
   }, []);
 
   useEffect(() => {
@@ -676,6 +689,17 @@ export default function App() {
     };
   }, [observations]);
 
+  const trialStatus = useMemo(
+    () =>
+      getTrialStatus({
+        startedAt: trialStartedAt,
+        observations,
+        totalPhotos: cloudStats.totalPhotos,
+        authEmail: authUserEmail
+      }),
+    [authUserEmail, cloudStats.totalPhotos, observations, trialStartedAt]
+  );
+
   const selectedObservation = useMemo(
     () =>
       selectedObservationId
@@ -793,9 +817,39 @@ export default function App() {
     }
   }
 
+  async function loadTrialStart() {
+    const stored = await AsyncStorage.getItem(TRIAL_STARTED_AT_KEY);
+    if (stored) {
+      setTrialStartedAt(stored);
+      return;
+    }
+
+    const startedAt = new Date().toISOString();
+    setTrialStartedAt(startedAt);
+    await AsyncStorage.setItem(TRIAL_STARTED_AT_KEY, startedAt);
+  }
+
   async function persistObservations(next: PlantObservation[]) {
     setObservations(next);
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  }
+
+  function showSoftLimitNoticeIfNeeded(nextObservations: PlantObservation[]) {
+    const nextStatus = getTrialStatus({
+      startedAt: trialStartedAt,
+      observations: nextObservations,
+      totalPhotos: countObservationPhotos(nextObservations),
+      authEmail: authUserEmail
+    });
+
+    if (!nextStatus.exceeded || nextStatus.isSuperAccount) {
+      return;
+    }
+
+    Alert.alert(
+      "Upgrade coming soon",
+      `${nextStatus.summary}\n\nYour record was saved. Paid access is not turned on yet, so keep scouting for now.`
+    );
   }
 
   async function launchPhotoPicker(source: "camera" | "library") {
@@ -1051,6 +1105,7 @@ export default function App() {
       if (authUserId && supabase) {
         await uploadPendingRecords(nextObservations);
       }
+      showSoftLimitNoticeIfNeeded(nextObservations);
       setDraft(blankDraft);
       setPhoto(null);
       setLocation(null);
@@ -3412,6 +3467,18 @@ export default function App() {
               </View>
 
               <View style={styles.detailInfoBox}>
+                <Text style={styles.detailInfoLabel}>Launch access</Text>
+                <Text style={styles.detailInfoText}>{trialStatus.title}</Text>
+                <Text style={styles.hintText}>{trialStatus.summary}</Text>
+                {trialStatus.exceeded ? (
+                  <Text style={styles.hintText}>
+                    Upgrade is coming soon. For early access, contact BCN and keep
+                    scouting.
+                  </Text>
+                ) : null}
+              </View>
+
+              <View style={styles.detailInfoBox}>
                 <Text style={styles.detailInfoLabel}>Sync</Text>
                 <Text style={styles.detailInfoText}>
                   Last synced: {formatLastSyncedAt(getLatestSyncedAt(observations))}
@@ -3602,6 +3669,11 @@ export default function App() {
                 rebuild local ecosystems, support pollinators, and preserve native
                 forests for future generations.
               </Text>
+              <View style={styles.detailInfoBox}>
+                <Text style={styles.detailInfoLabel}>App access</Text>
+                <Text style={styles.detailInfoText}>{trialStatus.title}</Text>
+                <Text style={styles.hintText}>{trialStatus.summary}</Text>
+              </View>
               <ActionButton
                 label="Visit BCN Website"
                 onPress={() =>
@@ -4451,6 +4523,81 @@ function toSupabasePhotoRows(observation: PlantObservation, userId: string) {
     sync_status: "synced",
     sync_error: null
   }));
+}
+
+type TrialStatus = {
+  title: string;
+  summary: string;
+  exceeded: boolean;
+  isSuperAccount: boolean;
+  daysUsed: number;
+  recordsUsed: number;
+  photosUsed: number;
+};
+
+function getTrialStatus({
+  startedAt,
+  observations,
+  totalPhotos,
+  authEmail
+}: {
+  startedAt: string | null;
+  observations: PlantObservation[];
+  totalPhotos: number;
+  authEmail: string | null;
+}): TrialStatus {
+  const normalizedEmail = authEmail?.trim().toLowerCase() ?? "";
+  const isSuperAccount = SUPER_ACCOUNT_EMAILS.includes(normalizedEmail);
+  const recordsUsed = observations.filter((item) => !item.deletedAt).length;
+  const photosUsed = totalPhotos;
+  const daysUsed = startedAt
+    ? Math.max(
+        1,
+        Math.floor(
+          (Date.now() - new Date(startedAt).getTime()) / (1000 * 60 * 60 * 24)
+        ) + 1
+      )
+    : 1;
+
+  if (isSuperAccount) {
+    return {
+      title: "Owner access active",
+      summary: "Unlimited BCN owner account. Trial limits do not apply.",
+      exceeded: false,
+      isSuperAccount,
+      daysUsed,
+      recordsUsed,
+      photosUsed
+    };
+  }
+
+  const exceeded =
+    daysUsed > TRIAL_DAYS ||
+    recordsUsed >= TRIAL_RECORD_LIMIT ||
+    photosUsed >= TRIAL_PHOTO_LIMIT;
+
+  if (exceeded) {
+    return {
+      title: "Launch trial complete",
+      summary:
+        "Upgrade is coming soon. Your records still save, sync, and export while BCN turns on billing.",
+      exceeded,
+      isSuperAccount,
+      daysUsed,
+      recordsUsed,
+      photosUsed
+    };
+  }
+
+  return {
+    title: "Launch trial active",
+    summary: "Full field access is active. Keep scouting.",
+    exceeded,
+    isSuperAccount,
+    daysUsed,
+    recordsUsed,
+    photosUsed
+  };
 }
 
 function fromSupabaseObservationRow(
