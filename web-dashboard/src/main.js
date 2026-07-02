@@ -8,6 +8,12 @@ const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 const app = document.querySelector("#app");
 const PLANT_PHOTOS_BUCKET = "plant-photos";
 const APP_STORE_URL = "#";
+const APPLE_TEST_EMAIL = "basecampsouth.pa@gmail.com";
+const APPLE_TEST_SUBJECT = encodeURIComponent("BCN Plant Scout iOS closed testing request");
+const APPLE_TEST_BODY = encodeURIComponent(
+  "Hi Base Camp North,\n\nI would like to join the BCN Plant Scout iOS closed test through TestFlight.\n\nApple ID email to invite:\n\nName:\n\nThanks!"
+);
+const APPLE_TEST_MAILTO = `mailto:${APPLE_TEST_EMAIL}?subject=${APPLE_TEST_SUBJECT}&body=${APPLE_TEST_BODY}`;
 const GOOGLE_GROUP_URL = "https://groups.google.com/g/bcn-plant-scout";
 const PLAY_TESTING_URL =
   "https://play.google.com/apps/testing/com.basecampnorth.bcnplantscout";
@@ -114,25 +120,34 @@ function renderSignIn() {
       </section>
 
       <section class="tester-section">
-        <div class="panel tester-panel">
-          <p class="eyebrow">Help test BCN Plant Scout</p>
-          <h2>Android closed testing</h2>
-          <p>Testing is open to invited Google accounts. Join the tester group first, enroll in the closed test, then install the app from Google Play.</p>
-          <div class="tester-steps">
-            <a href="${GOOGLE_GROUP_URL}" target="_blank" rel="noreferrer">
-              <strong>1</strong>
-              <span>Join Google Group</span>
-            </a>
-            <a href="${PLAY_TESTING_URL}" target="_blank" rel="noreferrer">
-              <strong>2</strong>
-              <span>Enroll in Testing</span>
-            </a>
-            <a href="${PLAY_STORE_URL}" target="_blank" rel="noreferrer">
-              <strong>3</strong>
-              <span>Open App Listing</span>
-            </a>
+        <div class="tester-grid">
+          <div class="panel tester-panel">
+            <p class="eyebrow">Help test BCN Plant Scout</p>
+            <h2>Android closed testing</h2>
+            <p>Testing is open to invited Google accounts. Join the tester group first, enroll in the closed test, then install the app from Google Play.</p>
+            <div class="tester-steps">
+              <a href="${GOOGLE_GROUP_URL}" target="_blank" rel="noreferrer">
+                <strong>1</strong>
+                <span>Join Google Group</span>
+              </a>
+              <a href="${PLAY_TESTING_URL}" target="_blank" rel="noreferrer">
+                <strong>2</strong>
+                <span>Enroll in Testing</span>
+              </a>
+              <a href="${PLAY_STORE_URL}" target="_blank" rel="noreferrer">
+                <strong>3</strong>
+                <span>Open App Listing</span>
+              </a>
+            </div>
+            <p class="muted small-note">If Google says the app is not available, make sure you joined the tester group with the same Google account used on your phone.</p>
           </div>
-          <p class="muted small-note">If Google says the app is not available, make sure you joined the tester group with the same Google account used on your phone.</p>
+          <div class="panel tester-panel">
+            <p class="eyebrow">Apple TestFlight</p>
+            <h2>iPhone closed testing</h2>
+            <p>Want to test on iPhone? Send an email and include the Apple ID email address you use for TestFlight. BCN will invite you when the next iOS build is ready.</p>
+            <a class="store-button tester-mail-button" href="${APPLE_TEST_MAILTO}">Email to Join iOS Test</a>
+            <p class="muted small-note">This opens a ready-to-send email request to ${APPLE_TEST_EMAIL}.</p>
+          </div>
         </div>
       </section>
 

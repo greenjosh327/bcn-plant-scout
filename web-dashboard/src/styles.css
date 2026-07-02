@@ -78,8 +78,8 @@ a {
 .brand-mark {
   display: block;
   height: auto;
-  margin: 0 0 26px;
-  max-width: min(420px, 100%);
+  margin: 0 auto 34px;
+  max-width: min(560px, 100%);
   mix-blend-mode: multiply;
 }
 
@@ -249,6 +249,12 @@ a {
   background: #ffffff;
 }
 
+.tester-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: 1.4fr 0.9fr;
+}
+
 .tester-panel h2 {
   color: #113d22;
 }
@@ -270,6 +276,12 @@ a {
   gap: 12px;
   min-height: 72px;
   padding: 14px;
+}
+
+.tester-mail-button {
+  justify-content: center;
+  margin: 20px 0 12px;
+  width: 100%;
 }
 
 .tester-steps strong {
@@ -714,6 +726,7 @@ code {
   }
 
   .hero,
+  .tester-grid,
   .about-grid,
   .reviews-grid,
   .tester-steps {
