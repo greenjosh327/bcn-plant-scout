@@ -1012,7 +1012,11 @@ export default function App() {
       ...currentDraft,
       commonName: suggestion.commonName || currentDraft.commonName,
       scientificName: suggestion.scientificName || currentDraft.scientificName,
-      otherNames: suggestion.otherNames,
+      otherNames: mergeOtherNames(
+        suggestion.commonName || currentDraft.commonName,
+        suggestion.otherNames,
+        currentDraft.commonName
+      ),
       confidenceScore: suggestion.confidenceScore,
       identificationStatus: "suggested",
       identificationError: undefined,
@@ -1060,6 +1064,8 @@ export default function App() {
       const savedPhoto = await copyPickedPhotoToAppStorage(photo);
       const primaryPhotoFileName = getFileName(savedPhoto.uri);
       const ownerId = existingObservation?.ownerId ?? authUserId ?? LOCAL_OWNER_ID;
+      const commonName = draft.commonName.trim();
+      const otherNames = mergeOtherNames(commonName, draft.otherNames);
 
       const observation: PlantObservation = {
         id: observationId,
@@ -1071,9 +1077,9 @@ export default function App() {
         lastSyncedAt: existingObservation?.lastSyncedAt,
         createdAt: existingObservation?.createdAt ?? now,
         updatedAt: now,
-        commonName: draft.commonName.trim(),
+        commonName,
         scientificName: draft.scientificName.trim() || undefined,
-        otherNames: draft.otherNames.length > 0 ? draft.otherNames : undefined,
+        otherNames: otherNames.length > 0 ? otherNames : undefined,
         confidenceScore: draft.confidenceScore,
         identificationStatus: draft.identificationStatus ?? "manual",
         identificationError: draft.identificationError,
@@ -2739,7 +2745,17 @@ export default function App() {
               {draft.otherNames.length > 0 ? (
                 <NameSuggestions
                   names={draft.otherNames}
-                  onSelect={(commonName) => setDraft({ ...draft, commonName })}
+                  onSelect={(commonName) =>
+                    setDraft((currentDraft) => ({
+                      ...currentDraft,
+                      commonName,
+                      otherNames: mergeOtherNames(
+                        commonName,
+                        currentDraft.otherNames,
+                        currentDraft.commonName
+                      )
+                    }))
+                  }
                 />
               ) : null}
               <Field
@@ -4066,7 +4082,7 @@ function MapObservationSummary({
             label="Interest"
             value={formatCollectionInterests(observation)}
           />
-          <MetaChip label="Return" value={observation.returnDate ?? ""} />
+          <MetaChip label="Return Date" value={observation.returnDate ?? ""} />
           <MetaChip label="Distance" value={distance ?? ""} />
         </View>
         <View style={styles.cardActions}>
@@ -4129,8 +4145,10 @@ function PlantShareCard({
             label="Interest"
             value={formatCollectionInterests(observation) || "observation"}
           />
-          <ShareCardChip label="Return" value={observation.returnDate || "not set"} />
-          <ShareCardChip label="Location" value="saved in app" />
+          <ShareCardChip
+            label="Return Date"
+            value={observation.returnDate || "not set"}
+          />
         </View>
         {note ? (
           <View style={styles.shareCardNoteBox}>
@@ -4246,7 +4264,7 @@ function ObservationCard({
           />
         </View>
         {observation.returnDate ? (
-          <Text style={styles.cardMeta}>Return: {observation.returnDate}</Text>
+          <Text style={styles.cardMeta}>Return Date: {observation.returnDate}</Text>
         ) : null}
         {observation.reminderScheduledFor ? (
           <Text style={styles.cardMeta}>
@@ -4394,19 +4412,13 @@ function ObservationDetail({
         <MetaChip label="Sync" value={observation.syncStatus ?? ""} />
       </View>
 
-      <View style={styles.detailInfoBox}>
-        <Text style={styles.detailInfoLabel}>Location</Text>
-        <Text style={styles.detailInfoText}>
-          {formatCoordinate(observation.latitude)},{" "}
-          {formatCoordinate(observation.longitude)}
-        </Text>
-      </View>
-
       {observation.returnDate || observation.gatherNotes ? (
         <View style={styles.detailInfoBox}>
           <Text style={styles.detailInfoLabel}>Return plan</Text>
           {observation.returnDate ? (
-            <Text style={styles.detailInfoText}>Return: {observation.returnDate}</Text>
+            <Text style={styles.detailInfoText}>
+              Return Date: {observation.returnDate}
+            </Text>
           ) : null}
           {observation.reminderScheduledFor ? (
             <Text style={styles.detailInfoText}>
@@ -5172,6 +5184,31 @@ function formatCollectionInterests(observation: PlantObservation) {
     observation.collectionTypes ??
     (observation.collectionType ? [observation.collectionType] : [])
   ).join(", ");
+}
+
+function mergeOtherNames(
+  commonName: string,
+  names: string[],
+  previousCommonName?: string
+) {
+  const normalizedCommonName = commonName.trim().toLowerCase();
+  const candidates = [...names, previousCommonName ?? ""];
+  const seen = new Set<string>();
+
+  return candidates
+    .map((name) => name.trim())
+    .filter((name) => {
+      if (!name || name.toLowerCase() === normalizedCommonName) {
+        return false;
+      }
+      const key = name.toLowerCase();
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 12);
 }
 
 function getCollectionTypes(observation: PlantObservation) {

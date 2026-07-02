@@ -612,7 +612,7 @@ function renderRecordCard(record) {
           ${renderMeta("Date", formatDate(record.observed_at))}
           ${renderMeta("Status", record.collection_status ?? "unknown")}
           ${renderMeta("Interest", (record.collection_interests ?? []).join(", ") || "none")}
-          ${renderMeta("Return", record.return_date || "not set")}
+          ${renderMeta("Return Date", record.return_date || "not set")}
           ${
             activeFilters.advanced
               ? `
@@ -742,7 +742,7 @@ function renderDetailModal() {
           ${renderMeta("Observed", formatDate(record.observed_at))}
           ${renderMeta("Status", record.collection_status ?? "unknown")}
           ${renderMeta("Interest", (record.collection_interests ?? []).join(", ") || "none")}
-          ${renderMeta("Return", record.return_date || "not set")}
+          ${renderMeta("Return Date", record.return_date || "not set")}
           ${renderMeta("Accuracy", record.accuracy_meters ? `${Number(record.accuracy_meters).toFixed(1)} m` : "n/a")}
           ${renderMeta("Privacy", record.privacy_level ?? "private")}
         </div>
@@ -857,8 +857,7 @@ async function createPlantCardBlob(record) {
   drawCanvasChip(ctx, 72, 858, "Date", formatDate(record.observed_at));
   drawCanvasChip(ctx, 346, 858, "Status", record.collection_status ?? "field record");
   drawCanvasChip(ctx, 620, 858, "Interest", (record.collection_interests ?? []).join(", ") || "observation");
-  drawCanvasChip(ctx, 72, 1010, "Return", record.return_date || "not set");
-  drawCanvasChip(ctx, 346, 1010, "Location", "saved in app");
+  drawCanvasChip(ctx, 72, 1010, "Return Date", record.return_date || "not set");
 
   const notes = record.notes || record.gather_notes || "";
   if (notes) {
