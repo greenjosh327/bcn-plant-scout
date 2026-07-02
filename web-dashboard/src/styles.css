@@ -75,6 +75,14 @@ a {
   padding: clamp(28px, 5vw, 56px);
 }
 
+.brand-mark {
+  display: block;
+  height: auto;
+  margin: 0 0 26px;
+  max-width: min(420px, 100%);
+  mix-blend-mode: multiply;
+}
+
 .hero-lede {
   color: #324832;
   font-size: clamp(1.2rem, 2vw, 1.65rem);
@@ -122,6 +130,18 @@ a {
   padding: 28px;
   position: relative;
   overflow: hidden;
+}
+
+.hero-kit-image {
+  aspect-ratio: 4 / 3;
+  border: 1px solid rgba(244, 247, 238, 0.22);
+  border-radius: 8px;
+  display: block;
+  margin: 16px 0 22px;
+  object-fit: cover;
+  position: relative;
+  width: 100%;
+  z-index: 1;
 }
 
 .hero-card::after {
@@ -175,10 +195,20 @@ a {
 
 .about-panel {
   background: #fbfdf8;
+  overflow: hidden;
 }
 
 .about-panel h2 {
   color: #113d22;
+}
+
+.about-image {
+  aspect-ratio: 16 / 10;
+  border-radius: 6px;
+  display: block;
+  margin: 0 0 18px;
+  object-fit: cover;
+  width: 100%;
 }
 
 .reviews-section,

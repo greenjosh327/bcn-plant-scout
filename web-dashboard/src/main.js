@@ -81,6 +81,7 @@ function renderSignIn() {
     <main class="marketing-page">
       <section class="hero">
         <div class="hero-copy">
+          <img class="brand-mark" src="/images/bcn-logo-with-text.png" alt="Base Camp North" />
           <p class="eyebrow">Base Camp North</p>
           <h1>BCN Plant Scout</h1>
           <p class="hero-lede">A rugged field notebook for tree nursery work: capture plant photos, GPS points, return notes, seed sources, and synced records you can review from the computer.</p>
@@ -92,6 +93,7 @@ function renderSignIn() {
         </div>
         <div class="hero-card" aria-label="BCN Plant Scout feature preview">
           <p class="eyebrow">Field Kit</p>
+          <img class="hero-kit-image" src="/images/scout-field-kit.webp" alt="Field notebook kit with scouting tools" />
           <div class="notebook-lines">
             <span>Photo records with GPS</span>
             <span>Return and harvest notes</span>
@@ -107,16 +109,19 @@ function renderSignIn() {
 
       <section class="about-grid">
         <article class="panel about-panel">
+          <img class="about-image" src="/images/scout-seedling-tray.webp" alt="Seedling tray for nursery work" />
           <p class="eyebrow">About the app</p>
           <h2>Built for finding the plant again.</h2>
           <p>BCN Plant Scout turns a field photo into a useful nursery record: what it is, where it is, why it matters, when to come back, and whether it is ready for seeds, cuttings, fruit, nuts, or scion wood.</p>
         </article>
         <article class="panel about-panel">
+          <img class="about-image" src="/images/scout-nut-pile.webp" alt="Collected nuts and seeds" />
           <p class="eyebrow">Desktop companion</p>
           <h2>Scout in the field. Review at the desk.</h2>
           <p>Use the mobile app outside, then open the web dashboard later to review photos, map points, return dates, and collection notes on a bigger screen.</p>
         </article>
         <article class="panel about-panel">
+          <img class="about-image" src="/images/scout-berry-branch.webp" alt="Berry branch ready for field scouting" />
           <p class="eyebrow">Base Camp North</p>
           <h2>Nursery work, not just plant ID.</h2>
           <p>This is for real scouting: native trees, seed collecting, berry checks, return trips, and building a better memory of the land one observation at a time.</p>
