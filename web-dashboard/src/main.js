@@ -88,14 +88,14 @@ function renderSignIn() {
             <a class="store-button" href="${APP_STORE_URL}" aria-disabled="true">App Store Coming Soon</a>
             <a class="store-button secondary-store" href="${PLAY_STORE_URL}" aria-disabled="true">Google Play Coming Soon</a>
           </div>
-          <p class="muted small-note">Already using the app? Sign in below to open your private dashboard.</p>
+          <p class="muted small-note">Already using the app? Sign in below to continue your field work.</p>
         </div>
         <div class="hero-card" aria-label="BCN Plant Scout feature preview">
           <p class="eyebrow">Field Kit</p>
           <div class="notebook-lines">
             <span>Photo records with GPS</span>
             <span>Return and harvest notes</span>
-            <span>Private synced dashboard</span>
+            <span>Desktop map and record review</span>
           </div>
           <div class="hero-stat-row">
             <strong>Plants</strong>
@@ -112,9 +112,9 @@ function renderSignIn() {
           <p>BCN Plant Scout turns a field photo into a useful nursery record: what it is, where it is, why it matters, when to come back, and whether it is ready for seeds, cuttings, fruit, nuts, or scion wood.</p>
         </article>
         <article class="panel about-panel">
-          <p class="eyebrow">Private first</p>
-          <h2>Your records stay behind login.</h2>
-          <p>The web dashboard is for signed-in users. Exact GPS points, photos, notes, and return planning are visible only after you log in with the same account used in the mobile app.</p>
+          <p class="eyebrow">Desktop companion</p>
+          <h2>Scout in the field. Review at the desk.</h2>
+          <p>Use the mobile app outside, then open the web dashboard later to review photos, map points, return dates, and collection notes on a bigger screen.</p>
         </article>
         <article class="panel about-panel">
           <p class="eyebrow">Base Camp North</p>
@@ -139,9 +139,9 @@ function renderSignIn() {
 
       <section class="login-shell">
         <div class="panel login-panel">
-          <p class="eyebrow">Private dashboard</p>
+          <p class="eyebrow">Dashboard access</p>
           <h2>Sign In</h2>
-          <p class="muted">Use the same account as the mobile app. Records stay private under your account.</p>
+          <p class="muted">Use the same account as the mobile app to open your synced field dashboard.</p>
           <button id="google-sign-in" class="google-button full">Sign In With Google</button>
           <div class="login-divider"><span>or use email</span></div>
         <form id="email-form" class="form">
