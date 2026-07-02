@@ -1283,6 +1283,30 @@ export default function App() {
     );
   }
 
+  async function shareObservationCard(observation: PlantObservation) {
+    try {
+      if (!(await Sharing.isAvailableAsync())) {
+        Alert.alert("Sharing unavailable", observation.commonName);
+        return;
+      }
+
+      const cardSvg = await createPlantCardSvg(observation);
+      const fileName = `${toSafeFileName(observation.commonName)}-plant-card.svg`;
+      const fileUri = `${FileSystem.documentDirectory}${fileName}`;
+
+      await FileSystem.writeAsStringAsync(fileUri, cardSvg, {
+        encoding: FileSystem.EncodingType.UTF8
+      });
+
+      await Sharing.shareAsync(fileUri, {
+        mimeType: "image/svg+xml",
+        dialogTitle: `Share ${observation.commonName} plant card`
+      });
+    } catch (error) {
+      Alert.alert("Plant card export failed", getErrorMessage(error));
+    }
+  }
+
   async function sharePhotoUri(photoUri: string, dialogTitle: string) {
     try {
       if (!(await Sharing.isAvailableAsync())) {
@@ -3031,6 +3055,7 @@ export default function App() {
                     onAddPhoto={() => addPhotoToObservation(observation)}
                     onOpenMap={() => openObservationMap(observation)}
                     onSharePhoto={() => shareObservationPhoto(observation)}
+                    onShareCard={() => shareObservationCard(observation)}
                     onShareExtraPhoto={(photoItem) =>
                       sharePhotoUri(photoItem.uri, "Share extra photo")
                     }
@@ -3392,6 +3417,7 @@ export default function App() {
                 onOpenMap={() => openObservationMap(selectedObservation)}
                 onAddPhoto={() => addPhotoToObservation(selectedObservation)}
                 onSharePhoto={() => shareObservationPhoto(selectedObservation)}
+                onShareCard={() => shareObservationCard(selectedObservation)}
                 onShareExtraPhoto={(photoItem) =>
                   sharePhotoUri(photoItem.uri, "Share extra photo")
                 }
@@ -4023,6 +4049,7 @@ function ObservationCard({
   onAddPhoto,
   onOpenMap,
   onSharePhoto,
+  onShareCard,
   onShareExtraPhoto,
   onDeleteExtraPhoto,
   onMakePrimary,
@@ -4035,6 +4062,7 @@ function ObservationCard({
   onAddPhoto: () => void;
   onOpenMap: () => void;
   onSharePhoto: () => void;
+  onShareCard: () => void;
   onShareExtraPhoto: (photoItem: ObservationPhoto) => void;
   onDeleteExtraPhoto: (photoItem: ObservationPhoto) => void;
   onMakePrimary: (photoItem: ObservationPhoto) => void;
@@ -4155,6 +4183,9 @@ function ObservationCard({
           <Pressable onPress={onSharePhoto} style={styles.cardActionButton}>
             <Text style={styles.cardActionButtonText}>Share Photo</Text>
           </Pressable>
+          <Pressable onPress={onShareCard} style={styles.cardActionButton}>
+            <Text style={styles.cardActionButtonText}>Share Card</Text>
+          </Pressable>
           {observation.syncStatus === "sync failed" ? (
             <Pressable onPress={onRetryPhotos} style={styles.cardActionButton}>
               <Text style={styles.cardActionButtonText}>Retry Photos</Text>
@@ -4176,6 +4207,7 @@ function ObservationDetail({
   onOpenMap,
   onAddPhoto,
   onSharePhoto,
+  onShareCard,
   onShareExtraPhoto,
   onDeleteExtraPhoto,
   onMakePrimary
@@ -4186,6 +4218,7 @@ function ObservationDetail({
   onOpenMap: () => void;
   onAddPhoto: () => void;
   onSharePhoto: () => void;
+  onShareCard: () => void;
   onShareExtraPhoto: (photoItem: ObservationPhoto) => void;
   onDeleteExtraPhoto: (photoItem: ObservationPhoto) => void;
   onMakePrimary: (photoItem: ObservationPhoto) => void;
@@ -4301,6 +4334,11 @@ function ObservationDetail({
         <ActionButton
           label="Share Photo"
           onPress={onSharePhoto}
+          variant="secondary"
+        />
+        <ActionButton
+          label="Share Plant Card"
+          onPress={onShareCard}
           variant="secondary"
         />
       </View>
@@ -4512,6 +4550,119 @@ function toGeoJson(rows: PlantObservation[]) {
     null,
     2
   );
+}
+
+async function createPlantCardSvg(observation: PlantObservation) {
+  let imageTag = `
+    <rect x="64" y="64" width="952" height="520" rx="28" fill="#e7ecde"/>
+    <text x="540" y="330" text-anchor="middle" font-size="42" font-family="Arial, sans-serif" font-weight="800" fill="#4b5d42">Plant photo saved</text>
+  `;
+
+  try {
+    const photoInfo = await FileSystem.getInfoAsync(observation.photoUri);
+    if (photoInfo.exists) {
+      const photoBase64 = await FileSystem.readAsStringAsync(observation.photoUri, {
+        encoding: FileSystem.EncodingType.Base64
+      });
+      imageTag = `
+        <clipPath id="photoClip"><rect x="64" y="64" width="952" height="520" rx="28"/></clipPath>
+        <image x="64" y="64" width="952" height="520" preserveAspectRatio="xMidYMid slice" href="data:image/jpeg;base64,${photoBase64}" clip-path="url(#photoClip)"/>
+      `;
+    }
+  } catch {
+    // If the cached original photo is gone, the card still shares the saved record.
+  }
+
+  const commonName = escapeXml(observation.commonName || "Plant observation");
+  const scientificName = escapeXml(observation.scientificName ?? "");
+  const date = escapeXml(formatDate(observation.observedAt));
+  const status = escapeXml(observation.collectionStatus ?? "field record");
+  const interest = escapeXml(formatCollectionInterests(observation) || "observation");
+  const returnDate = escapeXml(observation.returnDate || "not set");
+  const notes = observation.notes || observation.gatherNotes || "";
+  const noteLines = wrapSvgText(notes, 44, 3);
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350" viewBox="0 0 1080 1350">
+  <rect width="1080" height="1350" rx="64" fill="#f5f8ef"/>
+  <rect x="32" y="32" width="1016" height="1286" rx="48" fill="#fbfdf8" stroke="#d8e3cf" stroke-width="4"/>
+  ${imageTag}
+  <text x="72" y="660" font-size="30" font-family="Arial, sans-serif" font-weight="800" letter-spacing="3" fill="#6a765f">BASE CAMP NORTH</text>
+  <text x="72" y="736" font-size="76" font-family="Arial, sans-serif" font-weight="900" fill="#113d22">${commonName}</text>
+  ${
+    scientificName
+      ? `<text x="72" y="798" font-size="42" font-family="Arial, sans-serif" font-style="italic" fill="#4b5d42">${scientificName}</text>`
+      : ""
+  }
+  ${svgChip(72, 858, "Date", date)}
+  ${svgChip(346, 858, "Status", status)}
+  ${svgChip(620, 858, "Interest", interest)}
+  ${svgChip(72, 1010, "Return", returnDate)}
+  ${svgChip(346, 1010, "Location", "saved in app")}
+  ${
+    noteLines.length
+      ? `<text x="72" y="1188" font-size="28" font-family="Arial, sans-serif" font-weight="800" fill="#6a765f">FIELD NOTE</text>${noteLines
+          .map(
+            (line, index) =>
+              `<text x="72" y="${1230 + index * 36}" font-size="30" font-family="Arial, sans-serif" fill="#324832">${escapeXml(line)}</text>`
+          )
+          .join("")}`
+      : ""
+  }
+  <rect x="680" y="1168" width="320" height="86" rx="24" fill="#113d22"/>
+  <text x="840" y="1208" text-anchor="middle" font-size="24" font-family="Arial, sans-serif" font-weight="900" fill="#f5f8ef">BCN Plant Scout</text>
+  <text x="840" y="1240" text-anchor="middle" font-size="20" font-family="Arial, sans-serif" font-weight="700" fill="#d2be97">basecampnorthpa.com</text>
+</svg>`;
+}
+
+function svgChip(x: number, y: number, label: string, value: string) {
+  const displayValue = value.length > 20 ? `${value.slice(0, 18)}...` : value;
+  return `
+    <rect x="${x}" y="${y}" width="240" height="112" rx="18" fill="#eef5e9" stroke="#d8e3cf" stroke-width="3"/>
+    <text x="${x + 24}" y="${y + 42}" font-size="24" font-family="Arial, sans-serif" font-weight="900" letter-spacing="2" fill="#6a765f">${escapeXml(label.toUpperCase())}</text>
+    <text x="${x + 24}" y="${y + 82}" font-size="28" font-family="Arial, sans-serif" font-weight="900" fill="#113d22">${escapeXml(displayValue)}</text>
+  `;
+}
+
+function wrapSvgText(value: string, maxChars: number, maxLines: number) {
+  const words = value.trim().split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let current = "";
+
+  for (const word of words) {
+    const next = current ? `${current} ${word}` : word;
+    if (next.length > maxChars) {
+      if (current) {
+        lines.push(current);
+      }
+      current = word;
+    } else {
+      current = next;
+    }
+
+    if (lines.length === maxLines) {
+      break;
+    }
+  }
+
+  if (current && lines.length < maxLines) {
+    lines.push(current);
+  }
+
+  if (words.join(" ").length > lines.join(" ").length && lines.length > 0) {
+    lines[lines.length - 1] = `${lines[lines.length - 1].replace(/\.*$/, "")}...`;
+  }
+
+  return lines;
+}
+
+function escapeXml(value: string) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
 }
 
 function toSupabaseObservationRow(

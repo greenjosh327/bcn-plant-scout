@@ -578,6 +578,11 @@ function renderRecords(filtered) {
       renderDetailModal();
     });
   });
+  document.querySelectorAll("[data-card-id]").forEach((button) => {
+    button.addEventListener("click", () => {
+      sharePlantCard(button.getAttribute("data-card-id"));
+    });
+  });
   document.querySelectorAll("[data-delete-id]").forEach((button) => {
     button.addEventListener("click", () => {
       deleteCloudObservation(button.getAttribute("data-delete-id"));
@@ -624,6 +629,7 @@ function renderRecordCard(record) {
           <button class="link-button" type="button" data-detail-id="${escapeHtml(record.id)}">View Details</button>
           <a href="${mapsUrl}" target="_blank" rel="noreferrer">Open Map</a>
           ${photoUrl ? `<a href="${photoUrl}" target="_blank" rel="noreferrer">Open Photo</a>` : ""}
+          <button class="link-button" type="button" data-card-id="${escapeHtml(record.id)}">Share Plant Card</button>
           <button class="link-button danger-link" type="button" data-delete-id="${escapeHtml(record.id)}">Delete</button>
         </div>
       </div>
@@ -745,6 +751,7 @@ function renderDetailModal() {
         <div class="photo-strip">${photoTiles || `<div class="photo-placeholder">No synced photos</div>`}</div>
         <div class="actions">
           <a href="${mapsUrl}" target="_blank" rel="noreferrer">Open in Google Maps</a>
+          <button class="link-button" type="button" id="share-detail-card">Share Plant Card</button>
           <button class="link-button danger-link" type="button" id="delete-detail">Delete Plant</button>
         </div>
       </article>
@@ -764,6 +771,283 @@ function renderDetailModal() {
   document.querySelector("#delete-detail").addEventListener("click", () => {
     deleteCloudObservation(record.id);
   });
+  document.querySelector("#share-detail-card").addEventListener("click", () => {
+    sharePlantCard(record.id);
+  });
+}
+
+async function sharePlantCard(recordId) {
+  const record = observations.find((item) => item.id === recordId);
+  if (!record) return;
+
+  try {
+    const blob = await createPlantCardBlob(record);
+    const fileName = `${safeFileName(record.common_name)}-plant-card.png`;
+
+    if (
+      navigator.canShare &&
+      typeof File !== "undefined" &&
+      navigator.share
+    ) {
+      const file = new File([blob], fileName, { type: "image/png" });
+      if (navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: `${record.common_name} plant card`,
+          text: `BCN Plant Scout record for ${record.common_name}`
+        });
+        return;
+      }
+    }
+
+    downloadBlob(blob, fileName);
+  } catch (error) {
+    window.alert(`Plant card export failed: ${getErrorMessage(error)}`);
+  }
+}
+
+async function createPlantCardBlob(record) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1080;
+  canvas.height = 1350;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    throw new Error("Canvas is unavailable.");
+  }
+
+  ctx.fillStyle = "#f5f8ef";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  roundRect(ctx, 32, 32, 1016, 1286, 48, "#fbfdf8", "#d8e3cf");
+
+  const photos = photosByObservation.get(record.id) ?? [];
+  const primaryPhoto = photos.find((photo) => photo.photo_role === "primary") ?? photos[0];
+  const photoUrl = primaryPhoto ? signedPhotoUrls.get(primaryPhoto.id) : null;
+
+  if (photoUrl) {
+    try {
+      const image = await loadImage(photoUrl);
+      drawCoverImage(ctx, image, 64, 64, 952, 520, 28);
+    } catch {
+      drawPhotoPlaceholder(ctx);
+    }
+  } else {
+    drawPhotoPlaceholder(ctx);
+  }
+
+  drawText(ctx, "BASE CAMP NORTH", 72, 660, {
+    size: 30,
+    weight: "800",
+    color: "#6a765f"
+  });
+  drawText(ctx, record.common_name || "Plant observation", 72, 736, {
+    size: 76,
+    weight: "900",
+    color: "#113d22",
+    maxWidth: 920
+  });
+  if (record.scientific_name) {
+    drawText(ctx, record.scientific_name, 72, 798, {
+      size: 42,
+      style: "italic",
+      color: "#4b5d42",
+      maxWidth: 920
+    });
+  }
+
+  drawCanvasChip(ctx, 72, 858, "Date", formatDate(record.observed_at));
+  drawCanvasChip(ctx, 346, 858, "Status", record.collection_status ?? "field record");
+  drawCanvasChip(ctx, 620, 858, "Interest", (record.collection_interests ?? []).join(", ") || "observation");
+  drawCanvasChip(ctx, 72, 1010, "Return", record.return_date || "not set");
+  drawCanvasChip(ctx, 346, 1010, "Location", "saved in app");
+
+  const notes = record.notes || record.gather_notes || "";
+  if (notes) {
+    drawText(ctx, "FIELD NOTE", 72, 1188, {
+      size: 28,
+      weight: "800",
+      color: "#6a765f"
+    });
+    drawWrappedCanvasText(ctx, notes, 72, 1230, 560, 36, 3);
+  }
+
+  roundRect(ctx, 680, 1168, 320, 86, 24, "#113d22");
+  drawText(ctx, "BCN Plant Scout", 840, 1208, {
+    size: 24,
+    weight: "900",
+    color: "#f5f8ef",
+    align: "center"
+  });
+  drawText(ctx, "basecampnorthpa.com", 840, 1240, {
+    size: 20,
+    weight: "700",
+    color: "#d2be97",
+    align: "center"
+  });
+
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) {
+        resolve(blob);
+      } else {
+        reject(new Error("Could not create plant card image."));
+      }
+    }, "image/png");
+  });
+}
+
+function drawPhotoPlaceholder(ctx) {
+  roundRect(ctx, 64, 64, 952, 520, 28, "#e7ecde");
+  drawText(ctx, "Plant photo saved", 540, 330, {
+    size: 42,
+    weight: "800",
+    color: "#4b5d42",
+    align: "center"
+  });
+}
+
+function drawCoverImage(ctx, image, x, y, width, height, radius) {
+  ctx.save();
+  roundedPath(ctx, x, y, width, height, radius);
+  ctx.clip();
+
+  const scale = Math.max(width / image.naturalWidth, height / image.naturalHeight);
+  const drawWidth = image.naturalWidth * scale;
+  const drawHeight = image.naturalHeight * scale;
+  const drawX = x + (width - drawWidth) / 2;
+  const drawY = y + (height - drawHeight) / 2;
+  ctx.drawImage(image, drawX, drawY, drawWidth, drawHeight);
+  ctx.restore();
+}
+
+function drawCanvasChip(ctx, x, y, label, value) {
+  roundRect(ctx, x, y, 240, 112, 18, "#eef5e9", "#d8e3cf");
+  drawText(ctx, String(label).toUpperCase(), x + 24, y + 42, {
+    size: 24,
+    weight: "900",
+    color: "#6a765f",
+    maxWidth: 192
+  });
+  drawText(ctx, truncateText(value || "not set", 18), x + 24, y + 82, {
+    size: 28,
+    weight: "900",
+    color: "#113d22",
+    maxWidth: 192
+  });
+}
+
+function drawWrappedCanvasText(ctx, value, x, y, maxWidth, lineHeight, maxLines) {
+  const words = String(value).trim().split(/\s+/).filter(Boolean);
+  const lines = [];
+  let current = "";
+
+  for (const word of words) {
+    const next = current ? `${current} ${word}` : word;
+    if (ctx.measureText(next).width > maxWidth && current) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = next;
+    }
+
+    if (lines.length === maxLines) {
+      break;
+    }
+  }
+
+  if (current && lines.length < maxLines) {
+    lines.push(current);
+  }
+
+  if (words.join(" ").length > lines.join(" ").length && lines.length > 0) {
+    lines[lines.length - 1] = `${lines[lines.length - 1].replace(/\.*$/, "")}...`;
+  }
+
+  lines.forEach((line, index) => {
+    drawText(ctx, line, x, y + index * lineHeight, {
+      size: 30,
+      color: "#324832",
+      maxWidth
+    });
+  });
+}
+
+function drawText(ctx, text, x, y, options = {}) {
+  const {
+    size = 28,
+    weight = "400",
+    style = "normal",
+    color = "#113d22",
+    align = "left",
+    maxWidth
+  } = options;
+  ctx.fillStyle = color;
+  ctx.font = `${style} ${weight} ${size}px Arial, sans-serif`;
+  ctx.textAlign = align;
+  ctx.textBaseline = "alphabetic";
+  ctx.fillText(String(text ?? ""), x, y, maxWidth);
+}
+
+function roundRect(ctx, x, y, width, height, radius, fill, stroke) {
+  ctx.save();
+  roundedPath(ctx, x, y, width, height, radius);
+  if (fill) {
+    ctx.fillStyle = fill;
+    ctx.fill();
+  }
+  if (stroke) {
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = 4;
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function roundedPath(ctx, x, y, width, height, radius) {
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.lineTo(x + width - radius, y);
+  ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+  ctx.lineTo(x + width, y + height - radius);
+  ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+  ctx.lineTo(x + radius, y + height);
+  ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+  ctx.lineTo(x, y + radius);
+  ctx.quadraticCurveTo(x, y, x + radius, y);
+  ctx.closePath();
+}
+
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.crossOrigin = "anonymous";
+    image.onload = () => resolve(image);
+    image.onerror = reject;
+    image.src = src;
+  });
+}
+
+function downloadBlob(blob, fileName) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
+function safeFileName(value) {
+  return String(value || "plant")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40) || "plant";
+}
+
+function truncateText(value, maxLength) {
+  const text = String(value ?? "");
+  return text.length > maxLength ? `${text.slice(0, Math.max(0, maxLength - 3))}...` : text;
 }
 
 async function deleteCloudObservation(recordId) {
