@@ -280,7 +280,6 @@ type AppScreen =
   | "map"
   | "detail"
   | "returns"
-  | "cloud"
   | "account"
   | "export"
   | "about";
@@ -291,9 +290,8 @@ const menuItems: { label: string; screen: AppScreen }[] = [
   { label: "Saved Plants", screen: "saved" },
   { label: "Map", screen: "map" },
   { label: "Returns", screen: "returns" },
-  { label: "Cloud Prep", screen: "cloud" },
-  { label: "Account", screen: "account" },
   { label: "Export", screen: "export" },
+  { label: "Account / Sync", screen: "account" },
   { label: "About BCN", screen: "about" }
 ];
 
@@ -3379,131 +3377,6 @@ export default function App() {
             </>
           ) : null}
 
-          {screen === "cloud" ? (
-            <View style={styles.panel}>
-              <Text style={styles.sectionTitle}>Cloud Prep</Text>
-              <Text style={styles.panelText}>
-                Local records can sync to Supabase when you are signed in.
-                Uploads include observation data, photo files, and photo metadata.
-              </Text>
-              <View style={styles.statGrid}>
-                <StatTile label="records" value={`${observations.length}`} />
-                <StatTile label="photos" value={`${cloudStats.totalPhotos}`} />
-                <StatTile label="local only" value={`${cloudStats.localOnly}`} />
-                <StatTile label="pending upload" value={`${cloudStats.pending}`} />
-                <StatTile label="synced" value={`${cloudStats.synced}`} />
-                <StatTile label="sync failed" value={`${cloudStats.failed}`} />
-                <StatTile label="share with BCN" value={`${cloudStats.shareCount}`} />
-                <StatTile label="private" value={`${cloudStats.privateCount}`} />
-                <StatTile
-                  label="public approx."
-                  value={`${cloudStats.publicCount}`}
-                />
-              </View>
-              <View style={styles.quickList}>
-                <Text style={styles.quickListItem}>Backend: Supabase</Text>
-                <Text style={styles.quickListItem}>
-                  Photo storage: users/{formatShortId(authUserId)}/observations/
-                </Text>
-                <Text style={styles.quickListItem}>
-                  Exact GPS stays controlled by privacy setting
-                </Text>
-              </View>
-              <View style={styles.detailInfoBox}>
-                <Text style={styles.detailInfoLabel}>1.0 readiness</Text>
-                <Text style={styles.detailInfoText}>
-                  {authUserId ? "Signed in" : "Sign in needed before upload"}
-                </Text>
-                <Text style={styles.hintText}>
-                  {cloudStats.localOnly > 0
-                    ? `${cloudStats.localOnly} local-only record(s) need to be queued.`
-                    : "No local-only records."}
-                </Text>
-                <Text style={styles.hintText}>
-                  {cloudStats.failed > 0
-                    ? `${cloudStats.failed} failed record(s) ready to retry.`
-                    : "No failed syncs."}
-                </Text>
-                <Text style={styles.hintText}>
-                  {cloudStats.pending > 0
-                    ? `${cloudStats.pending} pending record(s) waiting for upload.`
-                    : "No pending uploads."}
-                </Text>
-                <Text style={styles.hintText}>
-                  Last synced: {formatLastSyncedAt(getLatestSyncedAt(observations))}
-                </Text>
-              </View>
-              <View style={styles.detailInfoBox}>
-                <Text style={styles.detailInfoLabel}>Supabase connection</Text>
-                <Text style={styles.detailInfoText}>
-                  Status: {supabaseStatus}
-                </Text>
-                {supabaseMessage ? (
-                  <Text style={styles.hintText}>{supabaseMessage}</Text>
-                ) : null}
-              </View>
-              <ActionButton
-                label={
-                  supabaseStatus === "checking"
-                    ? "Checking..."
-                    : "Check Supabase Connection"
-                }
-                onPress={checkSupabaseConnection}
-                disabled={supabaseStatus === "checking"}
-              />
-              {cloudStats.localOnly > 0 ? (
-                <ActionButton
-                  label="Prepare Local Records for Upload"
-                  onPress={prepareLocalRecordsForUpload}
-                  variant="secondary"
-                />
-              ) : null}
-              <ActionButton
-                label={isSyncing ? "Syncing..." : "Sync Now"}
-                onPress={syncNow}
-                disabled={isSyncing}
-              />
-              <ActionButton
-                label={
-                  isSyncing
-                    ? "Syncing..."
-                    : cloudStats.failed > 0
-                      ? "Retry Failed Syncs"
-                      : "Upload Pending Records"
-                }
-                onPress={uploadPendingRecords}
-                disabled={isSyncing}
-                variant="secondary"
-              />
-              <ActionButton
-                label={isSyncing ? "Syncing..." : "Download Cloud Records"}
-                onPress={downloadCloudRecords}
-                disabled={isSyncing}
-                variant="secondary"
-              />
-              <Text style={styles.hintText}>
-                Upload sends observation records, photo files, and photo metadata.
-                Download brings cloud records back to this phone and keeps unsynced
-                local edits when there is a conflict.
-              </Text>
-              {lastSyncResult ? (
-                <View style={styles.detailInfoBox}>
-                  <Text style={styles.detailInfoLabel}>Last sync</Text>
-                  <Text style={styles.detailInfoText}>
-                    {lastSyncResult.status === "success" ? "Success" : "Failed"} at{" "}
-                    {formatDate(lastSyncResult.finishedAt)}{" "}
-                    {formatTime(lastSyncResult.finishedAt)}
-                  </Text>
-                  <Text style={styles.hintText}>
-                    Records: {lastSyncResult.records} | Photos:{" "}
-                    {lastSyncResult.photos}
-                  </Text>
-                  <Text style={styles.hintText}>{lastSyncResult.message}</Text>
-                </View>
-              ) : null}
-            </View>
-          ) : null}
-
           {screen === "account" ? (
             <View style={styles.panel}>
               <Text style={styles.sectionTitle}>Account</Text>
@@ -3537,6 +3410,52 @@ export default function App() {
                   Owner ID for new records: {authUserId ?? LOCAL_OWNER_ID}
                 </Text>
               </View>
+
+              <View style={styles.detailInfoBox}>
+                <Text style={styles.detailInfoLabel}>Sync</Text>
+                <Text style={styles.detailInfoText}>
+                  Last synced: {formatLastSyncedAt(getLatestSyncedAt(observations))}
+                </Text>
+                <Text style={styles.hintText}>
+                  {cloudStats.pending} pending | {cloudStats.failed} failed |{" "}
+                  {cloudStats.synced} synced
+                </Text>
+                {supabaseMessage ? (
+                  <Text style={styles.hintText}>
+                    Status: {supabaseStatus}. {supabaseMessage}
+                  </Text>
+                ) : null}
+              </View>
+
+              <View style={styles.buttonRow}>
+                <ActionButton
+                  label={isSyncing ? "Syncing..." : "Sync Now"}
+                  onPress={syncNow}
+                  disabled={isSyncing}
+                />
+                <ActionButton
+                  label="Download"
+                  onPress={downloadCloudRecords}
+                  disabled={isSyncing}
+                  variant="secondary"
+                />
+              </View>
+              {cloudStats.localOnly > 0 ? (
+                <ActionButton
+                  label="Prepare Local Records for Upload"
+                  onPress={prepareLocalRecordsForUpload}
+                  disabled={isSyncing}
+                  variant="secondary"
+                />
+              ) : null}
+              {cloudStats.failed > 0 ? (
+                <ActionButton
+                  label="Retry Failed Syncs"
+                  onPress={uploadPendingRecords}
+                  disabled={isSyncing}
+                  variant="secondary"
+                />
+              ) : null}
 
               {!authUserId ? (
                 <>
@@ -5308,10 +5227,8 @@ function getScreenTitle(screen: AppScreen) {
       return "Plant detail";
     case "returns":
       return "Return list";
-    case "cloud":
-      return "Cloud prep";
     case "account":
-      return "Account";
+      return "Account / Sync";
     case "export":
       return "Export";
     case "about":
