@@ -402,6 +402,11 @@ export default function App() {
     finishedAt: string;
     message: string;
   } | null>(null);
+  const [autoSyncNotice, setAutoSyncNotice] = useState<{
+    status: "success" | "failed";
+    message: string;
+    finishedAt: string;
+  } | null>(null);
 
   useEffect(() => {
     loadObservations();
@@ -1103,7 +1108,20 @@ export default function App() {
 
       await persistObservations(nextObservations);
       if (authUserId && supabase) {
-        await uploadPendingRecords(nextObservations);
+        const syncResult = await uploadPendingRecords(nextObservations);
+        if (syncResult?.status === "success") {
+          setAutoSyncNotice({
+            status: "success",
+            message: `Auto-sync complete: ${syncResult.records} record(s), ${syncResult.photos} photo(s).`,
+            finishedAt: syncResult.finishedAt
+          });
+        } else if (syncResult?.status === "failed") {
+          setAutoSyncNotice({
+            status: "failed",
+            message: `Saved locally. Sync needs retry: ${syncResult.message}`,
+            finishedAt: syncResult.finishedAt
+          });
+        }
       }
       showSoftLimitNoticeIfNeeded(nextObservations);
       setDraft(blankDraft);
@@ -2271,8 +2289,16 @@ export default function App() {
         finishedAt: uploadedAt,
         message: "Upload complete."
       });
+      return {
+        status: "success" as const,
+        records: pendingRecords.length,
+        photos: pendingPhotoCount,
+        finishedAt: uploadedAt,
+        message: "Upload complete."
+      };
     } catch (error) {
       const message = getErrorMessage(error);
+      const failedAt = new Date().toISOString();
       const pendingIds = new Set(pendingRecords.map((record) => record.id));
       const nextObservations = sourceObservations.map((observation) =>
         pendingIds.has(observation.id)
@@ -2280,7 +2306,7 @@ export default function App() {
               ...observation,
               syncStatus: "sync failed" as SyncStatus,
               syncError: message,
-              updatedAt: new Date().toISOString()
+              updatedAt: failedAt
             }
           : observation
       );
@@ -2292,9 +2318,16 @@ export default function App() {
         status: "failed",
         records: pendingRecords.length,
         photos: countObservationPhotos(pendingRecords),
-        finishedAt: new Date().toISOString(),
+        finishedAt: failedAt,
         message
       });
+      return {
+        status: "failed" as const,
+        records: pendingRecords.length,
+        photos: countObservationPhotos(pendingRecords),
+        finishedAt: failedAt,
+        message
+      };
     } finally {
       setIsSyncing(false);
     }
@@ -2832,6 +2865,29 @@ export default function App() {
                   record{observations.length === 1 ? "" : "s"} shown.
                 </Text>
               </View>
+
+              {autoSyncNotice ? (
+                <View
+                  style={[
+                    styles.identificationPanel,
+                    autoSyncNotice.status === "success" && styles.syncSuccessPanel,
+                    autoSyncNotice.status === "failed" && styles.syncFailedPanel
+                  ]}
+                >
+                  <Text style={styles.identificationLabel}>
+                    {autoSyncNotice.status === "success"
+                      ? "Sync complete"
+                      : "Sync needs retry"}
+                  </Text>
+                  <Text style={styles.identificationText}>
+                    {autoSyncNotice.message}
+                  </Text>
+                  <Text style={styles.hintText}>
+                    {formatDate(autoSyncNotice.finishedAt)} at{" "}
+                    {formatTime(autoSyncNotice.finishedAt)}
+                  </Text>
+                </View>
+              ) : null}
 
               <View style={styles.filterRow}>
                 {savedFilters.map((filter) => (
@@ -5812,6 +5868,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: 4,
     padding: 11
+  },
+  syncSuccessPanel: {
+    backgroundColor: "#edf7ed",
+    borderColor: "#b9d9bd"
+  },
+  syncFailedPanel: {
+    backgroundColor: "#fff4ee",
+    borderColor: "#e5b9a9"
   },
   identificationLabel: {
     color: "#17391f",

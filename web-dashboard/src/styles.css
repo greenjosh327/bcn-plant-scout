@@ -477,8 +477,43 @@ button.full {
   align-items: end;
   display: grid;
   gap: 12px;
-  grid-template-columns: 2fr repeat(3, 1fr) auto;
+  grid-template-columns: 2fr repeat(4, 1fr) auto auto;
   margin-bottom: 18px;
+}
+
+.toggle-row {
+  align-items: center;
+  background: #edf5e8;
+  border: 1px solid #d8e3cf;
+  border-radius: 8px;
+  display: flex;
+  gap: 8px;
+  min-height: 52px;
+  padding: 12px;
+}
+
+.toggle-row input {
+  accent-color: #2f7b44;
+  height: 18px;
+  width: 18px;
+}
+
+.hidden {
+  display: none;
+}
+
+.admin-panel {
+  background: #fbfdf8;
+  margin-bottom: 18px;
+}
+
+.tight-heading {
+  margin-top: 0;
+}
+
+.compact-stats {
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  margin-bottom: 0;
 }
 
 .section-heading {

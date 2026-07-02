@@ -51,6 +51,23 @@ alter table public.gift_codes enable row level security;
 
 For production, redeem codes through a Supabase Edge Function so users cannot forge access from the app.
 
+Starter codes to reserve for friends/testers:
+
+- `BCN-FRIEND-7K2M`
+- `BCN-SEED-4P9Q`
+- `BCN-ROOT-8N3D`
+- `BCN-OAK-2W7A`
+- `BCN-NUT-6H5R`
+- `BCN-SCOUT-9C4T`
+- `BCN-TRAIL-3J8L`
+- `BCN-BERRY-5V2X`
+- `BCN-CANOPY-1M6P`
+- `BCN-ACORN-8R7S`
+
+Short-term use: manually upgrade a known tester email in Supabase once profile entitlements are active.
+
+Long-term use: add a "Redeem Code" field under Account. The app sends the code to a Supabase Edge Function, the function validates `gift_codes`, increments `used_count`, and updates that user's profile entitlement.
+
 ## Billing later
 
 - iOS: StoreKit/App Store subscription.

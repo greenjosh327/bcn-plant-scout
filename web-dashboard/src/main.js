@@ -23,7 +23,9 @@ let activeFilters = {
   search: "",
   status: "all",
   interest: "all",
-  privacy: "all"
+  privacy: "all",
+  returnWindow: "all",
+  advanced: false
 };
 let map = null;
 let markerLayer = null;
@@ -270,8 +272,18 @@ function renderDashboard() {
           Privacy
           <select id="privacy-filter">${renderOptions(["all", ...uniqueValues(observations.map((item) => item.privacy_level))], activeFilters.privacy)}</select>
         </label>
+        <label>
+          Return
+          <select id="return-filter">${renderOptions(["all", "ready now", "overdue", "next 7 days", "next 30 days", "no date"], activeFilters.returnWindow)}</select>
+        </label>
+        <label class="toggle-row">
+          <input id="advanced-toggle" type="checkbox" ${activeFilters.advanced ? "checked" : ""} />
+          <span>Show Advanced</span>
+        </label>
         <button id="refresh">Refresh</button>
       </section>
+
+      <section class="admin-panel panel ${activeFilters.advanced ? "" : "hidden"}" id="admin-snapshot"></section>
 
       <section class="map-panel panel">
         <div class="section-heading">
@@ -321,6 +333,16 @@ function hydrateDashboard() {
   });
   document.querySelector("#privacy-filter").addEventListener("change", (event) => {
     activeFilters.privacy = event.target.value;
+    redrawDashboardData();
+  });
+  document.querySelector("#return-filter").addEventListener("change", (event) => {
+    activeFilters.returnWindow = event.target.value;
+    redrawDashboardData();
+  });
+  document.querySelector("#advanced-toggle").addEventListener("change", (event) => {
+    activeFilters.advanced = event.target.checked;
+    renderDashboard();
+    hydrateDashboard();
     redrawDashboardData();
   });
 }
@@ -420,7 +442,8 @@ function getFilteredObservations() {
       (!search || haystack.includes(search)) &&
       (activeFilters.status === "all" || item.collection_status === activeFilters.status) &&
       (activeFilters.interest === "all" || interests.includes(activeFilters.interest)) &&
-      (activeFilters.privacy === "all" || item.privacy_level === activeFilters.privacy)
+      (activeFilters.privacy === "all" || item.privacy_level === activeFilters.privacy) &&
+      matchesReturnFilter(item, activeFilters.returnWindow)
     );
   });
 }
@@ -445,6 +468,55 @@ function renderStats(filtered) {
       `
     )
     .join("");
+
+  renderAdminSnapshot(filtered);
+}
+
+function renderAdminSnapshot(filtered) {
+  const container = document.querySelector("#admin-snapshot");
+  if (!container) return;
+
+  const userCount = uniqueValues(filtered.map((item) => item.user_id ?? item.owner_id)).length;
+  const photoCount = filtered.reduce(
+    (sum, item) => sum + (photosByObservation.get(item.id)?.length ?? 0),
+    0
+  );
+  const failedSyncs = filtered.filter((item) => item.sync_status === "sync failed").length;
+  const pendingSyncs = filtered.filter((item) =>
+    ["pending upload", "local only"].includes(item.sync_status)
+  ).length;
+  const returnSoon = filtered.filter((item) => matchesReturnFilter(item, "next 30 days")).length;
+  const noReturnDate = filtered.filter((item) => matchesReturnFilter(item, "no date")).length;
+
+  container.innerHTML = `
+    <div class="section-heading tight-heading">
+      <div>
+        <p class="eyebrow">Owner/Admin Snapshot</p>
+        <h2>Advanced Health Check</h2>
+      </div>
+      <p class="muted">Based on records this signed-in account can access.</p>
+    </div>
+    <div class="stats-grid compact-stats">
+      ${[
+        ["Users", userCount],
+        ["Records", filtered.length],
+        ["Photos", photoCount],
+        ["Failed syncs", failedSyncs],
+        ["Pending syncs", pendingSyncs],
+        ["Return next 30", returnSoon],
+        ["No return date", noReturnDate]
+      ]
+        .map(
+          ([label, value]) => `
+            <article class="stat-card">
+              <strong>${value}</strong>
+              <span>${label}</span>
+            </article>
+          `
+        )
+        .join("")}
+    </div>
+  `;
 }
 
 function renderRecords(filtered) {
@@ -492,9 +564,16 @@ function renderRecordCard(record) {
           ${renderMeta("Date", formatDate(record.observed_at))}
           ${renderMeta("Status", record.collection_status ?? "unknown")}
           ${renderMeta("Interest", (record.collection_interests ?? []).join(", ") || "none")}
-          ${renderMeta("Privacy", record.privacy_level ?? "private")}
-          ${renderMeta("Accuracy", record.accuracy_meters ? `${Number(record.accuracy_meters).toFixed(1)} m` : "n/a")}
           ${renderMeta("Return", record.return_date || "not set")}
+          ${
+            activeFilters.advanced
+              ? `
+                ${renderMeta("Privacy", record.privacy_level ?? "private")}
+                ${renderMeta("Accuracy", record.accuracy_meters ? `${Number(record.accuracy_meters).toFixed(1)} m` : "n/a")}
+                ${renderMeta("Sync", record.sync_status ?? "unknown")}
+              `
+              : ""
+          }
         </div>
         ${record.notes ? `<p>${escapeHtml(record.notes)}</p>` : ""}
         ${record.gather_notes ? `<p class="muted"><strong>Gather notes:</strong> ${escapeHtml(record.gather_notes)}</p>` : ""}
@@ -555,6 +634,27 @@ function renderReturnSoon(filtered) {
       renderDetailModal();
     });
   });
+}
+
+function matchesReturnFilter(record, filter) {
+  if (filter === "all") return true;
+  if (filter === "ready now") return record.collection_status === "ready now";
+
+  const status = getReturnStatus(record.return_date);
+  if (filter === "overdue") return status.bucket === "overdue";
+  if (filter === "no date") return status.bucket === "none" || status.bucket === "text";
+  if (filter === "next 7 days") {
+    return status.bucket === "soon" && status.sortValue >= 0 && status.sortValue <= 7;
+  }
+  if (filter === "next 30 days") {
+    return (
+      record.collection_status === "ready now" ||
+      status.bucket === "overdue" ||
+      (Number.isFinite(status.sortValue) && status.sortValue >= 0 && status.sortValue <= 30)
+    );
+  }
+
+  return true;
 }
 
 function renderDetailModal() {
