@@ -1,6 +1,7 @@
 import type { Product } from "./types";
+import { importedProducts } from "./imported-products";
 
-export const products: Product[] = [
+const sampleProducts: Product[] = [
   {
     id: "prod_pawpaw_seedling",
     slug: "pawpaw-seedling",
@@ -137,6 +138,8 @@ export const products: Product[] = [
     updatedAt: "2026-07-01"
   }
 ];
+
+export const products: Product[] = importedProducts.length > 0 ? importedProducts : sampleProducts;
 
 export function getFeaturedProducts() {
   return products.filter((product) => product.featured && product.active);

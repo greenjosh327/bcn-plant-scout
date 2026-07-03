@@ -47,6 +47,27 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
               {product.inventory > 0 ? `${product.inventory} in stock` : "Sold out"}
             </p>
           </div>
+          {product.variations && product.variations.length > 0 ? (
+            <div className="mt-8 field-card p-4">
+              <h2 className="text-lg font-black text-pine">Available options</h2>
+              <div className="mt-4 grid gap-3">
+                {product.variations.map((variation) => (
+                  <div key={`${variation.sku}-${variation.name}`} className="flex items-start justify-between gap-4 rounded-md bg-sage/55 p-4">
+                    <div>
+                      <p className="font-black text-pine">{variation.name}</p>
+                      {variation.sku ? <p className="mt-1 text-xs font-bold text-stone">SKU {variation.sku}</p> : null}
+                    </div>
+                    <div className="text-right">
+                      <p className="font-black text-pine">${variation.price}</p>
+                      <p className="mt-1 text-xs font-bold text-stone">
+                        {variation.inventory > 0 ? `${variation.inventory} available` : "Sold out"}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
           <button className="button button-primary mt-8 w-full md:w-auto" disabled={product.inventory === 0}>
             {product.inventory > 0 ? "Add to Cart" : "Sold Out"}
           </button>

@@ -1,5 +1,12 @@
 export type ProductCategory = "Plants" | "Cuttings" | "Seeds";
 
+export type ProductVariation = {
+  name: string;
+  sku: string;
+  price: number;
+  inventory: number;
+};
+
 export type Product = {
   id: string;
   slug: string;
@@ -29,6 +36,8 @@ export type Product = {
   localPickup: boolean;
   ships: boolean;
   tags: string[];
+  variations?: ProductVariation[];
+  source?: "manual" | "square" | "etsy";
   createdAt: string;
   updatedAt: string;
 };

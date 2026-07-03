@@ -3,6 +3,11 @@ import Link from "next/link";
 import type { Product } from "@/lib/types";
 
 export function ProductCard({ product }: { product: Product }) {
+  const variationLabel =
+    product.variations && product.variations.length > 1
+      ? `${product.variations.length} options`
+      : product.variations?.[0]?.name;
+
   return (
     <article className="field-card overflow-hidden">
       <Link href={`/shop/product/${product.slug}`}>
@@ -32,6 +37,11 @@ export function ProductCard({ product }: { product: Product }) {
           <p className="mt-5 text-sm font-black text-rust">
             {product.inventory > 0 ? `${product.inventory} available` : "Sold out"}
           </p>
+          {variationLabel ? (
+            <p className="mt-2 text-xs font-black uppercase tracking-[0.14em] text-stone">
+              {variationLabel}
+            </p>
+          ) : null}
         </div>
       </Link>
     </article>
