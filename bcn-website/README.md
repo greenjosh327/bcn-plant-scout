@@ -34,6 +34,38 @@ cd C:\BCNPlantTracker\bcn-website
 npm run build
 ```
 
+## Vercel Deployment
+
+Deploy this folder as its own Vercel project. Do not point the existing
+`scout.basecampnorthpa.com` Plant Scout dashboard project at this folder.
+
+Recommended project:
+
+- Project name: `base-camp-north-website`
+- Git repository: `greenjosh327/bcn-plant-scout`
+- Root directory: `bcn-website`
+- Framework preset: `Next.js`
+- Build command: `npm run build`
+- Install command: `npm install`
+- Output directory: leave blank/default for Next.js
+
+Recommended domain:
+
+- `shop.basecampnorthpa.com`
+
+Required environment variables:
+
+```text
+NEXT_PUBLIC_SUPABASE_URL=https://hjcskfmssgpdgrhhqzvk.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_UJkg9Mfn-Pzc67XgKWBeHA_7sQkZTd9
+```
+
+After the domain is live, add this Supabase Auth redirect URL:
+
+```text
+https://shop.basecampnorthpa.com/**
+```
+
 ## Pages
 
 - `/` Home
