@@ -170,6 +170,18 @@ export function AdminCatalogEditor() {
     if (error) setMessage(error.message);
   }
 
+  async function signInWithGoogle() {
+    if (!supabase) return;
+    setMessage("Opening Google sign in...");
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: `${window.location.origin}/admin`
+      }
+    });
+    if (error) setMessage(error.message);
+  }
+
   async function signOut() {
     if (!supabase) return;
     await supabase.auth.signOut();
@@ -280,6 +292,7 @@ export function AdminCatalogEditor() {
           <input className="admin-input" placeholder="Email" value={email} onChange={(event) => setEmail(event.target.value)} />
           <input className="admin-input" placeholder="Password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
           <button className="button button-primary" onClick={signIn}>Sign In</button>
+          <button className="button button-secondary" onClick={signInWithGoogle}>Sign In With Google</button>
           {message ? <p className="text-sm font-bold text-rust">{message}</p> : null}
         </div>
       </AdminShell>
