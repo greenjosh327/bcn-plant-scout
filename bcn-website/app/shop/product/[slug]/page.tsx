@@ -2,18 +2,16 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ProductCard } from "@/components/product-card";
-import { getProductBySlug, getRelatedProducts, products } from "@/lib/products";
+import { getCatalogProductBySlug, getRelatedCatalogProducts } from "@/lib/catalog-db";
 
-export function generateStaticParams() {
-  return products.map((product) => ({ slug: product.slug }));
-}
+export const dynamic = "force-dynamic";
 
 export default async function ProductPage({ params }: { params: Promise<{ slug: string }> }) {
   const resolvedParams = await params;
-  const product = getProductBySlug(resolvedParams.slug);
+  const product = await getCatalogProductBySlug(resolvedParams.slug);
   if (!product) notFound();
 
-  const related = getRelatedProducts(product);
+  const related = await getRelatedCatalogProducts(product);
   const facts = [
     ["Hardiness", product.hardinessZones],
     ["Sun", product.sunlight],

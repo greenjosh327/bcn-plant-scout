@@ -2,7 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { ProductCard } from "@/components/product-card";
 import { SectionHeading } from "@/components/section-heading";
-import { getFeaturedProducts } from "@/lib/products";
+import { getFeaturedCatalogProducts } from "@/lib/catalog-db";
 
 const reasons = [
   ["Native plants", "Species chosen for local habitat value, not just shelf appeal."],
@@ -11,8 +11,8 @@ const reasons = [
   ["Small family business", "Grown with field notes, muddy boots, and direct accountability."]
 ];
 
-export default function HomePage() {
-  const featured = getFeaturedProducts();
+export default async function HomePage() {
+  const featured = await getFeaturedCatalogProducts();
 
   return (
     <main>

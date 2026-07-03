@@ -1,6 +1,6 @@
 import { ProductCard } from "@/components/product-card";
 import { SectionHeading } from "@/components/section-heading";
-import { products } from "@/lib/products";
+import { getCatalogProducts } from "@/lib/catalog-db";
 
 export default async function ShopPage({
   searchParams
@@ -11,6 +11,7 @@ export default async function ShopPage({
   const category = resolvedSearchParams.category ?? "All";
   const search = (resolvedSearchParams.search ?? "").toLowerCase();
   const sort = resolvedSearchParams.sort ?? "featured";
+  const products = await getCatalogProducts();
 
   const filtered = products
     .filter((product) => product.active)

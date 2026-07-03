@@ -33,3 +33,33 @@ To regenerate the static catalog and seed SQL:
 cd C:\BCNPlantTracker
 python .\bcn-website\scripts\import_catalog.py
 ```
+
+## Owner catalog admin
+
+The website has an owner-only catalog editor at:
+
+```text
+/admin
+```
+
+It uses the same Supabase project as the catalog tables. Add these environment
+variables in Vercel and in local `.env.local` when testing on your machine:
+
+```text
+NEXT_PUBLIC_SUPABASE_URL=https://YOUR-PROJECT.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_YOUR_KEY
+```
+
+Only users in `public.bcn_admins` can edit products, variants, and inventory.
+The public shop reads active products from Supabase when these environment
+variables are present. If they are missing, the shop falls back to the generated
+static catalog in `lib/imported-products.ts`.
+
+The admin editor currently supports:
+
+- product name, slug, names, category, description, tags, active/featured state
+- ship/local pickup flags
+- variant price, SKU, active state, and inventory quick edits
+- automatic product inventory totals from active variants
+
+Product image editing is intentionally left for a later phase.
