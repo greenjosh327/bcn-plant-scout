@@ -12,3 +12,5 @@ npm-debug.*
 *.mobileprovision
 *.orig.*
 web-build/
+bcn-website/.next/
+bcn-website/node_modules/

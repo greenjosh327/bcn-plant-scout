@@ -1,0 +1,39 @@
+import Image from "next/image";
+import Link from "next/link";
+import type { Product } from "@/lib/types";
+
+export function ProductCard({ product }: { product: Product }) {
+  return (
+    <article className="field-card overflow-hidden">
+      <Link href={`/shop/product/${product.slug}`}>
+        <div className="relative aspect-[4/3] bg-sage">
+          <Image
+            src={product.images[0]}
+            alt={product.name}
+            fill
+            className="object-cover"
+            sizes="(min-width: 900px) 33vw, 100vw"
+          />
+        </div>
+        <div className="p-5">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-stone">
+                {product.category}
+              </p>
+              <h3 className="mt-2 text-2xl font-black text-pine">{product.name}</h3>
+              <p className="mt-1 italic text-stone">{product.scientificName}</p>
+            </div>
+            <p className="rounded-full bg-sage px-3 py-1 text-sm font-black text-pine">
+              ${product.price}
+            </p>
+          </div>
+          <p className="mt-4 line-clamp-3 text-sm leading-6 text-ink/75">{product.description}</p>
+          <p className="mt-5 text-sm font-black text-rust">
+            {product.inventory > 0 ? `${product.inventory} available` : "Sold out"}
+          </p>
+        </div>
+      </Link>
+    </article>
+  );
+}

@@ -1,0 +1,49 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Product {
+  id                 String   @id @default(cuid())
+  slug               String   @unique
+  name               String
+  scientificName     String?
+  commonName         String?
+  category           String
+  description        String
+  price              Decimal  @db.Decimal(10, 2)
+  inventory          Int      @default(0)
+  featured           Boolean  @default(false)
+  active             Boolean  @default(true)
+  images             String[]
+  plantType          String?
+  nativeStatus       String?
+  hardinessZones     String?
+  sunlight           String?
+  soil               String?
+  height             String?
+  spread             String?
+  bloomTime          String?
+  wildlifeBenefits   String?
+  pollinatorBenefits String?
+  hostSpecies        String?
+  shippingNotes      String?
+  growingNotes       String?
+  localPickup        Boolean  @default(true)
+  ships              Boolean  @default(false)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model Order {
+  id        String   @id @default(cuid())
+  email     String
+  subtotal  Decimal  @db.Decimal(10, 2)
+  status    String   @default("draft")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
