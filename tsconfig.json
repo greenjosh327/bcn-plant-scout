@@ -3,5 +3,12 @@
   "compilerOptions": {
     "strict": true
   },
-  "exclude": ["web-dashboard/dist", "web-dashboard/node_modules"]
+  "exclude": [
+    "web-dashboard",
+    "bcn-website",
+    "web-dashboard/dist",
+    "web-dashboard/node_modules",
+    "bcn-website/.next",
+    "bcn-website/node_modules"
+  ]
 }
