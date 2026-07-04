@@ -31,7 +31,46 @@ type CatalogVariant = {
   active: boolean;
 };
 
+type OrderItem = {
+  id: string;
+  order_id: string;
+  product_id: string | null;
+  variant_id: string | null;
+  sku: string | null;
+  product_name: string;
+  variant_name: string | null;
+  quantity: number;
+  unit_price: number;
+  line_total: number;
+};
+
+type ShopOrder = {
+  id: string;
+  stripe_session_id: string;
+  stripe_payment_intent: string | null;
+  stripe_customer_id: string | null;
+  created_at: string;
+  updated_at: string;
+  customer_name: string | null;
+  customer_email: string | null;
+  phone: string | null;
+  order_status: "new" | "ready_for_pickup" | "shipped" | "fulfilled" | "cancelled" | "refunded";
+  payment_status: "paid" | "unpaid" | "no_payment_required" | "refunded" | "failed";
+  fulfillment_type: "pickup" | "shipping";
+  pickup_location: string | null;
+  shipping_address: Record<string, unknown> | null;
+  subtotal: number;
+  shipping_cost: number;
+  tax: number;
+  total: number;
+  currency: string;
+  notes: string | null;
+  fulfilled_at: string | null;
+  order_items: OrderItem[];
+};
+
 type AdminState = "checking" | "signed-out" | "not-admin" | "ready" | "missing-config";
+type AdminTab = "orders" | "catalog";
 
 const emptyForm = {
   name: "",
@@ -61,6 +100,7 @@ export function AdminCatalogEditor() {
   const [search, setSearch] = useState("");
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [activeTab, setActiveTab] = useState<AdminTab>("orders");
 
   const selected = products.find((product) => product.id === selectedId) ?? null;
   const selectedVariants = variants.filter((variant) => variant.product_id === selectedId);
@@ -315,12 +355,30 @@ export function AdminCatalogEditor() {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-xs font-black uppercase tracking-[0.22em] text-stone">Owner admin</p>
-          <h1 className="mt-3 text-5xl font-black text-pine">Catalog editor</h1>
+          <h1 className="mt-3 text-5xl font-black text-pine">{activeTab === "orders" ? "Orders" : "Catalog editor"}</h1>
           <p className="mt-4 text-ink/70">Signed in as {session?.user.email}</p>
         </div>
         <button className="button button-secondary" onClick={signOut}>Sign Out</button>
       </div>
 
+      <div className="mt-8 flex flex-wrap gap-3">
+        <button
+          className={`button ${activeTab === "orders" ? "button-primary" : "button-secondary"}`}
+          onClick={() => setActiveTab("orders")}
+        >
+          Orders
+        </button>
+        <button
+          className={`button ${activeTab === "catalog" ? "button-primary" : "button-secondary"}`}
+          onClick={() => setActiveTab("catalog")}
+        >
+          Catalog
+        </button>
+      </div>
+
+      {activeTab === "orders" ? (
+        <AdminOrdersDashboard />
+      ) : (
       <div className="mt-8 grid gap-6 lg:grid-cols-[360px_1fr]">
         <aside className="field-card p-4">
           <input className="admin-input" placeholder="Search catalog..." value={search} onChange={(event) => setSearch(event.target.value)} />
@@ -393,7 +451,282 @@ export function AdminCatalogEditor() {
           )}
         </section>
       </div>
+      )}
     </main>
+  );
+}
+
+function AdminOrdersDashboard() {
+  const [orders, setOrders] = useState<ShopOrder[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [filter, setFilter] = useState<"open" | "new" | "pickup" | "shipping" | "fulfilled" | "cancelled" | "all">("open");
+  const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const selected = orders.find((order) => order.id === selectedId) ?? orders[0] ?? null;
+
+  const filteredOrders = useMemo(() => {
+    if (filter === "all") return orders;
+    if (filter === "open") return orders.filter((order) => !["fulfilled", "cancelled", "refunded"].includes(order.order_status));
+    if (filter === "pickup") return orders.filter((order) => order.fulfillment_type === "pickup");
+    if (filter === "shipping") return orders.filter((order) => order.fulfillment_type === "shipping");
+    return orders.filter((order) => order.order_status === filter);
+  }, [filter, orders]);
+
+  const orderCounts = useMemo(() => ({
+    open: orders.filter((order) => !["fulfilled", "cancelled", "refunded"].includes(order.order_status)).length,
+    new: orders.filter((order) => order.order_status === "new").length,
+    pickup: orders.filter((order) => order.fulfillment_type === "pickup").length,
+    shipping: orders.filter((order) => order.fulfillment_type === "shipping").length,
+    fulfilled: orders.filter((order) => order.order_status === "fulfilled").length
+  }), [orders]);
+
+  useEffect(() => {
+    void loadOrders();
+  }, []);
+
+  async function loadOrders() {
+    if (!supabase) return;
+    setLoading(true);
+    setMessage("Loading orders...");
+    const { data, error } = await supabase
+      .from("orders")
+      .select(`
+        *,
+        order_items (
+          id,
+          order_id,
+          product_id,
+          variant_id,
+          sku,
+          product_name,
+          variant_name,
+          quantity,
+          unit_price,
+          line_total
+        )
+      `)
+      .order("created_at", { ascending: false });
+
+    setLoading(false);
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+
+    const rows = ((data ?? []) as ShopOrder[]).map((order) => ({
+      ...order,
+      order_items: order.order_items ?? []
+    }));
+    setOrders(rows);
+    setSelectedId((current) => current ?? rows[0]?.id ?? null);
+    setMessage(`Loaded ${rows.length} order${rows.length === 1 ? "" : "s"}.`);
+  }
+
+  async function updateOrderStatus(order: ShopOrder, order_status: ShopOrder["order_status"]) {
+    if (!supabase) return;
+    setMessage("Updating order...");
+    const { error } = await supabase
+      .from("orders")
+      .update({
+        order_status,
+        fulfilled_at: order_status === "fulfilled" ? new Date().toISOString() : null
+      })
+      .eq("id", order.id);
+
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+
+    setOrders((current) =>
+      current.map((item) =>
+        item.id === order.id
+          ? { ...item, order_status, fulfilled_at: order_status === "fulfilled" ? new Date().toISOString() : null }
+          : item
+      )
+    );
+    setMessage(`Order marked ${formatStatus(order_status)}.`);
+  }
+
+  function exportCsv() {
+    const header = ["created_at", "customer", "email", "fulfillment", "status", "payment", "total", "items"];
+    const rows = filteredOrders.map((order) => [
+      order.created_at,
+      order.customer_name ?? "",
+      order.customer_email ?? "",
+      order.fulfillment_type,
+      order.order_status,
+      order.payment_status,
+      order.total,
+      order.order_items.map((item) => `${item.quantity}x ${item.product_name}${item.variant_name ? ` (${item.variant_name})` : ""}`).join("; ")
+    ]);
+    const csv = [header, ...rows]
+      .map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(","))
+      .join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `bcn-orders-${new Date().toISOString().slice(0, 10)}.csv`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function copyPickupEmail(order: ShopOrder) {
+    const name = order.customer_name?.split(" ")[0] || "there";
+    const body = `Hi ${name},\n\nYour Base Camp North order is ready for pickup.\n\nOrder: ${order.order_items
+      .map((item) => `${item.quantity}x ${item.product_name}${item.variant_name ? ` (${item.variant_name})` : ""}`)
+      .join(", ")}\n\nPickup location: ${order.pickup_location || "Base Camp North"}\n\nThank you!\nBase Camp North`;
+    await navigator.clipboard.writeText(body);
+    setMessage("Pickup message copied.");
+  }
+
+  return (
+    <div className="mt-8 grid gap-6 xl:grid-cols-[420px_1fr]">
+      <aside className="field-card p-4">
+        <div className="grid grid-cols-2 gap-3">
+          <OrderMetric label="open" value={orderCounts.open} />
+          <OrderMetric label="new" value={orderCounts.new} />
+          <OrderMetric label="pickup" value={orderCounts.pickup} />
+          <OrderMetric label="shipping" value={orderCounts.shipping} />
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          {(["open", "new", "pickup", "shipping", "fulfilled", "cancelled", "all"] as const).map((nextFilter) => (
+            <button
+              key={nextFilter}
+              className={`rounded-full border px-4 py-2 text-sm font-black ${filter === nextFilter ? "border-pine bg-pine text-white" : "border-pine/20 bg-sage text-pine"}`}
+              onClick={() => setFilter(nextFilter)}
+            >
+              {formatStatus(nextFilter)}
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-4 flex gap-3">
+          <button className="button button-secondary flex-1" onClick={loadOrders}>{loading ? "Loading..." : "Refresh"}</button>
+          <button className="button button-secondary flex-1" onClick={exportCsv}>CSV</button>
+        </div>
+
+        {message ? <p className="mt-4 text-sm font-bold text-stone">{message}</p> : null}
+
+        <div className="mt-4 max-h-[760px] overflow-y-auto pr-1">
+          {filteredOrders.map((order) => (
+            <button
+              key={order.id}
+              className={`mb-2 w-full rounded-md border p-3 text-left ${order.id === selected?.id ? "border-pine bg-sage" : "border-pine/15 bg-white"}`}
+              onClick={() => setSelectedId(order.id)}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-black text-pine">{order.customer_name || order.customer_email || "No customer name"}</p>
+                  <p className="mt-1 text-xs font-bold uppercase tracking-[0.12em] text-stone">
+                    {formatDateTime(order.created_at)}
+                  </p>
+                </div>
+                <p className="font-black text-pine">{formatMoney(Number(order.total), order.currency)}</p>
+              </div>
+              <p className="mt-2 text-sm font-bold text-ink/75">
+                {formatStatus(order.order_status)} / {order.fulfillment_type} / {order.order_items.length} item{order.order_items.length === 1 ? "" : "s"}
+              </p>
+            </button>
+          ))}
+        </div>
+      </aside>
+
+      <section className="field-card p-6">
+        {selected ? (
+          <OrderDetail
+            order={selected}
+            onStatus={updateOrderStatus}
+            onCopyPickupEmail={copyPickupEmail}
+          />
+        ) : (
+          <p className="text-lg text-ink/70">No orders yet.</p>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function OrderDetail({
+  order,
+  onStatus,
+  onCopyPickupEmail
+}: {
+  order: ShopOrder;
+  onStatus: (order: ShopOrder, status: ShopOrder["order_status"]) => void;
+  onCopyPickupEmail: (order: ShopOrder) => void;
+}) {
+  return (
+    <div className="grid gap-6">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-stone">Order detail</p>
+          <h2 className="mt-2 text-3xl font-black text-pine">{order.customer_name || "Customer"}</h2>
+          <p className="mt-2 text-ink/70">{order.customer_email || "No email"} {order.phone ? `/ ${order.phone}` : ""}</p>
+          <p className="mt-1 text-sm font-bold text-stone">{formatDateTime(order.created_at)}</p>
+        </div>
+        <div className="rounded-md bg-pine px-5 py-4 text-right text-white">
+          <p className="text-xs font-black uppercase tracking-[0.16em] text-white/70">Total</p>
+          <p className="text-3xl font-black">{formatMoney(Number(order.total), order.currency)}</p>
+        </div>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-4">
+        <OrderMetric label="status" value={formatStatus(order.order_status)} />
+        <OrderMetric label="payment" value={formatStatus(order.payment_status)} />
+        <OrderMetric label="fulfillment" value={order.fulfillment_type} />
+        <OrderMetric label="items" value={order.order_items.reduce((sum, item) => sum + Number(item.quantity), 0)} />
+      </div>
+
+      <div>
+        <h3 className="text-xl font-black text-pine">Items</h3>
+        <div className="mt-3 overflow-hidden rounded-md border border-pine/15">
+          {order.order_items.map((item) => (
+            <div key={item.id} className="grid gap-2 border-b border-pine/10 bg-white p-4 last:border-b-0 md:grid-cols-[1fr_90px_100px]">
+              <div>
+                <p className="font-black text-pine">{item.product_name}</p>
+                <p className="text-sm font-bold text-stone">{item.variant_name || "Regular"} {item.sku ? `/ ${item.sku}` : ""}</p>
+              </div>
+              <p className="font-black text-pine">Qty {item.quantity}</p>
+              <p className="font-black text-pine">{formatMoney(Number(item.line_total), order.currency)}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <section className="rounded-md border border-pine/15 bg-sage/45 p-4">
+          <h3 className="text-lg font-black text-pine">Fulfillment</h3>
+          <p className="mt-2 text-ink/75">{order.fulfillment_type === "pickup" ? `Pickup: ${order.pickup_location || "Base Camp North"}` : formatShippingAddress(order.shipping_address)}</p>
+          {order.notes ? <p className="mt-3 text-sm font-bold text-stone">Notes: {order.notes}</p> : null}
+        </section>
+        <section className="rounded-md border border-pine/15 bg-sage/45 p-4">
+          <h3 className="text-lg font-black text-pine">Stripe</h3>
+          <p className="mt-2 break-all text-sm text-ink/75">Session: {order.stripe_session_id}</p>
+          <p className="mt-2 break-all text-sm text-ink/75">Payment: {order.stripe_payment_intent || "not recorded"}</p>
+        </section>
+      </div>
+
+      <div className="flex flex-wrap gap-3">
+        <button className="button button-primary" onClick={() => onStatus(order, "ready_for_pickup")}>Ready for Pickup</button>
+        <button className="button button-secondary" onClick={() => onStatus(order, "shipped")}>Mark Shipped</button>
+        <button className="button button-secondary" onClick={() => onStatus(order, "fulfilled")}>Mark Fulfilled</button>
+        <button className="button button-secondary" onClick={() => onCopyPickupEmail(order)}>Copy Pickup Email</button>
+        <button className="button button-secondary text-rust" onClick={() => onStatus(order, "cancelled")}>Mark Issue/Cancelled</button>
+      </div>
+    </div>
+  );
+}
+
+function OrderMetric({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="rounded-md border border-pine/15 bg-sage/60 p-4">
+      <p className="text-xs font-black uppercase tracking-[0.16em] text-stone">{label}</p>
+      <p className="mt-2 text-xl font-black text-pine">{value}</p>
+    </div>
   );
 }
 
@@ -425,6 +758,38 @@ function Toggle({ label, checked, onChange }: { label: string; checked: boolean;
       {label}
     </label>
   );
+}
+
+function formatMoney(value: number, currency = "usd") {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: currency.toUpperCase()
+  }).format(Number(value) || 0);
+}
+
+function formatDateTime(value: string) {
+  return new Date(value).toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  });
+}
+
+function formatStatus(value: string) {
+  return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function formatShippingAddress(address: Record<string, unknown> | null) {
+  if (!address || Object.keys(address).length === 0) return "Shipping address not recorded.";
+  const parts = [
+    address.line1,
+    address.line2,
+    [address.city, address.state, address.postal_code].filter(Boolean).join(", "),
+    address.country
+  ].filter(Boolean);
+  return parts.length ? parts.join("\n") : JSON.stringify(address);
 }
 
 function VariantEditor({ variant, onSave }: { variant: CatalogVariant; onSave: (variant: CatalogVariant, patch: Partial<CatalogVariant>) => void }) {
