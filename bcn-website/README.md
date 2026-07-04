@@ -60,7 +60,13 @@ NEXT_PUBLIC_SUPABASE_URL=https://hjcskfmssgpdgrhhqzvk.supabase.co
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_UJkg9Mfn-Pzc67XgKWBeHA_7sQkZTd9
 NEXT_PUBLIC_SITE_URL=https://shop.basecampnorthpa.com
 STRIPE_SECRET_KEY=sk_test_or_live_key_here
+STRIPE_WEBHOOK_SECRET=whsec_from_stripe_webhook
+SUPABASE_SERVICE_ROLE_KEY=server_only_service_role_key_here
 ```
+
+Only `NEXT_PUBLIC_*` values are safe for browser code. `STRIPE_SECRET_KEY`,
+`STRIPE_WEBHOOK_SECRET`, and `SUPABASE_SERVICE_ROLE_KEY` must stay server-side
+in Vercel environment variables or local `.env.local`.
 
 After the domain is live, add this Supabase Auth redirect URL:
 
@@ -80,14 +86,79 @@ https://shop.basecampnorthpa.com/**
 - `/cart` Cart and checkout scaffold
 - `/cart/success` Stripe checkout success page
 - `/admin` Admin dashboard scaffold
+- `/api/stripe/webhook` Stripe Checkout webhook for paid orders
+
+## Supabase Setup
+
+Run the SQL files in this order from the Supabase SQL Editor:
+
+1. `supabase/sql/20260703_bcn_catalog_schema.sql`
+2. `supabase/sql/20260703_bcn_catalog_seed.sql`
+3. `supabase/sql/20260703_bcn_orders_schema.sql`
+
+The order migration creates:
+
+- `orders`
+- `order_items`
+- inventory decrement functions
+- RLS policies so only admins can read order data
+
+The Stripe webhook uses the Supabase service role key on the server to write
+orders and update inventory. The browser never writes directly to order tables.
+
+## Stripe Webhook
+
+Create a Stripe webhook endpoint in the Stripe Dashboard:
+
+```text
+https://shop.basecampnorthpa.com/api/stripe/webhook
+```
+
+Subscribe to this event:
+
+```text
+checkout.session.completed
+```
+
+Copy the webhook signing secret into Vercel as:
+
+```text
+STRIPE_WEBHOOK_SECRET=whsec_...
+```
+
+### Local Webhook Testing
+
+Install and log in to the Stripe CLI, then run:
+
+```powershell
+cd C:\BCNPlantTracker\bcn-website
+stripe listen --forward-to localhost:3000/api/stripe/webhook
+```
+
+Copy the `whsec_...` value printed by Stripe CLI into local `.env.local`, then
+start the site:
+
+```powershell
+npm run dev
+```
+
+Use the shop checkout flow with Stripe test cards. A successful checkout should:
+
+- create one `orders` row
+- create one or more `order_items` rows
+- mark payment status as `paid`
+- save pickup or shipping details
+- reduce purchased product or variant inventory
+- ignore duplicate webhook retries for the same `stripe_session_id`
 
 ## Current State
 
 The site reads products from Supabase when configured and falls back to sample product data in `lib/products.ts`.
 
-Cart and Stripe Checkout are implemented. Shipping is a simple flat-rate first pass, pickup is supported,
-and tax is delegated to Stripe automatic tax. Inventory decrement, order records, webhooks, customer
-accounts, and email automation are next.
+Cart, Stripe Checkout, and Stripe webhook order persistence are implemented. Shipping is a simple flat-rate
+first pass, pickup is supported, and tax is delegated to Stripe automatic tax. Paid checkouts create Supabase
+orders and order items, then reduce inventory. Customer accounts, order emails, shipping labels, refunds,
+and the owner order dashboard are next.
 
 ## Future Data
 
