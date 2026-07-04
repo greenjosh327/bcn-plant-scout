@@ -139,15 +139,11 @@ using (
 );
 
 drop policy if exists "Admins can read admin list" on public.bcn_admins;
-create policy "Admins can read admin list"
+drop policy if exists "Users can read their own admin row" on public.bcn_admins;
+create policy "Users can read their own admin row"
 on public.bcn_admins for select
 to authenticated
-using (
-  exists (
-    select 1 from public.bcn_admins admins
-    where admins.user_id = (select auth.uid())
-  )
-);
+using (user_id = (select auth.uid()));
 
 drop policy if exists "Admins can manage products" on public.products;
 create policy "Admins can manage products"

@@ -11,7 +11,7 @@ This app is intentionally separate from the BCN Plant Scout mobile app and priva
 - Tailwind CSS
 - Prisma ORM
 - PostgreSQL-ready schema
-- Stripe dependency installed for future checkout work
+- Stripe Checkout for cart payments
 
 ## Run Locally
 
@@ -58,6 +58,8 @@ Required environment variables:
 ```text
 NEXT_PUBLIC_SUPABASE_URL=https://hjcskfmssgpdgrhhqzvk.supabase.co
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_UJkg9Mfn-Pzc67XgKWBeHA_7sQkZTd9
+NEXT_PUBLIC_SITE_URL=https://shop.basecampnorthpa.com
+STRIPE_SECRET_KEY=sk_test_or_live_key_here
 ```
 
 After the domain is live, add this Supabase Auth redirect URL:
@@ -76,13 +78,16 @@ https://shop.basecampnorthpa.com/**
 - `/contact` Contact placeholder
 - `/articles` Article placeholders
 - `/cart` Cart and checkout scaffold
+- `/cart/success` Stripe checkout success page
 - `/admin` Admin dashboard scaffold
 
 ## Current State
 
-The site uses sample product data in `lib/products.ts`.
+The site reads products from Supabase when configured and falls back to sample product data in `lib/products.ts`.
 
-Live payments, shipping, tax, admin auth, customer accounts, and email automation are not implemented yet.
+Cart and Stripe Checkout are implemented. Shipping is a simple flat-rate first pass, pickup is supported,
+and tax is delegated to Stripe automatic tax. Inventory decrement, order records, webhooks, customer
+accounts, and email automation are next.
 
 ## Future Data
 

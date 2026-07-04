@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { AddToCartButton } from "@/components/add-to-cart-button";
 import { ProductCard } from "@/components/product-card";
 import { getCatalogProductBySlug, getRelatedCatalogProducts } from "@/lib/catalog-db";
 
@@ -66,10 +67,12 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
               </div>
             </div>
           ) : null}
-          <button className="button button-primary mt-8 w-full md:w-auto" disabled={product.inventory === 0}>
-            {product.inventory > 0 ? "Add to Cart" : "Sold Out"}
-          </button>
-          <p className="mt-3 text-sm text-stone">Checkout is prepared for Stripe, but live payment is not enabled yet.</p>
+          <AddToCartButton
+            productId={product.id}
+            disabled={product.inventory === 0}
+            className="button button-primary mt-8 w-full md:w-auto"
+          />
+          <p className="mt-3 text-sm text-stone">Checkout runs through Stripe. Pickup and shipping options are checked before payment.</p>
         </section>
       </div>
 

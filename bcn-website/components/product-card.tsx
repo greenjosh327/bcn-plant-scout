@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { AddToCartButton } from "@/components/add-to-cart-button";
 import type { Product } from "@/lib/types";
 
 export function ProductCard({ product }: { product: Product }) {
@@ -44,6 +45,13 @@ export function ProductCard({ product }: { product: Product }) {
           ) : null}
         </div>
       </Link>
+      <div className="px-5 pb-5">
+        <AddToCartButton
+          productId={product.id}
+          disabled={product.inventory <= 0}
+          className="button button-primary w-full"
+        />
+      </div>
     </article>
   );
 }
