@@ -460,18 +460,40 @@ function AdminOrdersDashboard() {
   const [orders, setOrders] = useState<ShopOrder[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filter, setFilter] = useState<"open" | "new" | "pickup" | "shipping" | "fulfilled" | "cancelled" | "all">("open");
+  const [orderSearch, setOrderSearch] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
   const selected = orders.find((order) => order.id === selectedId) ?? orders[0] ?? null;
 
   const filteredOrders = useMemo(() => {
-    if (filter === "all") return orders;
-    if (filter === "open") return orders.filter((order) => !["fulfilled", "cancelled", "refunded"].includes(order.order_status));
-    if (filter === "pickup") return orders.filter((order) => order.fulfillment_type === "pickup");
-    if (filter === "shipping") return orders.filter((order) => order.fulfillment_type === "shipping");
-    return orders.filter((order) => order.order_status === filter);
-  }, [filter, orders]);
+    const byStatus = (() => {
+      if (filter === "all") return orders;
+      if (filter === "open") return orders.filter((order) => !["fulfilled", "cancelled", "refunded"].includes(order.order_status));
+      if (filter === "pickup") return orders.filter((order) => order.fulfillment_type === "pickup");
+      if (filter === "shipping") return orders.filter((order) => order.fulfillment_type === "shipping");
+      return orders.filter((order) => order.order_status === filter);
+    })();
+
+    const term = orderSearch.trim().toLowerCase();
+    if (!term) return byStatus;
+    return byStatus.filter((order) =>
+      [
+        order.customer_name,
+        order.customer_email,
+        order.phone,
+        order.order_status,
+        order.fulfillment_type,
+        order.payment_status,
+        order.stripe_session_id,
+        ...order.order_items.flatMap((item) => [item.product_name, item.variant_name, item.sku])
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(term)
+    );
+  }, [filter, orderSearch, orders]);
 
   const orderCounts = useMemo(() => ({
     open: orders.filter((order) => !["fulfilled", "cancelled", "refunded"].includes(order.order_status)).length,
@@ -582,6 +604,90 @@ function AdminOrdersDashboard() {
     setMessage("Pickup message copied.");
   }
 
+  async function copyShippingAddress(order: ShopOrder) {
+    await navigator.clipboard.writeText(formatShippingAddress(order.shipping_address));
+    setMessage("Shipping address copied.");
+  }
+
+  async function copyCustomerUpdate(order: ShopOrder) {
+    const name = order.customer_name?.split(" ")[0] || "there";
+    const itemSummary = order.order_items
+      .map((item) => `${item.quantity}x ${item.product_name}${item.variant_name ? ` (${item.variant_name})` : ""}`)
+      .join(", ");
+    const action =
+      order.fulfillment_type === "shipping"
+        ? "Your Base Camp North order is packed and moving toward shipping."
+        : "Your Base Camp North order is being prepared for local pickup.";
+    const body = `Hi ${name},\n\n${action}\n\nOrder: ${itemSummary}\n\nCurrent status: ${formatStatus(order.order_status)}\n\nThank you!\nBase Camp North`;
+    await navigator.clipboard.writeText(body);
+    setMessage("Customer update copied.");
+  }
+
+  function printPackingSlip(order: ShopOrder) {
+    const printWindow = window.open("", "_blank", "width=820,height=900");
+    if (!printWindow) {
+      setMessage("Popup blocked. Allow popups to print packing slips.");
+      return;
+    }
+
+    const items = order.order_items
+      .map(
+        (item) => `
+          <tr>
+            <td>${escapeHtml(item.product_name)}${item.variant_name ? `<br><span>${escapeHtml(item.variant_name)}</span>` : ""}</td>
+            <td>${escapeHtml(item.sku || "")}</td>
+            <td>${item.quantity}</td>
+            <td>${formatMoney(Number(item.line_total), order.currency)}</td>
+          </tr>`
+      )
+      .join("");
+
+    printWindow.document.write(`
+      <!doctype html>
+      <html>
+        <head>
+          <title>BCN Packing Slip</title>
+          <style>
+            body { color: #16201A; font-family: Arial, sans-serif; margin: 32px; }
+            h1 { color: #0f3f25; font-size: 32px; margin: 0 0 8px; }
+            h2 { font-size: 18px; margin: 28px 0 8px; text-transform: uppercase; letter-spacing: 0.12em; }
+            .muted { color: #6d7769; }
+            .box { border: 1px solid #ccd8c3; border-radius: 8px; padding: 16px; margin-top: 16px; }
+            table { border-collapse: collapse; margin-top: 16px; width: 100%; }
+            th, td { border-bottom: 1px solid #ccd8c3; padding: 10px; text-align: left; vertical-align: top; }
+            th { font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; }
+            span { color: #6d7769; font-size: 12px; }
+            .total { font-size: 24px; font-weight: 800; text-align: right; }
+            @media print { button { display: none; } }
+          </style>
+        </head>
+        <body>
+          <button onclick="window.print()">Print</button>
+          <h1>Base Camp North</h1>
+          <p class="muted">Packing slip / ${escapeHtml(formatDateTime(order.created_at))}</p>
+          <div class="box">
+            <strong>${escapeHtml(order.customer_name || "Customer")}</strong><br>
+            ${escapeHtml(order.customer_email || "No email")}<br>
+            ${escapeHtml(order.phone || "")}
+          </div>
+          <div class="box">
+            <strong>${escapeHtml(formatStatus(order.fulfillment_type))}</strong><br>
+            <pre>${escapeHtml(order.fulfillment_type === "pickup" ? order.pickup_location || "Base Camp North local pickup" : formatShippingAddress(order.shipping_address))}</pre>
+          </div>
+          <h2>Items</h2>
+          <table>
+            <thead><tr><th>Item</th><th>SKU</th><th>Qty</th><th>Total</th></tr></thead>
+            <tbody>${items}</tbody>
+          </table>
+          <p class="total">${formatMoney(Number(order.total), order.currency)}</p>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    setMessage("Packing slip opened.");
+  }
+
   return (
     <div className="mt-8 grid gap-6 xl:grid-cols-[420px_1fr]">
       <aside className="field-card p-4">
@@ -603,6 +709,13 @@ function AdminOrdersDashboard() {
             </button>
           ))}
         </div>
+
+        <input
+          className="admin-input mt-4"
+          placeholder="Search orders, email, SKU, item..."
+          value={orderSearch}
+          onChange={(event) => setOrderSearch(event.target.value)}
+        />
 
         <div className="mt-4 flex gap-3">
           <button className="button button-secondary flex-1" onClick={loadOrders}>{loading ? "Loading..." : "Refresh"}</button>
@@ -641,6 +754,9 @@ function AdminOrdersDashboard() {
             order={selected}
             onStatus={updateOrderStatus}
             onCopyPickupEmail={copyPickupEmail}
+            onCopyShippingAddress={copyShippingAddress}
+            onCopyCustomerUpdate={copyCustomerUpdate}
+            onPrintPackingSlip={printPackingSlip}
           />
         ) : (
           <p className="text-lg text-ink/70">No orders yet.</p>
@@ -653,11 +769,17 @@ function AdminOrdersDashboard() {
 function OrderDetail({
   order,
   onStatus,
-  onCopyPickupEmail
+  onCopyPickupEmail,
+  onCopyShippingAddress,
+  onCopyCustomerUpdate,
+  onPrintPackingSlip
 }: {
   order: ShopOrder;
   onStatus: (order: ShopOrder, status: ShopOrder["order_status"]) => void;
   onCopyPickupEmail: (order: ShopOrder) => void;
+  onCopyShippingAddress: (order: ShopOrder) => void;
+  onCopyCustomerUpdate: (order: ShopOrder) => void;
+  onPrintPackingSlip: (order: ShopOrder) => void;
 }) {
   return (
     <div className="grid gap-6">
@@ -715,6 +837,11 @@ function OrderDetail({
         <button className="button button-secondary" onClick={() => onStatus(order, "shipped")}>Mark Shipped</button>
         <button className="button button-secondary" onClick={() => onStatus(order, "fulfilled")}>Mark Fulfilled</button>
         <button className="button button-secondary" onClick={() => onCopyPickupEmail(order)}>Copy Pickup Email</button>
+        <button className="button button-secondary" onClick={() => onCopyCustomerUpdate(order)}>Copy Customer Update</button>
+        {order.fulfillment_type === "shipping" ? (
+          <button className="button button-secondary" onClick={() => onCopyShippingAddress(order)}>Copy Address</button>
+        ) : null}
+        <button className="button button-secondary" onClick={() => onPrintPackingSlip(order)}>Print Packing Slip</button>
         <button className="button button-secondary text-rust" onClick={() => onStatus(order, "cancelled")}>Mark Issue/Cancelled</button>
       </div>
     </div>
@@ -790,6 +917,15 @@ function formatShippingAddress(address: Record<string, unknown> | null) {
     address.country
   ].filter(Boolean);
   return parts.length ? parts.join("\n") : JSON.stringify(address);
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
 function VariantEditor({ variant, onSave }: { variant: CatalogVariant; onSave: (variant: CatalogVariant, patch: Partial<CatalogVariant>) => void }) {

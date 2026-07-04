@@ -151,14 +151,44 @@ Use the shop checkout flow with Stripe test cards. A successful checkout should:
 - reduce purchased product or variant inventory
 - ignore duplicate webhook retries for the same `stripe_session_id`
 
+## Owner Order Workflow
+
+Open the owner dashboard:
+
+```text
+https://shop.basecampnorthpa.com/admin
+```
+
+The admin area supports:
+
+- viewing paid Stripe orders written to Supabase
+- searching orders by customer, email, SKU, status, fulfillment type, or item name
+- filtering open, new, pickup, shipping, fulfilled, cancelled, and all orders
+- marking orders ready for pickup, shipped, fulfilled, or cancelled
+- copying pickup/customer update messages
+- copying shipping addresses
+- printing a packing slip
+- exporting the visible order list to CSV
+
+Recommended morning test:
+
+1. Place one pickup order with a small test item.
+2. Place one shipping order with Stripe test card `4242 4242 4242 4242`.
+3. Confirm each order appears in Supabase `orders` and `order_items`.
+4. Confirm the `/cart/success` page shows the order summary after checkout.
+5. Open `/admin`, search for the customer email, and print a packing slip.
+6. Mark pickup as ready, shipping as shipped, then mark both fulfilled.
+7. Confirm inventory decreased on the product or variant that was purchased.
+
 ## Current State
 
 The site reads products from Supabase when configured and falls back to sample product data in `lib/products.ts`.
 
-Cart, Stripe Checkout, and Stripe webhook order persistence are implemented. Shipping is a simple flat-rate
-first pass, pickup is supported, and tax is delegated to Stripe automatic tax. Paid checkouts create Supabase
-orders and order items, then reduce inventory. Customer accounts, order emails, shipping labels, refunds,
-and the owner order dashboard are next.
+Cart, Stripe Checkout, webhook order persistence, customer receipt display, and owner order fulfillment tools
+are implemented. Shipping is a simple flat-rate first pass, pickup is supported, and tax is delegated to Stripe
+automatic tax. Paid checkouts create Supabase orders and order items, reduce inventory, and can be fulfilled
+from the owner admin dashboard. Customer accounts, automated order emails, shipping labels, and refund handling
+are future steps.
 
 ## Future Data
 
