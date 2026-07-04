@@ -36,6 +36,7 @@ type DbProduct = {
 };
 
 type DbVariant = {
+  id: string;
   product_id: string;
   name: string;
   sku: string | null;
@@ -113,6 +114,7 @@ function mapDbProducts(products: DbProduct[], variants: DbVariant[], images: DbI
     const productVariants = variants
       .filter((variant) => variant.product_id === product.id)
       .map<ProductVariation>((variant) => ({
+        id: variant.id,
         name: variant.name,
         sku: variant.sku ?? "",
         price: Number(variant.price) || 0,

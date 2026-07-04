@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CartLink } from "@/components/cart-link";
 
 const navItems = [
   ["Shop", "/shop"],
@@ -30,9 +31,7 @@ export function SiteHeader() {
             </Link>
           ))}
         </nav>
-        <Link href="/cart" className="button button-secondary">
-          Cart
-        </Link>
+        <CartLink />
       </div>
     </header>
   );

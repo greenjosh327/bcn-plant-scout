@@ -2,13 +2,19 @@
 
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
-import { CART_STORAGE_KEY, type CartLine, type CartProduct, formatMoney, normalizeCartLines } from "@/lib/cart";
+import { CART_STORAGE_KEY, type CartLine, type CartProduct, formatMoney, getVariationKey, normalizeCartLines } from "@/lib/cart";
 
 type CartClientProps = {
   products: CartProduct[];
 };
 
 type Fulfillment = "pickup" | "shipping";
+type EnrichedCartLine = CartLine & {
+  product: CartProduct;
+  variant?: NonNullable<CartProduct["variations"]>[number];
+  unitPrice: number;
+  maxInventory: number;
+};
 
 export function CartClient({ products }: CartClientProps) {
   const [lines, setLines] = useState<CartLine[]>([]);
@@ -18,9 +24,13 @@ export function CartClient({ products }: CartClientProps) {
   const [message, setMessage] = useState("");
 
   useEffect(() => {
-    const raw = window.localStorage.getItem(CART_STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    setLines(normalizeCartLines(parsed));
+    try {
+      const raw = window.localStorage.getItem(CART_STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      setLines(normalizeCartLines(parsed));
+    } catch {
+      setLines([]);
+    }
   }, []);
 
   useEffect(() => {
@@ -33,28 +43,37 @@ export function CartClient({ products }: CartClientProps) {
       .map((line) => {
         const product = products.find((item) => item.id === line.productId);
         if (!product) return null;
-        const quantity = Math.max(1, Math.min(line.quantity, Math.max(product.inventory, 1)));
-        return { ...line, quantity, product };
+        const variant = product.variations?.find((option) => getVariationKey(option) === line.variantKey);
+        const maxInventory = Math.max(variant?.inventory ?? product.inventory, 0);
+        const quantity = Math.max(1, Math.min(line.quantity, Math.max(maxInventory, 1)));
+        const unitPrice = variant?.price ?? product.price;
+        return { ...line, quantity, product, variant, unitPrice, maxInventory };
       })
-      .filter(Boolean) as Array<CartLine & { product: CartProduct }>;
+      .filter(Boolean) as EnrichedCartLine[];
   }, [lines, products]);
 
-  const subtotal = enriched.reduce((sum, line) => sum + line.product.price * line.quantity, 0);
+  const subtotal = enriched.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0);
   const hasPickupOnlyItems = enriched.some((line) => !line.product.ships);
   const canCheckout = enriched.length > 0 && !checkingOut && !(fulfillment === "shipping" && hasPickupOnlyItems);
 
-  function updateQuantity(productId: string, quantity: number) {
+  function getLineKey(line: Pick<CartLine, "productId" | "variantKey">) {
+    return `${line.productId}::${line.variantKey ?? ""}`;
+  }
+
+  function updateQuantity(target: CartLine, quantity: number) {
+    const targetKey = getLineKey(target);
     setLines((current) =>
       normalizeCartLines(
         current.map((line) =>
-          line.productId === productId ? { ...line, quantity } : line
+          getLineKey(line) === targetKey ? { ...line, quantity } : line
         )
       )
     );
   }
 
-  function removeLine(productId: string) {
-    setLines((current) => current.filter((line) => line.productId !== productId));
+  function removeLine(target: CartLine) {
+    const targetKey = getLineKey(target);
+    setLines((current) => current.filter((line) => getLineKey(line) !== targetKey));
   }
 
   async function checkout() {
@@ -100,25 +119,28 @@ export function CartClient({ products }: CartClientProps) {
         <h1 className="mt-3 text-5xl font-black text-pine">Shopping cart</h1>
         <div className="mt-8 grid gap-5">
           {enriched.map((line) => (
-            <article key={line.productId} className="grid gap-4 rounded-md bg-sage/45 p-4 md:grid-cols-[120px_1fr_auto]">
+            <article key={getLineKey(line)} className="grid gap-4 rounded-md bg-sage/45 p-4 md:grid-cols-[120px_1fr_auto]">
               <div className="relative aspect-[4/3] overflow-hidden rounded-md bg-sage">
                 <Image src={line.product.images[0]} alt={line.product.name} fill className="object-cover" sizes="120px" />
               </div>
               <div>
                 <h2 className="text-2xl font-black text-pine">{line.product.name}</h2>
+                {line.variant ? (
+                  <p className="mt-1 text-sm font-black text-rust">{line.variant.name}</p>
+                ) : null}
                 <p className="mt-1 text-sm font-bold text-stone">{line.product.ships ? "Ships or pickup" : "Pickup only"}</p>
-                <p className="mt-3 font-black text-pine">{formatMoney(line.product.price)}</p>
+                <p className="mt-3 font-black text-pine">{formatMoney(line.unitPrice)}</p>
               </div>
               <div className="flex items-center gap-3 md:flex-col md:items-end">
                 <input
                   className="admin-input w-24"
                   min={1}
-                  max={line.product.inventory}
+                  max={line.maxInventory}
                   type="number"
                   value={line.quantity}
-                  onChange={(event) => updateQuantity(line.productId, Number(event.target.value))}
+                  onChange={(event) => updateQuantity(line, Number(event.target.value))}
                 />
-                <button className="font-black text-rust" type="button" onClick={() => removeLine(line.productId)}>
+                <button className="font-black text-rust" type="button" onClick={() => removeLine(line)}>
                   Remove
                 </button>
               </div>

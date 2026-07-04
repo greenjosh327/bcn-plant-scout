@@ -1,6 +1,7 @@
 export type ProductCategory = "Plants" | "Cuttings" | "Seeds";
 
 export type ProductVariation = {
+  id?: string;
   name: string;
   sku: string;
   price: number;

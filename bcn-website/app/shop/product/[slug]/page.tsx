@@ -1,8 +1,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { AddToCartButton } from "@/components/add-to-cart-button";
 import { ProductCard } from "@/components/product-card";
+import { ProductPurchasePanel } from "@/components/product-purchase-panel";
 import { getCatalogProductBySlug, getRelatedCatalogProducts } from "@/lib/catalog-db";
 
 export const dynamic = "force-dynamic";
@@ -40,12 +40,6 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
           <h1 className="mt-3 text-5xl font-black tracking-tight text-pine">{product.name}</h1>
           <p className="mt-2 text-xl italic text-stone">{product.scientificName}</p>
           <p className="mt-6 text-lg leading-8 text-ink/75">{product.description}</p>
-          <div className="mt-8 flex flex-wrap items-center gap-4">
-            <p className="text-3xl font-black text-pine">${product.price}</p>
-            <p className="rounded-full bg-sage px-4 py-2 text-sm font-black text-pine">
-              {product.inventory > 0 ? `${product.inventory} in stock` : "Sold out"}
-            </p>
-          </div>
           {product.variations && product.variations.length > 0 ? (
             <div className="mt-8 field-card p-4">
               <h2 className="text-lg font-black text-pine">Available options</h2>
@@ -67,11 +61,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
               </div>
             </div>
           ) : null}
-          <AddToCartButton
-            productId={product.id}
-            disabled={product.inventory === 0}
-            className="button button-primary mt-8 w-full md:w-auto"
-          />
+          <ProductPurchasePanel product={product} />
           <p className="mt-3 text-sm text-stone">Checkout runs through Stripe. Pickup and shipping options are checked before payment.</p>
         </section>
       </div>

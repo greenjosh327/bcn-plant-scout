@@ -46,11 +46,17 @@ export function ProductCard({ product }: { product: Product }) {
         </div>
       </Link>
       <div className="px-5 pb-5">
-        <AddToCartButton
-          productId={product.id}
-          disabled={product.inventory <= 0}
-          className="button button-primary w-full"
-        />
+        {product.variations && product.variations.length > 0 ? (
+          <Link href={`/shop/product/${product.slug}`} className="button button-primary w-full">
+            Choose options
+          </Link>
+        ) : (
+          <AddToCartButton
+            productId={product.id}
+            disabled={product.inventory <= 0}
+            className="button button-primary w-full"
+          />
+        )}
       </div>
     </article>
   );

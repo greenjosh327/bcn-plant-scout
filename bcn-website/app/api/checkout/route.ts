@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { getCatalogProducts } from "@/lib/catalog-db";
-import { type CartLine, normalizeCartLines } from "@/lib/cart";
+import { getVariationKey, type CartLine, normalizeCartLines } from "@/lib/cart";
 
 type CheckoutRequest = {
   lines?: CartLine[];
@@ -33,7 +33,12 @@ export async function POST(request: Request) {
   const checkoutItems = lines.map((line) => {
     const product = products.find((item) => item.id === line.productId);
     if (!product) return null;
-    return { product, quantity: Math.min(line.quantity, product.inventory) };
+    const variant = product.variations?.find((option) => getVariationKey(option) === line.variantKey);
+    if (product.variations && product.variations.length > 0 && !variant) return null;
+    const inventory = variant?.inventory ?? product.inventory;
+    const price = variant?.price ?? product.price;
+    const quantity = Math.min(line.quantity, inventory);
+    return { product, variant, price, inventory, quantity };
   });
 
   if (checkoutItems.some((item) => !item || item.quantity <= 0)) {
@@ -75,14 +80,15 @@ export async function POST(request: Request) {
       quantity: item!.quantity,
       price_data: {
         currency: "usd",
-        unit_amount: Math.round(item!.product.price * 100),
+        unit_amount: Math.round(item!.price * 100),
         product_data: {
-          name: item!.product.name,
+          name: item!.variant ? `${item!.product.name} - ${item!.variant.name}` : item!.product.name,
           description: item!.product.scientificName || item!.product.category,
           images: item!.product.images.filter((image) => image.startsWith("https://")).slice(0, 1),
           metadata: {
             product_id: item!.product.id,
-            slug: item!.product.slug
+            slug: item!.product.slug,
+            variant: item!.variant ? getVariationKey(item!.variant) : ""
           }
         },
         tax_behavior: "exclusive"
