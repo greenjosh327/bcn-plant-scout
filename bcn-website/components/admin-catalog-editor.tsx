@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { hasSupabaseBrowserConfig, supabase } from "@/lib/supabase-browser";
 
@@ -29,6 +29,16 @@ type CatalogVariant = {
   price: number;
   inventory: number;
   active: boolean;
+};
+
+type CatalogImage = {
+  id: string;
+  product_id: string;
+  storage_path: string | null;
+  public_url: string | null;
+  alt_text: string | null;
+  sort_order: number;
+  is_primary: boolean;
 };
 
 type OrderItem = {
@@ -71,6 +81,9 @@ type ShopOrder = {
 
 type AdminState = "checking" | "signed-out" | "not-admin" | "ready" | "missing-config";
 type AdminTab = "orders" | "catalog";
+type CatalogFilter = "all" | "needsPhotos" | "lowStock" | "soldOut" | "hidden";
+const PRODUCT_IMAGE_BUCKET = "product-images";
+const LOW_STOCK_THRESHOLD = 5;
 
 const emptyForm = {
   name: "",
@@ -96,26 +109,125 @@ export function AdminCatalogEditor() {
   const [message, setMessage] = useState("");
   const [products, setProducts] = useState<CatalogProduct[]>([]);
   const [variants, setVariants] = useState<CatalogVariant[]>([]);
+  const [images, setImages] = useState<CatalogImage[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
   const [activeTab, setActiveTab] = useState<AdminTab>("orders");
+  const [catalogFilter, setCatalogFilter] = useState<CatalogFilter>("all");
 
   const selected = products.find((product) => product.id === selectedId) ?? null;
   const selectedVariants = variants.filter((variant) => variant.product_id === selectedId);
+  const selectedImages = images
+    .filter((image) => image.product_id === selectedId)
+    .sort((a, b) => Number(b.is_primary) - Number(a.is_primary) || a.sort_order - b.sort_order);
+
+  const productImageCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    images.forEach((image) => counts.set(image.product_id, (counts.get(image.product_id) ?? 0) + 1));
+    return counts;
+  }, [images]);
+
+  const productVariantStats = useMemo(() => {
+    const stats = new Map<string, { active: number; total: number; inventory: number; lowStock: number; soldOut: number }>();
+
+    products.forEach((product) => {
+      stats.set(product.id, { active: 0, total: 0, inventory: 0, lowStock: 0, soldOut: 0 });
+    });
+
+    variants.forEach((variant) => {
+      const current = stats.get(variant.product_id) ?? { active: 0, total: 0, inventory: 0, lowStock: 0, soldOut: 0 };
+      const inventory = Math.max(0, Number(variant.inventory) || 0);
+
+      current.total += 1;
+      if (variant.active) {
+        current.active += 1;
+        current.inventory += inventory;
+        if (inventory === 0) current.soldOut += 1;
+        if (inventory > 0 && inventory <= LOW_STOCK_THRESHOLD) current.lowStock += 1;
+      }
+
+      stats.set(variant.product_id, current);
+    });
+
+    return stats;
+  }, [products, variants]);
+
+  function getInventoryForProduct(product: CatalogProduct) {
+    const stats = productVariantStats.get(product.id);
+    if (stats && stats.active > 0) return stats.inventory;
+    return Math.max(0, Number(product.inventory) || 0);
+  }
+
+  function productNeedsPhoto(product: CatalogProduct) {
+    return (productImageCounts.get(product.id) ?? 0) === 0;
+  }
+
+  function productIsSoldOut(product: CatalogProduct) {
+    return product.active && getInventoryForProduct(product) <= 0;
+  }
+
+  function productIsLowStock(product: CatalogProduct) {
+    const inventory = getInventoryForProduct(product);
+    return product.active && inventory > 0 && inventory <= LOW_STOCK_THRESHOLD;
+  }
+
+  const catalogStats = useMemo(() => {
+    let productsWithoutPhotos = 0;
+    let lowStockProducts = 0;
+    let soldOutProducts = 0;
+    let lowStockVariants = 0;
+    let soldOutVariants = 0;
+
+    products.forEach((product) => {
+      const inventory = getInventoryForProduct(product);
+      if ((productImageCounts.get(product.id) ?? 0) === 0) productsWithoutPhotos += 1;
+      if (product.active && inventory > 0 && inventory <= LOW_STOCK_THRESHOLD) lowStockProducts += 1;
+      if (product.active && inventory <= 0) soldOutProducts += 1;
+    });
+
+    variants.forEach((variant) => {
+      if (!variant.active) return;
+      const inventory = Math.max(0, Number(variant.inventory) || 0);
+      if (inventory === 0) soldOutVariants += 1;
+      if (inventory > 0 && inventory <= LOW_STOCK_THRESHOLD) lowStockVariants += 1;
+    });
+
+    return {
+      totalProducts: products.length,
+      activeProducts: products.filter((product) => product.active).length,
+      hiddenProducts: products.filter((product) => !product.active).length,
+      productsWithoutPhotos,
+      lowStockProducts,
+      soldOutProducts,
+      totalVariants: variants.length,
+      lowStockVariants,
+      soldOutVariants
+    };
+  }, [products, variants, productImageCounts, productVariantStats]);
 
   const filteredProducts = useMemo(() => {
     const term = search.trim().toLowerCase();
-    if (!term) return products;
-    return products.filter((product) =>
-      [product.name, product.scientific_name, product.common_name, product.category, product.slug]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase()
-        .includes(term)
-    );
-  }, [products, search]);
+    return products.filter((product) => {
+      const matchesSearch =
+        !term ||
+        [product.name, product.scientific_name, product.common_name, product.category, product.slug]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase()
+          .includes(term);
+
+      if (!matchesSearch) return false;
+
+      if (catalogFilter === "needsPhotos") return productNeedsPhoto(product);
+      if (catalogFilter === "lowStock") return productIsLowStock(product);
+      if (catalogFilter === "soldOut") return productIsSoldOut(product);
+      if (catalogFilter === "hidden") return !product.active;
+      return true;
+    });
+  }, [products, search, catalogFilter, productImageCounts, productVariantStats]);
 
   useEffect(() => {
     if (!hasSupabaseBrowserConfig() || !supabase) {
@@ -138,6 +250,7 @@ export function AdminCatalogEditor() {
         setState("signed-out");
         setProducts([]);
         setVariants([]);
+        setImages([]);
         return;
       }
       void verifyAdminAndLoad(nextSession);
@@ -187,18 +300,24 @@ export function AdminCatalogEditor() {
   async function loadCatalog() {
     if (!supabase) return;
     setMessage("Loading catalog...");
-    const [{ data: productRows, error: productError }, { data: variantRows, error: variantError }] = await Promise.all([
+    const [
+      { data: productRows, error: productError },
+      { data: variantRows, error: variantError },
+      { data: imageRows, error: imageError }
+    ] = await Promise.all([
       supabase.from("products").select("*").order("name", { ascending: true }),
-      supabase.from("product_variants").select("*").order("name", { ascending: true })
+      supabase.from("product_variants").select("*").order("name", { ascending: true }),
+      supabase.from("product_images").select("*").order("sort_order", { ascending: true })
     ]);
 
-    if (productError || variantError) {
-      setMessage(productError?.message ?? variantError?.message ?? "Could not load catalog.");
+    if (productError || variantError || imageError) {
+      setMessage(productError?.message ?? variantError?.message ?? imageError?.message ?? "Could not load catalog.");
       return;
     }
 
     setProducts((productRows ?? []) as CatalogProduct[]);
     setVariants((variantRows ?? []) as CatalogVariant[]);
+    setImages((imageRows ?? []) as CatalogImage[]);
     setSelectedId((current) => current ?? productRows?.[0]?.id ?? null);
     setMessage(`Loaded ${productRows?.length ?? 0} products.`);
   }
@@ -285,6 +404,65 @@ export function AdminCatalogEditor() {
     setMessage("Product saved.");
   }
 
+  async function createProduct() {
+    if (!supabase) return;
+    const id = makeId("prod");
+    const newProduct: CatalogProduct = {
+      id,
+      slug: `${slugify("new-product")}-${id.slice(-6)}`,
+      name: "New product",
+      scientific_name: null,
+      common_name: null,
+      category: "Seeds",
+      description: "",
+      price: 0,
+      inventory: 0,
+      featured: false,
+      active: false,
+      ships: true,
+      local_pickup: true,
+      tags: []
+    };
+    setMessage("Creating product...");
+    const { error } = await supabase.from("products").insert(newProduct);
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+    setProducts((current) => [...current, newProduct].sort((a, b) => a.name.localeCompare(b.name)));
+    setSelectedId(id);
+    setMessage("New hidden product created. Edit it, then turn Active on when ready.");
+  }
+
+  async function deleteProduct() {
+    if (!supabase || !selected) return;
+    const confirmed = window.confirm(`Delete ${selected.name}? This removes its variants and photo rows. Existing order history stays separate.`);
+    if (!confirmed) return;
+
+    const productImages = images.filter((image) => image.product_id === selected.id);
+    const storagePaths = productImages.map((image) => image.storage_path).filter(Boolean) as string[];
+    setMessage("Deleting product...");
+
+    const { error } = await supabase.from("products").delete().eq("id", selected.id);
+    if (error) {
+      setMessage(`${error.message}. Product was not deleted. Try turning Active off if order history is connected.`);
+      return;
+    }
+
+    if (storagePaths.length) {
+      await supabase.storage.from(PRODUCT_IMAGE_BUCKET).remove(storagePaths);
+    }
+
+    setProducts((current) => current.filter((product) => product.id !== selected.id));
+    setVariants((current) => current.filter((variant) => variant.product_id !== selected.id));
+    setImages((current) => current.filter((image) => image.product_id !== selected.id));
+    setSelectedId((current) => {
+      const remaining = products.filter((product) => product.id !== current);
+      return remaining[0]?.id ?? null;
+    });
+    setMessage("Product deleted.");
+  }
+
   async function updateVariant(variant: CatalogVariant, patch: Partial<CatalogVariant>) {
     if (!supabase) return;
     const next = { ...variant, ...patch };
@@ -307,6 +485,154 @@ export function AdminCatalogEditor() {
     }
     setMessage("Inventory option saved.");
     await refreshProductInventory(next.product_id, nextVariants);
+  }
+
+  async function addVariant() {
+    if (!supabase || !selected) return;
+    const newVariant: CatalogVariant = {
+      id: makeId("var"),
+      product_id: selected.id,
+      name: "New option",
+      sku: "",
+      price: Number(form.price) || 0,
+      inventory: 0,
+      active: true
+    };
+    setMessage("Adding inventory option...");
+    const { error } = await supabase.from("product_variants").insert(newVariant);
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+    const nextVariants = [...variants, newVariant];
+    setVariants(nextVariants);
+    await refreshProductInventory(selected.id, nextVariants);
+    setMessage("Inventory option added.");
+  }
+
+  async function deleteVariant(variant: CatalogVariant) {
+    if (!supabase) return;
+    const confirmed = window.confirm(`Delete option "${variant.name}"?`);
+    if (!confirmed) return;
+    const { error } = await supabase.from("product_variants").delete().eq("id", variant.id);
+    if (error) {
+      setMessage(`${error.message}. Marking option inactive instead.`);
+      await updateVariant(variant, { active: false, inventory: 0 });
+      return;
+    }
+    const nextVariants = variants.filter((item) => item.id !== variant.id);
+    setVariants(nextVariants);
+    await refreshProductInventory(variant.product_id, nextVariants);
+    setMessage("Inventory option deleted.");
+  }
+
+  async function uploadProductImage(event: React.ChangeEvent<HTMLInputElement>) {
+    if (!supabase || !selected) return;
+    const files = Array.from(event.currentTarget.files ?? []);
+    event.currentTarget.value = "";
+    if (!files.length) return;
+
+    setUploadingImage(true);
+    setMessage(`Uploading ${files.length} product photo${files.length === 1 ? "" : "s"}...`);
+
+    const uploadedImages: CatalogImage[] = [];
+    const uploadedPaths: string[] = [];
+
+    for (const [index, file] of files.entries()) {
+      const path = `products/${selected.id}/${Date.now()}-${index}-${safeFileName(file.name)}`;
+      const upload = await supabase.storage.from(PRODUCT_IMAGE_BUCKET).upload(path, file, {
+        cacheControl: "3600",
+        contentType: file.type || "image/jpeg",
+        upsert: false
+      });
+
+      if (upload.error) {
+        if (uploadedPaths.length) {
+          await supabase.storage.from(PRODUCT_IMAGE_BUCKET).remove(uploadedPaths);
+        }
+        setUploadingImage(false);
+        setMessage(upload.error.message);
+        return;
+      }
+
+      uploadedPaths.push(path);
+      const { data: publicData } = supabase.storage.from(PRODUCT_IMAGE_BUCKET).getPublicUrl(path);
+      uploadedImages.push({
+        id: makeId("img"),
+        product_id: selected.id,
+        storage_path: path,
+        public_url: publicData.publicUrl,
+        alt_text: selected.name,
+        sort_order: selectedImages.length + index,
+        is_primary: selectedImages.length === 0 && index === 0
+      });
+    }
+
+    const { error } = await supabase.from("product_images").insert(uploadedImages);
+    setUploadingImage(false);
+    if (error) {
+      await supabase.storage.from(PRODUCT_IMAGE_BUCKET).remove(uploadedPaths);
+      setMessage(error.message);
+      return;
+    }
+    setImages((current) => [...current, ...uploadedImages]);
+    setMessage(
+      selectedImages.length === 0
+        ? `${uploadedImages.length} photo${uploadedImages.length === 1 ? "" : "s"} uploaded. First photo set as primary.`
+        : `${uploadedImages.length} photo${uploadedImages.length === 1 ? "" : "s"} uploaded.`
+    );
+  }
+
+  async function setPrimaryImage(image: CatalogImage) {
+    if (!supabase || !selected) return;
+    setMessage("Updating primary photo...");
+    const clear = await supabase.from("product_images").update({ is_primary: false }).eq("product_id", selected.id);
+    if (clear.error) {
+      setMessage(clear.error.message);
+      return;
+    }
+    const setPrimary = await supabase.from("product_images").update({ is_primary: true }).eq("id", image.id);
+    if (setPrimary.error) {
+      setMessage(setPrimary.error.message);
+      return;
+    }
+    setImages((current) =>
+      current.map((item) => (item.product_id === selected.id ? { ...item, is_primary: item.id === image.id } : item))
+    );
+    setMessage("Primary photo updated.");
+  }
+
+  async function updateImageAltText(image: CatalogImage, altText: string) {
+    if (!supabase) return;
+    setImages((current) => current.map((item) => (item.id === image.id ? { ...item, alt_text: altText } : item)));
+    const { error } = await supabase.from("product_images").update({ alt_text: altText || null }).eq("id", image.id);
+    if (error) {
+      setMessage(error.message);
+      await loadCatalog();
+      return;
+    }
+    setMessage("Photo note saved.");
+  }
+
+  async function deleteImage(image: CatalogImage) {
+    if (!supabase) return;
+    const confirmed = window.confirm("Delete this product photo?");
+    if (!confirmed) return;
+    const { error } = await supabase.from("product_images").delete().eq("id", image.id);
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+    if (image.storage_path) {
+      await supabase.storage.from(PRODUCT_IMAGE_BUCKET).remove([image.storage_path]);
+    }
+    const remainingImages = images.filter((item) => item.product_id === image.product_id && item.id !== image.id);
+    if (image.is_primary && remainingImages.length > 0) {
+      await supabase.from("product_images").update({ is_primary: true }).eq("id", remainingImages[0].id);
+      remainingImages[0] = { ...remainingImages[0], is_primary: true };
+    }
+    setImages((current) => current.filter((item) => item.id !== image.id).map((item) => remainingImages.find((next) => next.id === item.id) ?? item));
+    setMessage("Product photo deleted.");
   }
 
   async function refreshProductInventory(productId: string, variantRows = variants) {
@@ -383,19 +709,70 @@ export function AdminCatalogEditor() {
         <aside className="field-card p-4">
           <input className="admin-input" placeholder="Search catalog..." value={search} onChange={(event) => setSearch(event.target.value)} />
           <button className="button button-secondary mt-3 w-full" onClick={loadCatalog}>Refresh</button>
-          <div className="mt-4 max-h-[720px] overflow-y-auto pr-1">
-            {filteredProducts.map((product) => (
+          <button className="button button-primary mt-3 w-full" onClick={createProduct}>Add Product</button>
+
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            <CatalogMetric label="products" value={catalogStats.totalProducts} />
+            <CatalogMetric label="active" value={catalogStats.activeProducts} />
+            <CatalogMetric label="needs photo" value={catalogStats.productsWithoutPhotos} tone={catalogStats.productsWithoutPhotos > 0 ? "attention" : "normal"} />
+            <CatalogMetric label="low stock" value={catalogStats.lowStockProducts} tone={catalogStats.lowStockProducts > 0 ? "attention" : "normal"} />
+            <CatalogMetric label="sold out" value={catalogStats.soldOutProducts} tone={catalogStats.soldOutProducts > 0 ? "attention" : "normal"} />
+            <CatalogMetric label="hidden" value={catalogStats.hiddenProducts} />
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            {([
+              ["all", "All"],
+              ["needsPhotos", "Needs Photo"],
+              ["lowStock", "Low Stock"],
+              ["soldOut", "Sold Out"],
+              ["hidden", "Hidden"]
+            ] as const).map(([nextFilter, label]) => (
               <button
-                key={product.id}
-                className={`mb-2 w-full rounded-md border p-3 text-left ${product.id === selectedId ? "border-pine bg-sage" : "border-pine/15 bg-white"}`}
-                onClick={() => setSelectedId(product.id)}
+                key={nextFilter}
+                className={`rounded-full border px-3 py-2 text-xs font-black ${catalogFilter === nextFilter ? "border-pine bg-pine text-white" : "border-pine/20 bg-sage text-pine"}`}
+                onClick={() => setCatalogFilter(nextFilter)}
               >
-                <p className="font-black text-pine">{product.name}</p>
-                <p className="mt-1 text-xs font-bold uppercase tracking-[0.12em] text-stone">
-                  {product.category} / {product.inventory} available / {product.active ? "active" : "hidden"}
-                </p>
+                {label}
               </button>
             ))}
+          </div>
+
+          <div className="mt-4 rounded-md border border-pine/15 bg-sage/35 p-3 text-xs font-bold leading-5 text-stone">
+            Variants: {catalogStats.totalVariants} total, {catalogStats.lowStockVariants} low stock, {catalogStats.soldOutVariants} sold out.
+          </div>
+
+          <div className="mt-4 max-h-[720px] overflow-y-auto pr-1">
+            {filteredProducts.map((product) => {
+              const inventory = getInventoryForProduct(product);
+              const needsPhoto = productNeedsPhoto(product);
+              const isLowStock = productIsLowStock(product);
+              const isSoldOut = productIsSoldOut(product);
+
+              return (
+                <button
+                  key={product.id}
+                  className={`mb-2 w-full rounded-md border p-3 text-left ${product.id === selectedId ? "border-pine bg-sage" : "border-pine/15 bg-white"}`}
+                  onClick={() => setSelectedId(product.id)}
+                >
+                  <p className="font-black text-pine">{product.name}</p>
+                  <p className="mt-1 text-xs font-bold uppercase tracking-[0.12em] text-stone">
+                    {product.category} / {inventory} available / {product.active ? "active" : "hidden"}
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {needsPhoto ? <AttentionBadge tone="rust">Needs photo</AttentionBadge> : null}
+                    {isLowStock ? <AttentionBadge tone="rust">Low stock</AttentionBadge> : null}
+                    {isSoldOut ? <AttentionBadge tone="rust">Sold out</AttentionBadge> : null}
+                    {!product.active ? <AttentionBadge>Hidden</AttentionBadge> : null}
+                  </div>
+                </button>
+              );
+            })}
+            {filteredProducts.length === 0 ? (
+              <p className="rounded-md border border-dashed border-pine/20 bg-sage/35 p-4 text-sm font-bold text-stone">
+                No products match this search and filter.
+              </p>
+            ) : null}
           </div>
         </aside>
 
@@ -433,16 +810,72 @@ export function AdminCatalogEditor() {
               </div>
 
               <div>
-                <h2 className="text-2xl font-black text-pine">Inventory options</h2>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <h2 className="text-2xl font-black text-pine">Product photos</h2>
+                  <label className="button button-secondary cursor-pointer">
+                    {uploadingImage ? "Uploading..." : "Upload Photos"}
+                    <input className="hidden" type="file" accept="image/*" multiple disabled={uploadingImage} onChange={uploadProductImage} />
+                  </label>
+                </div>
+                <p className="mt-2 text-sm text-ink/70">
+                  Upload JPG, PNG, or WebP. The first photo becomes the shop image unless you choose another primary.
+                </p>
+                {selectedImages.length ? (
+                  <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    {selectedImages.map((image) => (
+                      <article key={image.id} className="rounded-md border border-pine/15 bg-sage/45 p-3">
+                        {image.public_url ? (
+                          <img className="h-40 w-full rounded-md object-cover" src={image.public_url} alt={image.alt_text ?? selected.name} />
+                        ) : (
+                          <div className="grid h-40 place-items-center rounded-md bg-white text-sm font-bold text-stone">No preview URL</div>
+                        )}
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <button className="rounded-full bg-white px-3 py-1 text-xs font-black text-pine" onClick={() => setPrimaryImage(image)}>
+                            {image.is_primary ? "Primary" : "Make primary"}
+                          </button>
+                          <button className="rounded-full bg-white px-3 py-1 text-xs font-black text-rust" onClick={() => deleteImage(image)}>
+                            Delete
+                          </button>
+                        </div>
+                        <label className="mt-3 block text-xs font-black uppercase tracking-[0.12em] text-stone">
+                          Photo note
+                          <input
+                            className="admin-input mt-1 text-sm normal-case tracking-normal"
+                            value={image.alt_text ?? ""}
+                            onChange={(event) => updateImageAltText(image, event.target.value)}
+                            placeholder={selected.name}
+                          />
+                        </label>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-3 rounded-md border border-dashed border-pine/20 bg-sage/35 p-4 text-sm font-bold text-stone">
+                    No product photos yet. Upload one here and it will feed the shop product card.
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <h2 className="text-2xl font-black text-pine">Inventory options</h2>
+                  <button className="button button-secondary" onClick={addVariant}>Add Option</button>
+                </div>
                 <div className="mt-4 grid gap-3">
                   {selectedVariants.map((variant) => (
-                    <VariantEditor key={variant.id} variant={variant} onSave={updateVariant} />
+                    <VariantEditor key={variant.id} variant={variant} onDelete={deleteVariant} onSave={updateVariant} />
                   ))}
+                  {selectedVariants.length === 0 ? (
+                    <p className="rounded-md border border-dashed border-pine/20 bg-sage/35 p-4 text-sm font-bold text-stone">
+                      No options yet. Add seed pack sizes, plant pot sizes, or cutting bundles here.
+                    </p>
+                  ) : null}
                 </div>
               </div>
 
               <div className="flex flex-wrap items-center gap-4">
                 <button className="button button-primary" disabled={saving} onClick={saveProduct}>{saving ? "Saving..." : "Save Product"}</button>
+                <button className="button button-secondary text-rust" onClick={deleteProduct}>Delete Product</button>
                 {message ? <p className="font-bold text-stone">{message}</p> : null}
               </div>
             </div>
@@ -848,6 +1281,37 @@ function OrderDetail({
   );
 }
 
+function CatalogMetric({
+  label,
+  value,
+  tone = "normal"
+}: {
+  label: string;
+  value: string | number;
+  tone?: "normal" | "attention";
+}) {
+  return (
+    <div className={`rounded-md border p-3 ${tone === "attention" ? "border-rust/30 bg-rust/10" : "border-pine/15 bg-sage/60"}`}>
+      <p className="text-[0.65rem] font-black uppercase tracking-[0.14em] text-stone">{label}</p>
+      <p className="mt-2 text-2xl font-black text-pine">{value}</p>
+    </div>
+  );
+}
+
+function AttentionBadge({
+  children,
+  tone = "stone"
+}: {
+  children: ReactNode;
+  tone?: "rust" | "stone";
+}) {
+  return (
+    <span className={`rounded-full px-2 py-1 text-[0.65rem] font-black uppercase tracking-[0.08em] ${tone === "rust" ? "bg-rust/15 text-rust" : "bg-sage text-stone"}`}>
+      {children}
+    </span>
+  );
+}
+
 function OrderMetric({ label, value }: { label: string; value: string | number }) {
   return (
     <div className="rounded-md border border-pine/15 bg-sage/60 p-4">
@@ -857,7 +1321,7 @@ function OrderMetric({ label, value }: { label: string; value: string | number }
   );
 }
 
-function AdminShell({ title, children }: { title: string; children: React.ReactNode }) {
+function AdminShell({ title, children }: { title: string; children: ReactNode }) {
   return (
     <main className="container py-12">
       <section className="field-card mx-auto max-w-2xl p-8">
@@ -869,7 +1333,7 @@ function AdminShell({ title, children }: { title: string; children: React.ReactN
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label className="block">
       <span className="text-xs font-black uppercase tracking-[0.16em] text-stone">{label}</span>
@@ -928,7 +1392,15 @@ function escapeHtml(value: string) {
     .replaceAll("'", "&#039;");
 }
 
-function VariantEditor({ variant, onSave }: { variant: CatalogVariant; onSave: (variant: CatalogVariant, patch: Partial<CatalogVariant>) => void }) {
+function VariantEditor({
+  variant,
+  onDelete,
+  onSave
+}: {
+  variant: CatalogVariant;
+  onDelete: (variant: CatalogVariant) => void;
+  onSave: (variant: CatalogVariant, patch: Partial<CatalogVariant>) => void;
+}) {
   const [draft, setDraft] = useState(variant);
 
   useEffect(() => setDraft(variant), [variant]);
@@ -943,6 +1415,16 @@ function VariantEditor({ variant, onSave }: { variant: CatalogVariant; onSave: (
         <button className="button button-secondary" onClick={() => onSave(variant, draft)}>Save</button>
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
+        <button
+          className={`rounded-full px-3 py-1 text-xs font-black ${draft.active ? "bg-pine text-white" : "bg-white text-stone"}`}
+          onClick={() => {
+            const active = !draft.active;
+            setDraft({ ...draft, active });
+            onSave(variant, { active });
+          }}
+        >
+          {draft.active ? "Active" : "Hidden"}
+        </button>
         {[-5, -1, 1, 5, 10].map((amount) => (
           <button
             key={amount}
@@ -965,7 +1447,30 @@ function VariantEditor({ variant, onSave }: { variant: CatalogVariant; onSave: (
         >
           Sold out
         </button>
+        <button className="rounded-full bg-white px-3 py-1 text-xs font-black text-rust" onClick={() => onDelete(variant)}>
+          Delete option
+        </button>
       </div>
     </article>
   );
+}
+
+function makeId(prefix: string) {
+  const randomId =
+    globalThis.crypto?.randomUUID?.() ??
+    `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  return `${prefix}_${randomId}`;
+}
+
+function slugify(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function safeFileName(value: string) {
+  const cleaned = value.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, "-");
+  return cleaned || "product-photo.jpg";
 }
