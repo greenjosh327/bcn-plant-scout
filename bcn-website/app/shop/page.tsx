@@ -2,6 +2,8 @@ import { ProductCard } from "@/components/product-card";
 import { SectionHeading } from "@/components/section-heading";
 import { getCatalogProducts } from "@/lib/catalog-db";
 
+export const dynamic = "force-dynamic";
+
 export default async function ShopPage({
   searchParams
 }: {

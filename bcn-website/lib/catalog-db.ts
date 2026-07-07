@@ -2,6 +2,8 @@ import { createClient } from "@supabase/supabase-js";
 import { products as fallbackProducts, getRelatedProducts as getFallbackRelatedProducts } from "./products";
 import type { Product, ProductCategory, ProductVariation } from "./types";
 
+const PRODUCT_IMAGE_BUCKET = "product-images";
+
 type DbProduct = {
   id: string;
   slug: string;
@@ -50,6 +52,7 @@ type DbImage = {
   public_url: string | null;
   storage_path: string | null;
   alt_text: string | null;
+  is_primary: boolean | null;
   sort_order: number | null;
 };
 
@@ -86,7 +89,7 @@ export async function getCatalogProducts() {
     supabase.from("product_images").select("*").in("product_id", productIds).order("sort_order", { ascending: true })
   ]);
 
-  return mapDbProducts(productRows as DbProduct[], (variantRows ?? []) as DbVariant[], (imageRows ?? []) as DbImage[]);
+  return mapDbProducts(productRows as DbProduct[], (variantRows ?? []) as DbVariant[], (imageRows ?? []) as DbImage[], supabase);
 }
 
 export async function getFeaturedCatalogProducts() {
@@ -109,7 +112,12 @@ export async function getRelatedCatalogProducts(product: Product) {
   return related.length > 0 ? related : getFallbackRelatedProducts(product);
 }
 
-function mapDbProducts(products: DbProduct[], variants: DbVariant[], images: DbImage[]): Product[] {
+function mapDbProducts(
+  products: DbProduct[],
+  variants: DbVariant[],
+  images: DbImage[],
+  supabase: ReturnType<typeof getSupabaseServerClient>
+): Product[] {
   return products.map((product) => {
     const productVariants = variants
       .filter((variant) => variant.product_id === product.id)
@@ -123,7 +131,8 @@ function mapDbProducts(products: DbProduct[], variants: DbVariant[], images: DbI
 
     const productImages = images
       .filter((image) => image.product_id === product.id)
-      .map((image) => image.public_url || image.storage_path || "")
+      .sort((a, b) => Number(Boolean(b.is_primary)) - Number(Boolean(a.is_primary)) || Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0))
+      .map((image) => resolveProductImageUrl(image, supabase))
       .filter(Boolean);
 
     return {
@@ -161,4 +170,12 @@ function mapDbProducts(products: DbProduct[], variants: DbVariant[], images: DbI
       updatedAt: product.updated_at ?? ""
     };
   });
+}
+
+function resolveProductImageUrl(image: DbImage, supabase: ReturnType<typeof getSupabaseServerClient>) {
+  if (image.public_url) return image.public_url;
+  if (!image.storage_path) return "";
+  if (/^https?:\/\//i.test(image.storage_path) || image.storage_path.startsWith("/")) return image.storage_path;
+
+  return supabase?.storage.from(PRODUCT_IMAGE_BUCKET).getPublicUrl(image.storage_path).data.publicUrl ?? "";
 }

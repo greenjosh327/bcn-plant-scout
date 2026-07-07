@@ -4,6 +4,8 @@ import { ProductCard } from "@/components/product-card";
 import { SectionHeading } from "@/components/section-heading";
 import { getFeaturedCatalogProducts } from "@/lib/catalog-db";
 
+export const dynamic = "force-dynamic";
+
 const reasons = [
   ["Native plants", "Species chosen for local habitat value, not just shelf appeal."],
   ["Responsibly propagated", "Seed, cuttings, and nursery stock handled with careful records."],
