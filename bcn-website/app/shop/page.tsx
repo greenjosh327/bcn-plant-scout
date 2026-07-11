@@ -35,7 +35,7 @@ export default async function ShopPage({
   return (
     <main className="container py-12">
       <SectionHeading eyebrow="Shop" title="Plants, cuttings, and seeds">
-        Browse sample inventory. Checkout is scaffolded for Stripe but payments are not live yet.
+        Browse available Base Camp North nursery inventory. Secure checkout is live for pickup and shipping orders.
       </SectionHeading>
 
       <form className="field-card mb-8 grid gap-4 p-4 md:grid-cols-[1fr_180px_180px_auto]">
