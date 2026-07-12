@@ -13,17 +13,32 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
   if (!product) notFound();
 
   const related = await getRelatedCatalogProducts(product);
-  const facts = [
-    ["Hardiness", product.hardinessZones],
-    ["Sun", product.sunlight],
-    ["Soil", product.soil],
-    ["Bloom", product.bloomTime],
-    ["Height", product.height],
-    ["Spacing", product.spread],
-    ["Native range", product.nativeStatus],
-    ["Local pickup", product.localPickup ? "Available" : "Not available"],
-    ["Shipping", product.ships ? "Available" : "Pickup only"]
-  ];
+  const growingFacts = [
+    { label: "Hardiness", value: product.hardinessZones, enabled: product.showHardinessZones !== false },
+    { label: "Sun", value: product.sunlight, enabled: product.showSunlight !== false },
+    { label: "Soil", value: product.soil, enabled: product.showSoil !== false },
+    { label: "Bloom or harvest season", value: product.bloomTime, enabled: product.showBloomTime !== false },
+    { label: "Mature height", value: product.height, enabled: product.showHeight !== false },
+    { label: "Spacing", value: product.spread, enabled: product.showSpread !== false },
+    { label: "Native range", value: product.nativeStatus, enabled: product.showNativeStatus !== false },
+    { label: "Wildlife value", value: product.wildlifeBenefits, enabled: product.showWildlifeBenefits !== false },
+    { label: "Pollinator value", value: product.pollinatorBenefits, enabled: product.showPollinatorBenefits !== false },
+    { label: "Host plant information", value: product.hostSpecies, enabled: product.showHostSpecies !== false }
+  ]
+    .map((fact) => ({ ...fact, value: displayValue(fact.value) }))
+    .filter((fact) => fact.enabled && fact.value);
+
+  const growingDetailBlocks = [
+    { title: "Growing notes", value: displayValue(product.growingNotes) },
+    { title: "Planting or germination instructions", value: displayValue(product.plantingInstructions) },
+    { title: "Shipping notes", value: displayValue(product.shippingNotes) }
+  ].filter((block) => block.value);
+
+  const hasGrowingInformation = growingFacts.length > 0 || growingDetailBlocks.length > 0;
+  const growingSectionClass =
+    growingFacts.length > 0 && growingDetailBlocks.length > 0
+      ? "mt-16 grid gap-6 lg:grid-cols-[0.8fr_1.2fr]"
+      : "mt-16 grid gap-6";
 
   return (
     <main className="container py-12">
@@ -66,26 +81,30 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
         </section>
       </div>
 
-      <section className="mt-16 grid gap-6 lg:grid-cols-[0.8fr_1.2fr]">
-        <div className="field-card p-6">
-          <h2 className="text-2xl font-black text-pine">Growing information</h2>
-          <div className="mt-5 grid gap-3">
-            {facts.map(([label, value]) => (
-              <div key={label} className="rounded-md bg-sage/55 p-4">
-                <p className="text-xs font-black uppercase tracking-[0.16em] text-stone">{label}</p>
-                <p className="mt-1 font-bold text-pine">{value}</p>
+      {hasGrowingInformation ? (
+        <section className={growingSectionClass}>
+          {growingFacts.length > 0 ? (
+            <div className="field-card p-6">
+              <h2 className="text-2xl font-black text-pine">Growing information</h2>
+              <div className="mt-5 grid gap-3">
+                {growingFacts.map((fact) => (
+                  <div key={fact.label} className="rounded-md bg-sage/55 p-4">
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-stone">{fact.label}</p>
+                    <p className="mt-1 font-bold text-pine">{fact.value}</p>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        </div>
-        <div className="grid gap-5">
-          <InfoBlock title="Wildlife value">{product.wildlifeBenefits}</InfoBlock>
-          <InfoBlock title="Pollinator value">{product.pollinatorBenefits}</InfoBlock>
-          <InfoBlock title="Host plant information">{product.hostSpecies}</InfoBlock>
-          <InfoBlock title="Growing notes">{product.growingNotes}</InfoBlock>
-          <InfoBlock title="Shipping notes">{product.shippingNotes}</InfoBlock>
-        </div>
-      </section>
+            </div>
+          ) : null}
+          {growingDetailBlocks.length > 0 ? (
+            <div className="grid gap-5">
+              {growingDetailBlocks.map((block) => (
+                <InfoBlock key={block.title} title={block.title}>{block.value}</InfoBlock>
+              ))}
+            </div>
+          ) : null}
+        </section>
+      ) : null}
 
       <section className="mt-16">
         <div className="mb-6 flex items-end justify-between gap-4">
@@ -98,6 +117,19 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
       </section>
     </main>
   );
+}
+
+const HIDDEN_PLACEHOLDER_VALUES = new Set([
+  "See product description",
+  "See product description for bloom and pollinator notes.",
+  "Selected for nursery, wildlife, food forest, or restoration value.",
+  "Shipping and pickup availability depends on item size, season, and live-plant condition."
+]);
+
+function displayValue(value: string | null | undefined) {
+  const trimmed = value?.trim() ?? "";
+  if (!trimmed || HIDDEN_PLACEHOLDER_VALUES.has(trimmed)) return "";
+  return trimmed;
 }
 
 function InfoBlock({ title, children }: { title: string; children: React.ReactNode }) {

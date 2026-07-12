@@ -94,7 +94,8 @@ Run the SQL files in this order from the Supabase SQL Editor:
 
 1. `supabase/sql/20260703_bcn_catalog_schema.sql`
 2. `supabase/sql/20260703_bcn_catalog_seed.sql`
-3. `supabase/sql/20260703_bcn_orders_schema.sql`
+3. `supabase/sql/20260712_bcn_growing_information_fields.sql`
+4. `supabase/sql/20260703_bcn_orders_schema.sql`
 
 The order migration creates:
 
@@ -198,7 +199,8 @@ The Prisma schema in `prisma/schema.prisma` includes the product fields needed f
 - category
 - inventory
 - images
-- hardiness, sunlight, soil, bloom time, height, spread
-- wildlife, pollinator, host plant, growing, and shipping notes
+- hardiness, sunlight, soil, bloom or harvest time, mature height, spacing, and native range
+- wildlife, pollinator, host plant, growing, planting/germination, and shipping notes
+- public display toggles for standardized growing information fields
 
 When ready, connect a PostgreSQL database using `DATABASE_URL` in `.env`.

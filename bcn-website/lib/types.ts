@@ -34,6 +34,17 @@ export type Product = {
   hostSpecies: string;
   shippingNotes: string;
   growingNotes: string;
+  plantingInstructions?: string;
+  showHardinessZones?: boolean;
+  showSunlight?: boolean;
+  showSoil?: boolean;
+  showBloomTime?: boolean;
+  showHeight?: boolean;
+  showSpread?: boolean;
+  showNativeStatus?: boolean;
+  showWildlifeBenefits?: boolean;
+  showPollinatorBenefits?: boolean;
+  showHostSpecies?: boolean;
   localPickup: boolean;
   ships: boolean;
   tags: string[];

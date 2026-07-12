@@ -18,6 +18,29 @@ type CatalogProduct = {
   active: boolean;
   ships: boolean;
   local_pickup: boolean;
+  native_status: string | null;
+  hardiness_zones: string | null;
+  sunlight: string | null;
+  soil: string | null;
+  height: string | null;
+  spread: string | null;
+  bloom_time: string | null;
+  wildlife_benefits: string | null;
+  pollinator_benefits: string | null;
+  host_species: string | null;
+  growing_notes: string | null;
+  planting_instructions: string | null;
+  shipping_notes: string | null;
+  show_hardiness_zones: boolean | null;
+  show_sunlight: boolean | null;
+  show_soil: boolean | null;
+  show_bloom_time: boolean | null;
+  show_height: boolean | null;
+  show_spread: boolean | null;
+  show_native_status: boolean | null;
+  show_wildlife_benefits: boolean | null;
+  show_pollinator_benefits: boolean | null;
+  show_host_species: boolean | null;
   tags: string[] | null;
 };
 
@@ -84,8 +107,148 @@ type AdminTab = "orders" | "catalog";
 type CatalogFilter = "all" | "needsPhotos" | "lowStock" | "soldOut" | "hidden";
 const PRODUCT_IMAGE_BUCKET = "product-images";
 const LOW_STOCK_THRESHOLD = 5;
+const CUSTOM_GROWING_VALUE = "__custom_growing_value__";
 
-const emptyForm = {
+type GrowingTextKey =
+  | "hardiness_zones"
+  | "sunlight"
+  | "soil"
+  | "bloom_time"
+  | "height"
+  | "spread"
+  | "native_status"
+  | "wildlife_benefits"
+  | "pollinator_benefits"
+  | "host_species";
+
+type GrowingDisplayKey =
+  | "show_hardiness_zones"
+  | "show_sunlight"
+  | "show_soil"
+  | "show_bloom_time"
+  | "show_height"
+  | "show_spread"
+  | "show_native_status"
+  | "show_wildlife_benefits"
+  | "show_pollinator_benefits"
+  | "show_host_species";
+
+type CatalogForm = {
+  name: string;
+  slug: string;
+  scientific_name: string;
+  common_name: string;
+  category: CatalogProduct["category"];
+  description: string;
+  price: string;
+  inventory: string;
+  featured: boolean;
+  active: boolean;
+  ships: boolean;
+  local_pickup: boolean;
+  tags: string;
+  native_status: string;
+  hardiness_zones: string;
+  sunlight: string;
+  soil: string;
+  height: string;
+  spread: string;
+  bloom_time: string;
+  wildlife_benefits: string;
+  pollinator_benefits: string;
+  host_species: string;
+  growing_notes: string;
+  planting_instructions: string;
+  shipping_notes: string;
+  show_hardiness_zones: boolean;
+  show_sunlight: boolean;
+  show_soil: boolean;
+  show_bloom_time: boolean;
+  show_height: boolean;
+  show_spread: boolean;
+  show_native_status: boolean;
+  show_wildlife_benefits: boolean;
+  show_pollinator_benefits: boolean;
+  show_host_species: boolean;
+};
+
+type GrowingSelectConfig = {
+  label: string;
+  field: GrowingTextKey;
+  showField: GrowingDisplayKey;
+  options: readonly string[];
+  customPlaceholder?: string;
+};
+
+const GROWING_SELECT_FIELDS: GrowingSelectConfig[] = [
+  {
+    label: "Hardiness",
+    field: "hardiness_zones",
+    showField: "show_hardiness_zones",
+    options: ["Zone 2", "Zone 3", "Zone 4", "Zone 5", "Zone 6", "Zone 7", "Zone 8", "Zone 9", "Zone 10"],
+    customPlaceholder: "Custom range"
+  },
+  {
+    label: "Sun",
+    field: "sunlight",
+    showField: "show_sunlight",
+    options: ["Full Sun", "Full Sun to Part Shade", "Part Sun", "Part Shade", "Full Shade"]
+  },
+  {
+    label: "Soil",
+    field: "soil",
+    showField: "show_soil",
+    options: ["Adaptable", "Well-drained", "Moist, well-drained", "Moist", "Wet", "Dry", "Sandy", "Loamy", "Clay tolerant", "Poor soil tolerant"]
+  },
+  {
+    label: "Bloom or Harvest Season",
+    field: "bloom_time",
+    showField: "show_bloom_time",
+    options: ["Early Spring", "Spring", "Late Spring", "Summer", "Late Summer", "Fall", "Winter", "Does Not Apply"]
+  },
+  {
+    label: "Mature Height",
+    field: "height",
+    showField: "show_height",
+    options: ["Does Not Apply", "Under 1 ft", "1-3 ft", "3-6 ft", "6-10 ft", "10-25 ft", "25-50 ft", "50+ ft"],
+    customPlaceholder: "Custom height"
+  },
+  {
+    label: "Spacing",
+    field: "spread",
+    showField: "show_spread",
+    options: ["Does Not Apply", "6-12 in", "12-18 in", "18-24 in", "2-3 ft", "3-6 ft", "6-10 ft", "10+ ft"],
+    customPlaceholder: "Custom spacing"
+  },
+  {
+    label: "Native Range",
+    field: "native_status",
+    showField: "show_native_status",
+    options: ["Pennsylvania native", "Eastern North America", "Northeastern North America", "North America", "Non-native", "Cultivated variety", "Does Not Apply"],
+    customPlaceholder: "Custom native range"
+  },
+  {
+    label: "Wildlife Value",
+    field: "wildlife_benefits",
+    showField: "show_wildlife_benefits",
+    options: ["Low", "Moderate", "High", "Very High"]
+  },
+  {
+    label: "Pollinator Value",
+    field: "pollinator_benefits",
+    showField: "show_pollinator_benefits",
+    options: ["None", "Low", "Moderate", "High"]
+  },
+  {
+    label: "Host Plant Information",
+    field: "host_species",
+    showField: "show_host_species",
+    options: ["Not Known", "Yes", "No"],
+    customPlaceholder: "Custom notes"
+  }
+];
+
+const emptyForm: CatalogForm = {
   name: "",
   slug: "",
   scientific_name: "",
@@ -98,7 +261,30 @@ const emptyForm = {
   active: true,
   ships: true,
   local_pickup: false,
-  tags: ""
+  tags: "",
+  native_status: "",
+  hardiness_zones: "",
+  sunlight: "",
+  soil: "",
+  height: "",
+  spread: "",
+  bloom_time: "",
+  wildlife_benefits: "",
+  pollinator_benefits: "",
+  host_species: "",
+  growing_notes: "",
+  planting_instructions: "",
+  shipping_notes: "",
+  show_hardiness_zones: true,
+  show_sunlight: true,
+  show_soil: true,
+  show_bloom_time: true,
+  show_height: true,
+  show_spread: true,
+  show_native_status: true,
+  show_wildlife_benefits: true,
+  show_pollinator_benefits: true,
+  show_host_species: true
 };
 
 export function AdminCatalogEditor() {
@@ -274,7 +460,30 @@ export function AdminCatalogEditor() {
       active: selected.active,
       ships: selected.ships,
       local_pickup: selected.local_pickup,
-      tags: (selected.tags ?? []).join(", ")
+      tags: (selected.tags ?? []).join(", "),
+      native_status: cleanEditableText(selected.native_status),
+      hardiness_zones: cleanEditableText(selected.hardiness_zones),
+      sunlight: cleanEditableText(selected.sunlight),
+      soil: cleanEditableText(selected.soil),
+      height: cleanEditableText(selected.height),
+      spread: cleanEditableText(selected.spread),
+      bloom_time: cleanEditableText(selected.bloom_time),
+      wildlife_benefits: cleanEditableText(selected.wildlife_benefits),
+      pollinator_benefits: cleanEditableText(selected.pollinator_benefits),
+      host_species: cleanEditableText(selected.host_species),
+      growing_notes: cleanEditableText(selected.growing_notes),
+      planting_instructions: cleanEditableText(selected.planting_instructions),
+      shipping_notes: cleanEditableText(selected.shipping_notes),
+      show_hardiness_zones: selected.show_hardiness_zones !== false,
+      show_sunlight: selected.show_sunlight !== false,
+      show_soil: selected.show_soil !== false,
+      show_bloom_time: selected.show_bloom_time !== false,
+      show_height: selected.show_height !== false,
+      show_spread: selected.show_spread !== false,
+      show_native_status: selected.show_native_status !== false,
+      show_wildlife_benefits: selected.show_wildlife_benefits !== false,
+      show_pollinator_benefits: selected.show_pollinator_benefits !== false,
+      show_host_species: selected.show_host_species !== false
     });
   }, [selected]);
 
@@ -370,6 +579,29 @@ export function AdminCatalogEditor() {
         active: form.active,
         ships: form.ships,
         local_pickup: form.local_pickup,
+        native_status: editableTextToDb(form.native_status),
+        hardiness_zones: editableTextToDb(form.hardiness_zones),
+        sunlight: editableTextToDb(form.sunlight),
+        soil: editableTextToDb(form.soil),
+        height: editableTextToDb(form.height),
+        spread: editableTextToDb(form.spread),
+        bloom_time: editableTextToDb(form.bloom_time),
+        wildlife_benefits: editableTextToDb(form.wildlife_benefits),
+        pollinator_benefits: editableTextToDb(form.pollinator_benefits),
+        host_species: editableTextToDb(form.host_species),
+        growing_notes: editableTextToDb(form.growing_notes),
+        planting_instructions: editableTextToDb(form.planting_instructions),
+        shipping_notes: editableTextToDb(form.shipping_notes),
+        show_hardiness_zones: form.show_hardiness_zones,
+        show_sunlight: form.show_sunlight,
+        show_soil: form.show_soil,
+        show_bloom_time: form.show_bloom_time,
+        show_height: form.show_height,
+        show_spread: form.show_spread,
+        show_native_status: form.show_native_status,
+        show_wildlife_benefits: form.show_wildlife_benefits,
+        show_pollinator_benefits: form.show_pollinator_benefits,
+        show_host_species: form.show_host_species,
         tags
       })
       .eq("id", selected.id);
@@ -396,6 +628,29 @@ export function AdminCatalogEditor() {
               active: form.active,
               ships: form.ships,
               local_pickup: form.local_pickup,
+              native_status: editableTextToDb(form.native_status),
+              hardiness_zones: editableTextToDb(form.hardiness_zones),
+              sunlight: editableTextToDb(form.sunlight),
+              soil: editableTextToDb(form.soil),
+              height: editableTextToDb(form.height),
+              spread: editableTextToDb(form.spread),
+              bloom_time: editableTextToDb(form.bloom_time),
+              wildlife_benefits: editableTextToDb(form.wildlife_benefits),
+              pollinator_benefits: editableTextToDb(form.pollinator_benefits),
+              host_species: editableTextToDb(form.host_species),
+              growing_notes: editableTextToDb(form.growing_notes),
+              planting_instructions: editableTextToDb(form.planting_instructions),
+              shipping_notes: editableTextToDb(form.shipping_notes),
+              show_hardiness_zones: form.show_hardiness_zones,
+              show_sunlight: form.show_sunlight,
+              show_soil: form.show_soil,
+              show_bloom_time: form.show_bloom_time,
+              show_height: form.show_height,
+              show_spread: form.show_spread,
+              show_native_status: form.show_native_status,
+              show_wildlife_benefits: form.show_wildlife_benefits,
+              show_pollinator_benefits: form.show_pollinator_benefits,
+              show_host_species: form.show_host_species,
               tags
             }
           : product
@@ -421,6 +676,29 @@ export function AdminCatalogEditor() {
       active: false,
       ships: true,
       local_pickup: true,
+      native_status: null,
+      hardiness_zones: null,
+      sunlight: null,
+      soil: null,
+      height: null,
+      spread: null,
+      bloom_time: null,
+      wildlife_benefits: null,
+      pollinator_benefits: null,
+      host_species: null,
+      growing_notes: null,
+      planting_instructions: null,
+      shipping_notes: null,
+      show_hardiness_zones: true,
+      show_sunlight: true,
+      show_soil: true,
+      show_bloom_time: true,
+      show_height: true,
+      show_spread: true,
+      show_native_status: true,
+      show_wildlife_benefits: true,
+      show_pollinator_benefits: true,
+      show_host_species: true,
       tags: []
     };
     setMessage("Creating product...");
@@ -801,6 +1079,33 @@ export function AdminCatalogEditor() {
               <Field label="Tags">
                 <input className="admin-input" value={form.tags} onChange={(event) => setForm({ ...form, tags: event.target.value })} />
               </Field>
+
+              <div>
+                <h2 className="text-2xl font-black text-pine">Growing information</h2>
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  {GROWING_SELECT_FIELDS.map((field) => (
+                    <GrowingSelectField
+                      key={field.field}
+                      config={field}
+                      value={form[field.field]}
+                      visible={form[field.showField]}
+                      onValueChange={(value) => setForm((current) => ({ ...current, [field.field]: value }))}
+                      onVisibleChange={(visible) => setForm((current) => ({ ...current, [field.showField]: visible }))}
+                    />
+                  ))}
+                </div>
+                <div className="mt-4 grid gap-4">
+                  <Field label="Growing Notes">
+                    <textarea className="admin-input min-h-28" value={form.growing_notes} onChange={(event) => setForm({ ...form, growing_notes: event.target.value })} />
+                  </Field>
+                  <Field label="Planting or Germination Instructions">
+                    <textarea className="admin-input min-h-28" value={form.planting_instructions} onChange={(event) => setForm({ ...form, planting_instructions: event.target.value })} />
+                  </Field>
+                  <Field label="Shipping Notes">
+                    <textarea className="admin-input min-h-28" value={form.shipping_notes} onChange={(event) => setForm({ ...form, shipping_notes: event.target.value })} />
+                  </Field>
+                </div>
+              </div>
 
               <div className="flex flex-wrap gap-3">
                 <Toggle label="Active" checked={form.active} onChange={(checked) => setForm({ ...form, active: checked })} />
@@ -1342,6 +1647,52 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
+function GrowingSelectField({
+  config,
+  value,
+  visible,
+  onValueChange,
+  onVisibleChange
+}: {
+  config: GrowingSelectConfig;
+  value: string;
+  visible: boolean;
+  onValueChange: (value: string) => void;
+  onVisibleChange: (visible: boolean) => void;
+}) {
+  const isCustom = value === CUSTOM_GROWING_VALUE || (value.trim() !== "" && !config.options.includes(value));
+  const selectValue = isCustom ? CUSTOM_GROWING_VALUE : value;
+  const customValue = value === CUSTOM_GROWING_VALUE ? "" : value;
+
+  return (
+    <article className="rounded-md border border-pine/15 bg-sage/45 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <span className="text-xs font-black uppercase tracking-[0.16em] text-stone">{config.label}</span>
+        <Toggle label="Show on product page" checked={visible} onChange={onVisibleChange} />
+      </div>
+      <select
+        className="admin-input mt-3"
+        value={selectValue}
+        onChange={(event) => onValueChange(event.target.value === CUSTOM_GROWING_VALUE ? CUSTOM_GROWING_VALUE : event.target.value)}
+      >
+        <option value="">Not selected</option>
+        {config.options.map((option) => (
+          <option key={option} value={option}>{option}</option>
+        ))}
+        <option value={CUSTOM_GROWING_VALUE}>Other / Custom</option>
+      </select>
+      {isCustom ? (
+        <input
+          className="admin-input mt-3"
+          value={customValue}
+          placeholder={config.customPlaceholder ?? "Custom value"}
+          onChange={(event) => onValueChange(event.target.value)}
+        />
+      ) : null}
+    </article>
+  );
+}
+
 function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
   return (
     <label className={`rounded-full border px-4 py-2 text-sm font-black ${checked ? "border-pine bg-pine text-white" : "border-pine/20 bg-sage text-pine"}`}>
@@ -1349,6 +1700,24 @@ function Toggle({ label, checked, onChange }: { label: string; checked: boolean;
       {label}
     </label>
   );
+}
+
+const EDITABLE_PLACEHOLDER_VALUES = new Set([
+  "See product description",
+  "See product description for bloom and pollinator notes.",
+  "Selected for nursery, wildlife, food forest, or restoration value.",
+  "Shipping and pickup availability depends on item size, season, and live-plant condition."
+]);
+
+function cleanEditableText(value: string | null | undefined) {
+  const trimmed = value?.trim() ?? "";
+  if (!trimmed || EDITABLE_PLACEHOLDER_VALUES.has(trimmed)) return "";
+  return trimmed;
+}
+
+function editableTextToDb(value: string) {
+  const cleaned = cleanEditableText(value === CUSTOM_GROWING_VALUE ? "" : value);
+  return cleaned || null;
 }
 
 function formatMoney(value: number, currency = "usd") {

@@ -27,8 +27,19 @@ type DbProduct = {
   wildlife_benefits: string | null;
   pollinator_benefits: string | null;
   host_species: string | null;
+  planting_instructions: string | null;
   shipping_notes: string | null;
   growing_notes: string | null;
+  show_hardiness_zones: boolean | null;
+  show_sunlight: boolean | null;
+  show_soil: boolean | null;
+  show_bloom_time: boolean | null;
+  show_height: boolean | null;
+  show_spread: boolean | null;
+  show_native_status: boolean | null;
+  show_wildlife_benefits: boolean | null;
+  show_pollinator_benefits: boolean | null;
+  show_host_species: boolean | null;
   local_pickup: boolean | null;
   ships: boolean | null;
   tags: string[] | null;
@@ -149,18 +160,29 @@ function mapDbProducts(
       active: product.active !== false,
       images: productImages.length > 0 ? productImages : ["/images/scout-seedling-tray.webp"],
       plantType: product.plant_type ?? "Nursery item",
-      nativeStatus: product.native_status ?? "See product description",
-      hardinessZones: product.hardiness_zones ?? "See product description",
-      sunlight: product.sunlight ?? "See product description",
-      soil: product.soil ?? "See product description",
-      height: product.height ?? "See product description",
-      spread: product.spread ?? "See product description",
-      bloomTime: product.bloom_time ?? "See product description",
-      wildlifeBenefits: product.wildlife_benefits ?? "Selected for nursery, wildlife, food forest, or restoration value.",
-      pollinatorBenefits: product.pollinator_benefits ?? "See product description for bloom and pollinator notes.",
-      hostSpecies: product.host_species ?? "See product description",
-      shippingNotes: product.shipping_notes ?? "Shipping and pickup availability depends on item size, season, and live-plant condition.",
-      growingNotes: product.growing_notes ?? product.description ?? "",
+      nativeStatus: cleanCatalogText(product.native_status),
+      hardinessZones: cleanCatalogText(product.hardiness_zones),
+      sunlight: cleanCatalogText(product.sunlight),
+      soil: cleanCatalogText(product.soil),
+      height: cleanCatalogText(product.height),
+      spread: cleanCatalogText(product.spread),
+      bloomTime: cleanCatalogText(product.bloom_time),
+      wildlifeBenefits: cleanCatalogText(product.wildlife_benefits),
+      pollinatorBenefits: cleanCatalogText(product.pollinator_benefits),
+      hostSpecies: cleanCatalogText(product.host_species),
+      shippingNotes: cleanCatalogText(product.shipping_notes),
+      growingNotes: cleanCatalogText(product.growing_notes),
+      plantingInstructions: cleanCatalogText(product.planting_instructions),
+      showHardinessZones: product.show_hardiness_zones !== false,
+      showSunlight: product.show_sunlight !== false,
+      showSoil: product.show_soil !== false,
+      showBloomTime: product.show_bloom_time !== false,
+      showHeight: product.show_height !== false,
+      showSpread: product.show_spread !== false,
+      showNativeStatus: product.show_native_status !== false,
+      showWildlifeBenefits: product.show_wildlife_benefits !== false,
+      showPollinatorBenefits: product.show_pollinator_benefits !== false,
+      showHostSpecies: product.show_host_species !== false,
       localPickup: product.local_pickup !== false,
       ships: Boolean(product.ships),
       tags: product.tags ?? [],
@@ -170,6 +192,19 @@ function mapDbProducts(
       updatedAt: product.updated_at ?? ""
     };
   });
+}
+
+const PLACEHOLDER_VALUES = new Set([
+  "See product description",
+  "See product description for bloom and pollinator notes.",
+  "Selected for nursery, wildlife, food forest, or restoration value.",
+  "Shipping and pickup availability depends on item size, season, and live-plant condition."
+]);
+
+function cleanCatalogText(value: string | null | undefined) {
+  const trimmed = value?.trim() ?? "";
+  if (!trimmed || PLACEHOLDER_VALUES.has(trimmed)) return "";
+  return trimmed;
 }
 
 function resolveProductImageUrl(image: DbImage, supabase: ReturnType<typeof getSupabaseServerClient>) {

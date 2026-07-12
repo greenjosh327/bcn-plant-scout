@@ -8,36 +8,47 @@ datasource db {
 }
 
 model Product {
-  id                 String   @id @default(cuid())
-  slug               String   @unique
-  name               String
-  scientificName     String?
-  commonName         String?
-  category           String
-  description        String
-  price              Decimal  @db.Decimal(10, 2)
-  inventory          Int      @default(0)
-  featured           Boolean  @default(false)
-  active             Boolean  @default(true)
-  images             String[]
-  plantType          String?
-  nativeStatus       String?
-  hardinessZones     String?
-  sunlight           String?
-  soil               String?
-  height             String?
-  spread             String?
-  bloomTime          String?
-  wildlifeBenefits   String?
-  pollinatorBenefits String?
-  hostSpecies        String?
-  shippingNotes      String?
-  growingNotes       String?
-  localPickup        Boolean  @default(true)
-  ships              Boolean  @default(false)
-  variations         ProductVariant[]
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  id                     String           @id @default(cuid())
+  slug                   String           @unique
+  name                   String
+  scientificName         String?
+  commonName             String?
+  category               String
+  description            String
+  price                  Decimal          @db.Decimal(10, 2)
+  inventory              Int              @default(0)
+  featured               Boolean          @default(false)
+  active                 Boolean          @default(true)
+  images                 String[]
+  plantType              String?
+  nativeStatus           String?
+  hardinessZones         String?
+  sunlight               String?
+  soil                   String?
+  height                 String?
+  spread                 String?
+  bloomTime              String?
+  wildlifeBenefits       String?
+  pollinatorBenefits     String?
+  hostSpecies            String?
+  plantingInstructions   String?
+  shippingNotes          String?
+  growingNotes           String?
+  showHardinessZones     Boolean          @default(true)
+  showSunlight           Boolean          @default(true)
+  showSoil               Boolean          @default(true)
+  showBloomTime          Boolean          @default(true)
+  showHeight             Boolean          @default(true)
+  showSpread             Boolean          @default(true)
+  showNativeStatus       Boolean          @default(true)
+  showWildlifeBenefits   Boolean          @default(true)
+  showPollinatorBenefits Boolean          @default(true)
+  showHostSpecies        Boolean          @default(true)
+  localPickup            Boolean          @default(true)
+  ships                  Boolean          @default(false)
+  variations             ProductVariant[]
+  createdAt              DateTime         @default(now())
+  updatedAt              DateTime         @updatedAt
 }
 
 model ProductVariant {

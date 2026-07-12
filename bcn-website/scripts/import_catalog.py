@@ -190,17 +190,18 @@ def build_products(square_rows: list[dict[str, str]], etsy_rows: list[dict[str, 
             "active": not truthy(first.get("Archived", "")) and any(row.get("Sellable", "Y") != "N" for row in rows),
             "images": [],
             "plantType": f"{category[:-1] if category.endswith('s') else category} nursery item",
-            "nativeStatus": "See product description",
-            "hardinessZones": "See product description",
-            "sunlight": "See product description",
-            "soil": "See product description",
-            "height": "See product description",
-            "spread": "See product description",
-            "bloomTime": "See product description",
-            "wildlifeBenefits": "Selected for nursery, wildlife, food forest, or restoration value.",
-            "pollinatorBenefits": "See product description for bloom and pollinator notes.",
-            "hostSpecies": "See product description",
-            "shippingNotes": "Shipping and pickup availability depends on item size, season, and live-plant condition.",
+            "nativeStatus": "",
+            "hardinessZones": "",
+            "sunlight": "",
+            "soil": "",
+            "height": "",
+            "spread": "",
+            "bloomTime": "",
+            "wildlifeBenefits": "",
+            "pollinatorBenefits": "",
+            "hostSpecies": "",
+            "plantingInstructions": "",
+            "shippingNotes": "",
             "growingNotes": description[:420] + ("..." if len(description) > 420 else ""),
             "localPickup": any(truthy(row.get("Pickup Enabled", "")) for row in rows),
             "ships": any(truthy(row.get("Shipping Enabled", "")) for row in rows),
@@ -283,7 +284,7 @@ def write_seed_sql(products: list[dict[str, Any]]) -> None:
             "insert into public.products ("
             "id, slug, name, scientific_name, common_name, category, description, price, inventory, featured, active, "
             "plant_type, native_status, hardiness_zones, sunlight, soil, height, spread, bloom_time, wildlife_benefits, "
-            "pollinator_benefits, host_species, shipping_notes, growing_notes, local_pickup, ships, tags, source, created_at, updated_at"
+            "pollinator_benefits, host_species, planting_instructions, shipping_notes, growing_notes, local_pickup, ships, tags, source, created_at, updated_at"
             ") values ("
             + ", ".join(
                 [
@@ -309,6 +310,7 @@ def write_seed_sql(products: list[dict[str, Any]]) -> None:
                     sql_string(product["wildlifeBenefits"]),
                     sql_string(product["pollinatorBenefits"]),
                     sql_string(product["hostSpecies"]),
+                    sql_string(product["plantingInstructions"]),
                     sql_string(product["shippingNotes"]),
                     sql_string(product["growingNotes"]),
                     sql_bool(product["localPickup"]),
@@ -325,7 +327,7 @@ def write_seed_sql(products: list[dict[str, Any]]) -> None:
             "featured = excluded.featured, active = excluded.active, plant_type = excluded.plant_type, native_status = excluded.native_status, "
             "hardiness_zones = excluded.hardiness_zones, sunlight = excluded.sunlight, soil = excluded.soil, height = excluded.height, "
             "spread = excluded.spread, bloom_time = excluded.bloom_time, wildlife_benefits = excluded.wildlife_benefits, "
-            "pollinator_benefits = excluded.pollinator_benefits, host_species = excluded.host_species, shipping_notes = excluded.shipping_notes, "
+            "pollinator_benefits = excluded.pollinator_benefits, host_species = excluded.host_species, planting_instructions = excluded.planting_instructions, shipping_notes = excluded.shipping_notes, "
             "growing_notes = excluded.growing_notes, local_pickup = excluded.local_pickup, ships = excluded.ships, tags = excluded.tags, "
             "source = excluded.source, updated_at = excluded.updated_at;"
         )

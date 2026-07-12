@@ -12,7 +12,12 @@ Run these files in the Supabase SQL Editor for the BCN project:
    - Loads the imported Square/Squarespace catalog into `products`, `product_variants`, and `product_images`.
    - Safe to rerun. Existing rows are updated by id.
 
-3. Add the owner/admin user.
+3. `sql/20260712_bcn_growing_information_fields.sql`
+   - Adds standardized growing information display toggles.
+   - Adds planting/germination instructions.
+   - Cleans old placeholder growing text to `null`.
+
+4. Add the owner/admin user.
    - Find your user id in Supabase Authentication > Users.
    - Run:
 
@@ -59,6 +64,8 @@ The admin editor currently supports:
 
 - product name, slug, names, category, description, tags, active/featured state
 - ship/local pickup flags
+- standardized growing information dropdowns with public display toggles
+- growing notes, planting/germination instructions, and shipping notes
 - variant price, SKU, active state, and inventory quick edits
 - automatic product inventory totals from active variants
 
