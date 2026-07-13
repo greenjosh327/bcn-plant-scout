@@ -8,47 +8,109 @@ datasource db {
 }
 
 model Product {
-  id                     String           @id @default(cuid())
-  slug                   String           @unique
+  id                            String                 @id @default(cuid())
+  slug                          String                 @unique
+  name                          String
+  scientificName                String?
+  commonName                    String?
+  category                      String
+  description                   String
+  price                         Decimal                @db.Decimal(10, 2)
+  inventory                     Int                    @default(0)
+  featured                      Boolean                @default(false)
+  active                        Boolean                @default(true)
+  images                        String[]
+  plantType                     String?
+  nativeStatus                  String?
+  hardinessZones                String?
+  sunlight                      String?
+  soil                          String?
+  height                        String?
+  spread                        String?
+  bloomTime                     String?
+  wildlifeBenefits              String?
+  pollinatorBenefits            String?
+  hostSpecies                   String?
+  plantingInstructions          String?
+  shippingNotes                 String?
+  growingNotes                  String?
+  showHardinessZones            Boolean                @default(true)
+  showSunlight                  Boolean                @default(true)
+  showSoil                      Boolean                @default(true)
+  showBloomTime                 Boolean                @default(true)
+  showHeight                    Boolean                @default(true)
+  showSpread                    Boolean                @default(true)
+  showNativeStatus              Boolean                @default(true)
+  showWildlifeBenefits          Boolean                @default(true)
+  showPollinatorBenefits        Boolean                @default(true)
+  showHostSpecies               Boolean                @default(true)
+  localPickup                   Boolean                @default(true)
+  ships                         Boolean                @default(false)
+  shippingClass                 String?
+  shippingEnabled               Boolean                @default(false)
+  localPickupEnabled            Boolean                @default(true)
+  packedWeightOz                Decimal?               @db.Decimal(8, 2)
+  packedLengthIn                Decimal?               @db.Decimal(8, 2)
+  packedWidthIn                 Decimal?               @db.Decimal(8, 2)
+  packedHeightIn                Decimal?               @db.Decimal(8, 2)
+  shipsAlone                    Boolean                @default(false)
+  expeditedRequired             Boolean                @default(false)
+  allowGroundAdvantage          Boolean                @default(true)
+  freeShippingEligible          Boolean                @default(false)
+  shippingSurchargeCents        Int                    @default(0)
+  maxQuantityPerPackage         Int                    @default(1)
+  preferredPackageId            String?
+  preferredPackage              ShippingPackagePreset? @relation(fields: [preferredPackageId], references: [id])
+  shippingConfigurationComplete Boolean                @default(false)
+  variations                    ProductVariant[]
+  createdAt                     DateTime               @default(now())
+  updatedAt                     DateTime               @updatedAt
+}
+
+model ShippingPackagePreset {
+  id                     String    @id
   name                   String
-  scientificName         String?
-  commonName             String?
-  category               String
-  description            String
-  price                  Decimal          @db.Decimal(10, 2)
-  inventory              Int              @default(0)
-  featured               Boolean          @default(false)
-  active                 Boolean          @default(true)
-  images                 String[]
-  plantType              String?
-  nativeStatus           String?
-  hardinessZones         String?
-  sunlight               String?
-  soil                   String?
-  height                 String?
-  spread                 String?
-  bloomTime              String?
-  wildlifeBenefits       String?
-  pollinatorBenefits     String?
-  hostSpecies            String?
-  plantingInstructions   String?
-  shippingNotes          String?
-  growingNotes           String?
-  showHardinessZones     Boolean          @default(true)
-  showSunlight           Boolean          @default(true)
-  showSoil               Boolean          @default(true)
-  showBloomTime          Boolean          @default(true)
-  showHeight             Boolean          @default(true)
-  showSpread             Boolean          @default(true)
-  showNativeStatus       Boolean          @default(true)
-  showWildlifeBenefits   Boolean          @default(true)
-  showPollinatorBenefits Boolean          @default(true)
-  showHostSpecies        Boolean          @default(true)
-  localPickup            Boolean          @default(true)
-  ships                  Boolean          @default(false)
-  variations             ProductVariant[]
-  createdAt              DateTime         @default(now())
-  updatedAt              DateTime         @updatedAt
+  code                   String    @unique
+  lengthIn               Decimal   @db.Decimal(8, 2)
+  widthIn                Decimal   @db.Decimal(8, 2)
+  heightIn               Decimal   @db.Decimal(8, 2)
+  emptyWeightOz          Decimal   @default(0) @db.Decimal(8, 2)
+  maximumWeightOz        Decimal   @db.Decimal(8, 2)
+  allowedShippingClasses String[]
+  active                 Boolean   @default(true)
+  sortOrder              Int       @default(0)
+  products               Product[]
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+}
+
+model ShippingSettings {
+  id                               String   @id @default("default")
+  shippoEnabled                    Boolean  @default(true)
+  shippoMode                       String   @default("live")
+  allowedCarrier                   String   @default("usps")
+  flatRateFallbackEnabled          Boolean  @default(true)
+  automaticLabelPurchase           Boolean  @default(false)
+  economySeedMailCents             Int      @default(175)
+  trackedSeedFallbackCents         Int      @default(549)
+  cuttingSmallPlantFallbackCents   Int      @default(999)
+  treeFallbackEnabled              Boolean  @default(false)
+  localPickupCents                 Int      @default(0)
+  quoteExpirationMinutes           Int      @default(20)
+  handlingFeeCents                 Int      @default(0)
+  freeShippingThresholdCents       Int?
+  allowedUspsServiceLevels         String[]
+  groundAdvantageEnabled           Boolean  @default(true)
+  priorityMailEnabled              Boolean  @default(true)
+  priorityMailExpressEnabled       Boolean  @default(true)
+  economySeedMailEnabled           Boolean  @default(true)
+  maxSeedPacketsPerEconomyEnvelope Int      @default(12)
+  maxEconomyEnvelopeWeightOz       Decimal  @default(1) @db.Decimal(8, 2)
+  shipFromAddress                  Json
+  pickupDisplayLocation            String   @default("Effort, Pennsylvania")
+  liveRatesMaintenanceMode         Boolean  @default(false)
+  createdAt                        DateTime @default(now())
+  updatedAt                        DateTime @updatedAt
 }
 
 model ProductVariant {

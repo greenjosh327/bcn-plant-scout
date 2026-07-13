@@ -62,11 +62,26 @@ NEXT_PUBLIC_SITE_URL=https://shop.basecampnorthpa.com
 STRIPE_SECRET_KEY=sk_test_or_live_key_here
 STRIPE_WEBHOOK_SECRET=whsec_from_stripe_webhook
 SUPABASE_SERVICE_ROLE_KEY=server_only_service_role_key_here
+SHIPPO_API_TOKEN=shippo_live_or_test_token_here
+SHIPPO_API_MODE=live
+SHIPPING_PROVIDER=shippo
+SHIPPING_FLAT_RATE_FALLBACK_ENABLED=true
+SHIPPING_AUTOMATIC_LABEL_PURCHASE=false
+BCN_SHIP_FROM_NAME=Josh Green
+BCN_SHIP_FROM_COMPANY=Base Camp North
+BCN_SHIP_FROM_STREET1=1517 Long Leaf Drive
+BCN_SHIP_FROM_STREET2=
+BCN_SHIP_FROM_CITY=Effort
+BCN_SHIP_FROM_STATE=PA
+BCN_SHIP_FROM_ZIP=18330
+BCN_SHIP_FROM_COUNTRY=US
+BCN_SHIP_FROM_PHONE=
+BCN_SHIP_FROM_EMAIL=
 ```
 
 Only `NEXT_PUBLIC_*` values are safe for browser code. `STRIPE_SECRET_KEY`,
-`STRIPE_WEBHOOK_SECRET`, and `SUPABASE_SERVICE_ROLE_KEY` must stay server-side
-in Vercel environment variables or local `.env.local`.
+`STRIPE_WEBHOOK_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`, and `SHIPPO_API_TOKEN`
+must stay server-side in Vercel environment variables or local `.env.local`.
 
 After the domain is live, add this Supabase Auth redirect URL:
 
@@ -95,7 +110,15 @@ Run the SQL files in this order from the Supabase SQL Editor:
 1. `supabase/sql/20260703_bcn_catalog_schema.sql`
 2. `supabase/sql/20260703_bcn_catalog_seed.sql`
 3. `supabase/sql/20260712_bcn_growing_information_fields.sql`
-4. `supabase/sql/20260703_bcn_orders_schema.sql`
+4. `supabase/sql/20260713_bcn_shipping_data_foundation.sql`
+5. `supabase/sql/20260703_bcn_orders_schema.sql`
+
+The shipping data migration creates:
+
+- product shipping class and package planning fields
+- reusable package presets
+- shop-level shipping settings for future Shippo rate and label logic
+- admin-only RLS policies for shipping setup tables
 
 The order migration creates:
 
@@ -188,8 +211,9 @@ The site reads products from Supabase when configured and falls back to sample p
 Cart, Stripe Checkout, webhook order persistence, customer receipt display, and owner order fulfillment tools
 are implemented. Shipping is a simple flat-rate first pass, pickup is supported, and tax is delegated to Stripe
 automatic tax. Paid checkouts create Supabase orders and order items, reduce inventory, and can be fulfilled
-from the owner admin dashboard. Customer accounts, automated order emails, shipping labels, and refund handling
-are future steps.
+from the owner admin dashboard. The admin now has Phase 1 shipping setup fields, but checkout still uses the
+existing simple flat-rate path until Phase 2 shipping rules are approved. Customer accounts, automated order
+emails, shipping labels, and refund handling are future steps.
 
 ## Future Data
 
@@ -202,5 +226,7 @@ The Prisma schema in `prisma/schema.prisma` includes the product fields needed f
 - hardiness, sunlight, soil, bloom or harvest time, mature height, spacing, and native range
 - wildlife, pollinator, host plant, growing, planting/germination, and shipping notes
 - public display toggles for standardized growing information fields
+- shipping class, package preset, packed weight and dimensions, surcharge, free-shipping eligibility,
+  expedited/ships-alone flags, Ground Advantage eligibility, and shipping setup status
 
 When ready, connect a PostgreSQL database using `DATABASE_URL` in `.env`.

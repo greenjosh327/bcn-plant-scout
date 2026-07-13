@@ -1,8 +1,17 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { hasSupabaseBrowserConfig, supabase } from "@/lib/supabase-browser";
+import {
+  SHIPPING_CLASS_DESCRIPTIONS,
+  SHIPPING_CLASS_LABELS,
+  SHIPPING_CLASSES,
+  canUseGroundAdvantage,
+  requiresPackageData,
+  type ShippingClass,
+  type ShippingPackagePreset
+} from "@/lib/shipping/types";
 
 type CatalogProduct = {
   id: string;
@@ -18,6 +27,21 @@ type CatalogProduct = {
   active: boolean;
   ships: boolean;
   local_pickup: boolean;
+  shipping_class: ShippingClass | null;
+  shipping_enabled: boolean;
+  local_pickup_enabled: boolean;
+  packed_weight_oz: number | null;
+  packed_length_in: number | null;
+  packed_width_in: number | null;
+  packed_height_in: number | null;
+  ships_alone: boolean;
+  expedited_required: boolean;
+  allow_ground_advantage: boolean;
+  free_shipping_eligible: boolean;
+  shipping_surcharge_cents: number;
+  max_quantity_per_package: number;
+  preferred_package_id: string | null;
+  shipping_configuration_complete: boolean;
   native_status: string | null;
   hardiness_zones: string | null;
   sunlight: string | null;
@@ -146,6 +170,21 @@ type CatalogForm = {
   active: boolean;
   ships: boolean;
   local_pickup: boolean;
+  shipping_class: ShippingClass | "";
+  shipping_enabled: boolean;
+  local_pickup_enabled: boolean;
+  packed_weight_oz: string;
+  packed_length_in: string;
+  packed_width_in: string;
+  packed_height_in: string;
+  ships_alone: boolean;
+  expedited_required: boolean;
+  allow_ground_advantage: boolean;
+  free_shipping_eligible: boolean;
+  shipping_surcharge: string;
+  max_quantity_per_package: string;
+  preferred_package_id: string;
+  shipping_configuration_complete: boolean;
   tags: string;
   native_status: string;
   hardiness_zones: string;
@@ -261,6 +300,21 @@ const emptyForm: CatalogForm = {
   active: true,
   ships: true,
   local_pickup: false,
+  shipping_class: "",
+  shipping_enabled: true,
+  local_pickup_enabled: false,
+  packed_weight_oz: "",
+  packed_length_in: "",
+  packed_width_in: "",
+  packed_height_in: "",
+  ships_alone: false,
+  expedited_required: false,
+  allow_ground_advantage: true,
+  free_shipping_eligible: false,
+  shipping_surcharge: "0",
+  max_quantity_per_package: "1",
+  preferred_package_id: "",
+  shipping_configuration_complete: false,
   tags: "",
   native_status: "",
   hardiness_zones: "",
@@ -296,6 +350,7 @@ export function AdminCatalogEditor() {
   const [products, setProducts] = useState<CatalogProduct[]>([]);
   const [variants, setVariants] = useState<CatalogVariant[]>([]);
   const [images, setImages] = useState<CatalogImage[]>([]);
+  const [packagePresets, setPackagePresets] = useState<ShippingPackagePreset[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [form, setForm] = useState(emptyForm);
@@ -309,6 +364,7 @@ export function AdminCatalogEditor() {
   const selectedImages = images
     .filter((image) => image.product_id === selectedId)
     .sort((a, b) => Number(b.is_primary) - Number(a.is_primary) || a.sort_order - b.sort_order);
+  const shippingValidation = useMemo(() => validateProductShipping(form), [form]);
 
   const productImageCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -362,6 +418,7 @@ export function AdminCatalogEditor() {
 
   const catalogStats = useMemo(() => {
     let productsWithoutPhotos = 0;
+    let productsNeedingShippingSetup = 0;
     let lowStockProducts = 0;
     let soldOutProducts = 0;
     let lowStockVariants = 0;
@@ -370,6 +427,7 @@ export function AdminCatalogEditor() {
     products.forEach((product) => {
       const inventory = getInventoryForProduct(product);
       if ((productImageCounts.get(product.id) ?? 0) === 0) productsWithoutPhotos += 1;
+      if (!product.shipping_configuration_complete) productsNeedingShippingSetup += 1;
       if (product.active && inventory > 0 && inventory <= LOW_STOCK_THRESHOLD) lowStockProducts += 1;
       if (product.active && inventory <= 0) soldOutProducts += 1;
     });
@@ -386,6 +444,7 @@ export function AdminCatalogEditor() {
       activeProducts: products.filter((product) => product.active).length,
       hiddenProducts: products.filter((product) => !product.active).length,
       productsWithoutPhotos,
+      productsNeedingShippingSetup,
       lowStockProducts,
       soldOutProducts,
       totalVariants: variants.length,
@@ -437,6 +496,7 @@ export function AdminCatalogEditor() {
         setProducts([]);
         setVariants([]);
         setImages([]);
+        setPackagePresets([]);
         return;
       }
       void verifyAdminAndLoad(nextSession);
@@ -460,6 +520,21 @@ export function AdminCatalogEditor() {
       active: selected.active,
       ships: selected.ships,
       local_pickup: selected.local_pickup,
+      shipping_class: selected.shipping_class ?? "",
+      shipping_enabled: Boolean(selected.shipping_enabled),
+      local_pickup_enabled: selected.local_pickup_enabled !== false,
+      packed_weight_oz: numberToFormValue(selected.packed_weight_oz),
+      packed_length_in: numberToFormValue(selected.packed_length_in),
+      packed_width_in: numberToFormValue(selected.packed_width_in),
+      packed_height_in: numberToFormValue(selected.packed_height_in),
+      ships_alone: Boolean(selected.ships_alone),
+      expedited_required: Boolean(selected.expedited_required),
+      allow_ground_advantage: selected.allow_ground_advantage !== false,
+      free_shipping_eligible: Boolean(selected.free_shipping_eligible),
+      shipping_surcharge: centsToFormDollars(selected.shipping_surcharge_cents),
+      max_quantity_per_package: String(selected.max_quantity_per_package ?? 1),
+      preferred_package_id: selected.preferred_package_id ?? "",
+      shipping_configuration_complete: Boolean(selected.shipping_configuration_complete),
       tags: (selected.tags ?? []).join(", "),
       native_status: cleanEditableText(selected.native_status),
       hardiness_zones: cleanEditableText(selected.hardiness_zones),
@@ -512,21 +587,24 @@ export function AdminCatalogEditor() {
     const [
       { data: productRows, error: productError },
       { data: variantRows, error: variantError },
-      { data: imageRows, error: imageError }
+      { data: imageRows, error: imageError },
+      { data: packagePresetRows, error: packagePresetError }
     ] = await Promise.all([
       supabase.from("products").select("*").order("name", { ascending: true }),
       supabase.from("product_variants").select("*").order("name", { ascending: true }),
-      supabase.from("product_images").select("*").order("sort_order", { ascending: true })
+      supabase.from("product_images").select("*").order("sort_order", { ascending: true }),
+      supabase.from("shipping_package_presets").select("*").order("sort_order", { ascending: true })
     ]);
 
-    if (productError || variantError || imageError) {
-      setMessage(productError?.message ?? variantError?.message ?? imageError?.message ?? "Could not load catalog.");
+    if (productError || variantError || imageError || packagePresetError) {
+      setMessage(productError?.message ?? variantError?.message ?? imageError?.message ?? packagePresetError?.message ?? "Could not load catalog.");
       return;
     }
 
     setProducts((productRows ?? []) as CatalogProduct[]);
     setVariants((variantRows ?? []) as CatalogVariant[]);
     setImages((imageRows ?? []) as CatalogImage[]);
+    setPackagePresets((packagePresetRows ?? []) as ShippingPackagePreset[]);
     setSelectedId((current) => current ?? productRows?.[0]?.id ?? null);
     setMessage(`Loaded ${productRows?.length ?? 0} products.`);
   }
@@ -557,12 +635,19 @@ export function AdminCatalogEditor() {
 
   async function saveProduct() {
     if (!supabase || !selected) return;
+    const nextShippingValidation = validateProductShipping(form);
+    if (nextShippingValidation.errors.length > 0) {
+      setMessage(nextShippingValidation.errors[0]);
+      return;
+    }
+
     setSaving(true);
     setMessage("Saving product...");
     const tags = form.tags
       .split(",")
       .map((tag) => tag.trim().toLowerCase())
       .filter(Boolean);
+    const shippingConfigurationComplete = nextShippingValidation.complete;
 
     const { error } = await supabase
       .from("products")
@@ -577,8 +662,23 @@ export function AdminCatalogEditor() {
         inventory: Number(form.inventory) || 0,
         featured: form.featured,
         active: form.active,
-        ships: form.ships,
-        local_pickup: form.local_pickup,
+        ships: form.shipping_enabled,
+        local_pickup: form.local_pickup_enabled,
+        shipping_class: form.shipping_class || null,
+        shipping_enabled: form.shipping_enabled,
+        local_pickup_enabled: form.local_pickup_enabled,
+        packed_weight_oz: form.shipping_class === "digital" || form.shipping_class === "oversized_pickup_only" ? null : formNumberToDb(form.packed_weight_oz),
+        packed_length_in: shouldClearPackageDimensions(form) ? null : formNumberToDb(form.packed_length_in),
+        packed_width_in: shouldClearPackageDimensions(form) ? null : formNumberToDb(form.packed_width_in),
+        packed_height_in: shouldClearPackageDimensions(form) ? null : formNumberToDb(form.packed_height_in),
+        ships_alone: form.ships_alone,
+        expedited_required: form.shipping_class === "tree" ? true : form.expedited_required,
+        allow_ground_advantage: canUseGroundAdvantage(form.shipping_class) ? form.allow_ground_advantage : false,
+        free_shipping_eligible: form.free_shipping_eligible,
+        shipping_surcharge_cents: dollarsToCents(form.shipping_surcharge),
+        max_quantity_per_package: Math.max(1, Number(form.max_quantity_per_package) || 1),
+        preferred_package_id: form.preferred_package_id || null,
+        shipping_configuration_complete: shippingConfigurationComplete,
         native_status: editableTextToDb(form.native_status),
         hardiness_zones: editableTextToDb(form.hardiness_zones),
         sunlight: editableTextToDb(form.sunlight),
@@ -626,8 +726,23 @@ export function AdminCatalogEditor() {
               inventory: Number(form.inventory) || 0,
               featured: form.featured,
               active: form.active,
-              ships: form.ships,
-              local_pickup: form.local_pickup,
+              ships: form.shipping_enabled,
+              local_pickup: form.local_pickup_enabled,
+              shipping_class: form.shipping_class || null,
+              shipping_enabled: form.shipping_enabled,
+              local_pickup_enabled: form.local_pickup_enabled,
+              packed_weight_oz: form.shipping_class === "digital" || form.shipping_class === "oversized_pickup_only" ? null : formNumberToDb(form.packed_weight_oz),
+              packed_length_in: shouldClearPackageDimensions(form) ? null : formNumberToDb(form.packed_length_in),
+              packed_width_in: shouldClearPackageDimensions(form) ? null : formNumberToDb(form.packed_width_in),
+              packed_height_in: shouldClearPackageDimensions(form) ? null : formNumberToDb(form.packed_height_in),
+              ships_alone: form.ships_alone,
+              expedited_required: form.shipping_class === "tree" ? true : form.expedited_required,
+              allow_ground_advantage: canUseGroundAdvantage(form.shipping_class) ? form.allow_ground_advantage : false,
+              free_shipping_eligible: form.free_shipping_eligible,
+              shipping_surcharge_cents: dollarsToCents(form.shipping_surcharge),
+              max_quantity_per_package: Math.max(1, Number(form.max_quantity_per_package) || 1),
+              preferred_package_id: form.preferred_package_id || null,
+              shipping_configuration_complete: shippingConfigurationComplete,
               native_status: editableTextToDb(form.native_status),
               hardiness_zones: editableTextToDb(form.hardiness_zones),
               sunlight: editableTextToDb(form.sunlight),
@@ -676,6 +791,21 @@ export function AdminCatalogEditor() {
       active: false,
       ships: true,
       local_pickup: true,
+      shipping_class: null,
+      shipping_enabled: true,
+      local_pickup_enabled: true,
+      packed_weight_oz: null,
+      packed_length_in: null,
+      packed_width_in: null,
+      packed_height_in: null,
+      ships_alone: false,
+      expedited_required: false,
+      allow_ground_advantage: true,
+      free_shipping_eligible: false,
+      shipping_surcharge_cents: 0,
+      max_quantity_per_package: 1,
+      preferred_package_id: null,
+      shipping_configuration_complete: false,
       native_status: null,
       hardiness_zones: null,
       sunlight: null,
@@ -993,6 +1123,7 @@ export function AdminCatalogEditor() {
             <CatalogMetric label="products" value={catalogStats.totalProducts} />
             <CatalogMetric label="active" value={catalogStats.activeProducts} />
             <CatalogMetric label="needs photo" value={catalogStats.productsWithoutPhotos} tone={catalogStats.productsWithoutPhotos > 0 ? "attention" : "normal"} />
+            <CatalogMetric label="shipping setup" value={catalogStats.productsNeedingShippingSetup} tone={catalogStats.productsNeedingShippingSetup > 0 ? "attention" : "normal"} />
             <CatalogMetric label="low stock" value={catalogStats.lowStockProducts} tone={catalogStats.lowStockProducts > 0 ? "attention" : "normal"} />
             <CatalogMetric label="sold out" value={catalogStats.soldOutProducts} tone={catalogStats.soldOutProducts > 0 ? "attention" : "normal"} />
             <CatalogMetric label="hidden" value={catalogStats.hiddenProducts} />
@@ -1039,6 +1170,7 @@ export function AdminCatalogEditor() {
                   </p>
                   <div className="mt-2 flex flex-wrap gap-1">
                     {needsPhoto ? <AttentionBadge tone="rust">Needs photo</AttentionBadge> : null}
+                    {!product.shipping_configuration_complete ? <AttentionBadge tone="rust">Shipping setup</AttentionBadge> : null}
                     {isLowStock ? <AttentionBadge tone="rust">Low stock</AttentionBadge> : null}
                     {isSoldOut ? <AttentionBadge tone="rust">Sold out</AttentionBadge> : null}
                     {!product.active ? <AttentionBadge>Hidden</AttentionBadge> : null}
@@ -1101,17 +1233,19 @@ export function AdminCatalogEditor() {
                   <Field label="Planting or Germination Instructions">
                     <textarea className="admin-input min-h-28" value={form.planting_instructions} onChange={(event) => setForm({ ...form, planting_instructions: event.target.value })} />
                   </Field>
-                  <Field label="Shipping Notes">
-                    <textarea className="admin-input min-h-28" value={form.shipping_notes} onChange={(event) => setForm({ ...form, shipping_notes: event.target.value })} />
-                  </Field>
                 </div>
               </div>
+
+              <ShippingProductSection
+                form={form}
+                packagePresets={packagePresets}
+                validation={shippingValidation}
+                setForm={setForm}
+              />
 
               <div className="flex flex-wrap gap-3">
                 <Toggle label="Active" checked={form.active} onChange={(checked) => setForm({ ...form, active: checked })} />
                 <Toggle label="Featured" checked={form.featured} onChange={(checked) => setForm({ ...form, featured: checked })} />
-                <Toggle label="Ships" checked={form.ships} onChange={(checked) => setForm({ ...form, ships: checked })} />
-                <Toggle label="Local pickup" checked={form.local_pickup} onChange={(checked) => setForm({ ...form, local_pickup: checked })} />
               </div>
 
               <div>
@@ -1647,6 +1781,159 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
+function ShippingProductSection({
+  form,
+  packagePresets,
+  validation,
+  setForm
+}: {
+  form: CatalogForm;
+  packagePresets: ShippingPackagePreset[];
+  validation: ReturnType<typeof validateProductShipping>;
+  setForm: Dispatch<SetStateAction<CatalogForm>>;
+}) {
+  const selectedClass = form.shipping_class;
+  const showPackageFields = requiresPackageData(selectedClass);
+  const showGroundAdvantage = canUseGroundAdvantage(selectedClass);
+  const selectablePresets = packagePresets.filter((preset) => {
+    if (!preset.active && preset.id !== form.preferred_package_id) return false;
+    if (!selectedClass) return true;
+    return preset.allowed_shipping_classes.includes(selectedClass);
+  });
+
+  function updateShippingClass(nextClass: ShippingClass | "") {
+    setForm((current) => applyShippingClassDefaults(current, nextClass));
+  }
+
+  return (
+    <div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-2xl font-black text-pine">Shipping</h2>
+        <span className={`rounded-full px-3 py-1 text-xs font-black ${validation.complete ? "bg-pine text-white" : "bg-rust/10 text-rust"}`}>
+          {validation.complete ? "Setup complete" : "Needs setup"}
+        </span>
+      </div>
+
+      <div className="mt-4 grid gap-4 md:grid-cols-2">
+        <Field label="Shipping class">
+          <select className="admin-input" value={selectedClass} onChange={(event) => updateShippingClass(event.target.value as ShippingClass | "")}>
+            <option value="">Choose a class</option>
+            {SHIPPING_CLASSES.map((shippingClass) => (
+              <option key={shippingClass} value={shippingClass}>{SHIPPING_CLASS_LABELS[shippingClass]}</option>
+            ))}
+          </select>
+        </Field>
+
+        <div className="rounded-md border border-pine/15 bg-sage/45 p-4">
+          <p className="text-xs font-black uppercase tracking-[0.16em] text-stone">Fulfillment</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Toggle
+              label="Shipping enabled"
+              checked={form.shipping_enabled}
+              disabled={selectedClass === "digital" || selectedClass === "oversized_pickup_only"}
+              onChange={(checked) => setForm((current) => ({ ...current, shipping_enabled: checked, ships: checked }))}
+            />
+            <Toggle
+              label="Local pickup"
+              checked={form.local_pickup_enabled}
+              disabled={selectedClass === "digital"}
+              onChange={(checked) => setForm((current) => ({ ...current, local_pickup_enabled: checked, local_pickup: checked }))}
+            />
+          </div>
+        </div>
+      </div>
+
+      {selectedClass ? (
+        <p className="mt-3 rounded-md bg-sage/45 p-3 text-sm font-bold text-stone">
+          {SHIPPING_CLASS_DESCRIPTIONS[selectedClass]}
+        </p>
+      ) : null}
+
+      {showPackageFields ? (
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <Field label="Packed weight (oz)">
+            <input className="admin-input" type="number" min="0" step="0.1" value={form.packed_weight_oz} onChange={(event) => setForm({ ...form, packed_weight_oz: event.target.value })} />
+          </Field>
+
+          <Field label="Preferred package preset">
+            <select className="admin-input" value={form.preferred_package_id} onChange={(event) => setForm({ ...form, preferred_package_id: event.target.value })}>
+              <option value="">Use custom dimensions</option>
+              {selectablePresets.map((preset) => (
+                <option key={preset.id} value={preset.id}>
+                  {preset.name} ({preset.length_in} x {preset.width_in} x {preset.height_in} in)
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          {!form.preferred_package_id ? (
+            <>
+              <Field label="Packed length (in)">
+                <input className="admin-input" type="number" min="0" step="0.1" value={form.packed_length_in} onChange={(event) => setForm({ ...form, packed_length_in: event.target.value })} />
+              </Field>
+              <Field label="Packed width (in)">
+                <input className="admin-input" type="number" min="0" step="0.1" value={form.packed_width_in} onChange={(event) => setForm({ ...form, packed_width_in: event.target.value })} />
+              </Field>
+              <Field label="Packed height (in)">
+                <input className="admin-input" type="number" min="0" step="0.1" value={form.packed_height_in} onChange={(event) => setForm({ ...form, packed_height_in: event.target.value })} />
+              </Field>
+            </>
+          ) : null}
+
+          <Field label="Maximum quantity per package">
+            <input className="admin-input" type="number" min="1" step="1" value={form.max_quantity_per_package} onChange={(event) => setForm({ ...form, max_quantity_per_package: event.target.value })} />
+          </Field>
+
+          <Field label="Shipping surcharge ($)">
+            <input className="admin-input" type="number" min="0" step="0.01" value={form.shipping_surcharge} onChange={(event) => setForm({ ...form, shipping_surcharge: event.target.value })} />
+          </Field>
+        </div>
+      ) : null}
+
+      {selectedClass && selectedClass !== "digital" && selectedClass !== "oversized_pickup_only" ? (
+        <div className="mt-4 flex flex-wrap gap-3">
+          <Toggle label="Ships alone" checked={form.ships_alone} onChange={(checked) => setForm({ ...form, ships_alone: checked })} />
+          <Toggle
+            label="Expedited required"
+            checked={selectedClass === "tree" ? true : form.expedited_required}
+            disabled={selectedClass === "tree"}
+            onChange={(checked) => setForm({ ...form, expedited_required: checked })}
+          />
+          <Toggle
+            label="Allow Ground Advantage"
+            checked={showGroundAdvantage ? form.allow_ground_advantage : false}
+            disabled={!showGroundAdvantage}
+            onChange={(checked) => setForm({ ...form, allow_ground_advantage: checked })}
+          />
+          <Toggle label="Free-shipping eligible" checked={form.free_shipping_eligible} onChange={(checked) => setForm({ ...form, free_shipping_eligible: checked })} />
+        </div>
+      ) : null}
+
+      <div className="mt-4">
+        <Field label="Shipping Notes">
+          <textarea className="admin-input min-h-28" value={form.shipping_notes} onChange={(event) => setForm({ ...form, shipping_notes: event.target.value })} />
+        </Field>
+      </div>
+
+      {validation.errors.length > 0 ? (
+        <div className="mt-4 rounded-md bg-rust/10 p-4 text-sm font-bold text-rust">
+          {validation.errors.map((error) => (
+            <p key={error}>{error}</p>
+          ))}
+        </div>
+      ) : null}
+
+      {validation.warnings.length > 0 ? (
+        <div className="mt-4 rounded-md bg-sage p-4 text-sm font-bold text-stone">
+          {validation.warnings.map((warning) => (
+            <p key={warning}>{warning}</p>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function GrowingSelectField({
   config,
   value,
@@ -1693,13 +1980,166 @@ function GrowingSelectField({
   );
 }
 
-function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
+function Toggle({
+  label,
+  checked,
+  disabled = false,
+  onChange
+}: {
+  label: string;
+  checked: boolean;
+  disabled?: boolean;
+  onChange: (checked: boolean) => void;
+}) {
   return (
-    <label className={`rounded-full border px-4 py-2 text-sm font-black ${checked ? "border-pine bg-pine text-white" : "border-pine/20 bg-sage text-pine"}`}>
-      <input className="sr-only" type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
+    <label className={`rounded-full border px-4 py-2 text-sm font-black ${disabled ? "cursor-not-allowed opacity-55" : ""} ${checked ? "border-pine bg-pine text-white" : "border-pine/20 bg-sage text-pine"}`}>
+      <input className="sr-only" type="checkbox" checked={checked} disabled={disabled} onChange={(event) => onChange(event.target.checked)} />
       {label}
     </label>
   );
+}
+
+function applyShippingClassDefaults(current: CatalogForm, shippingClass: ShippingClass | ""): CatalogForm {
+  const base: CatalogForm = {
+    ...current,
+    shipping_class: shippingClass,
+    preferred_package_id: "",
+    shipping_configuration_complete: false
+  };
+
+  if (shippingClass === "digital") {
+    return {
+      ...base,
+      shipping_enabled: false,
+      local_pickup_enabled: false,
+      ships: false,
+      local_pickup: false,
+      packed_weight_oz: "",
+      packed_length_in: "",
+      packed_width_in: "",
+      packed_height_in: "",
+      ships_alone: false,
+      expedited_required: false,
+      allow_ground_advantage: false,
+      free_shipping_eligible: false,
+      max_quantity_per_package: "1"
+    };
+  }
+
+  if (shippingClass === "oversized_pickup_only") {
+    return {
+      ...base,
+      shipping_enabled: false,
+      local_pickup_enabled: true,
+      ships: false,
+      local_pickup: true,
+      packed_weight_oz: "",
+      packed_length_in: "",
+      packed_width_in: "",
+      packed_height_in: "",
+      ships_alone: false,
+      expedited_required: false,
+      allow_ground_advantage: false,
+      free_shipping_eligible: false,
+      max_quantity_per_package: "1"
+    };
+  }
+
+  if (shippingClass === "tree") {
+    return {
+      ...base,
+      expedited_required: true,
+      allow_ground_advantage: false,
+      max_quantity_per_package: "1"
+    };
+  }
+
+  return {
+    ...base,
+    allow_ground_advantage: canUseGroundAdvantage(shippingClass) ? current.allow_ground_advantage : false
+  };
+}
+
+function validateProductShipping(form: CatalogForm) {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  const shippingClass = form.shipping_class;
+  const weight = Number(form.packed_weight_oz);
+  const length = Number(form.packed_length_in);
+  const width = Number(form.packed_width_in);
+  const height = Number(form.packed_height_in);
+  const maxQuantity = Number(form.max_quantity_per_package);
+  const surcharge = Number(form.shipping_surcharge);
+  const hasDimensions = length > 0 && width > 0 && height > 0;
+  const hasPartialDimensions = [form.packed_length_in, form.packed_width_in, form.packed_height_in].some((value) => value.trim() !== "") && !hasDimensions;
+  const hasPackagePreset = Boolean(form.preferred_package_id);
+
+  if (!shippingClass) {
+    warnings.push("Choose a shipping class before Phase 2 uses this product for shipping rules.");
+  }
+
+  if (shippingClass === "digital" && form.shipping_enabled) {
+    errors.push("Digital products cannot have shipping enabled.");
+  }
+
+  if (shippingClass === "oversized_pickup_only" && form.shipping_enabled) {
+    errors.push("Pickup-only products cannot have shipping enabled.");
+  }
+
+  if (shippingClass !== "digital" && !form.shipping_enabled && !form.local_pickup_enabled) {
+    warnings.push("This product has no fulfillment method selected yet.");
+  }
+
+  if (form.shipping_enabled && requiresPackageData(shippingClass)) {
+    if (form.packed_weight_oz.trim() === "" || !Number.isFinite(weight) || weight <= 0) {
+      warnings.push("Add a packed weight before Phase 2 quotes this shipped physical item.");
+    }
+    if (!hasPackagePreset && !hasDimensions) {
+      warnings.push("Choose a package preset or add packed dimensions before Phase 2 quotes this item.");
+    }
+  }
+
+  if (hasPartialDimensions) {
+    errors.push("Custom package dimensions must include length, width, and height greater than zero.");
+  }
+
+  if (!Number.isFinite(maxQuantity) || maxQuantity <= 0) {
+    errors.push("Maximum quantity per package must be at least 1.");
+  }
+
+  if (!Number.isFinite(surcharge) || surcharge < 0) {
+    errors.push("Shipping surcharge cannot be negative.");
+  }
+
+  return {
+    complete: errors.length === 0 && warnings.length === 0,
+    errors,
+    warnings
+  };
+}
+
+function numberToFormValue(value: number | null | undefined) {
+  if (value === null || value === undefined) return "";
+  return String(value);
+}
+
+function centsToFormDollars(value: number | null | undefined) {
+  return ((Number(value) || 0) / 100).toFixed(2);
+}
+
+function formNumberToDb(value: string) {
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) && numberValue > 0 ? numberValue : null;
+}
+
+function dollarsToCents(value: string) {
+  const numberValue = Number(value);
+  if (!Number.isFinite(numberValue) || numberValue <= 0) return 0;
+  return Math.round(numberValue * 100);
+}
+
+function shouldClearPackageDimensions(form: CatalogForm) {
+  return form.shipping_class === "digital" || form.shipping_class === "oversized_pickup_only" || Boolean(form.preferred_package_id);
 }
 
 const EDITABLE_PLACEHOLDER_VALUES = new Set([

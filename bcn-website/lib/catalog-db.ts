@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { products as fallbackProducts, getRelatedProducts as getFallbackRelatedProducts } from "./products";
+import { isShippingClass } from "./shipping/types";
 import type { Product, ProductCategory, ProductVariation } from "./types";
 
 const PRODUCT_IMAGE_BUCKET = "product-images";
@@ -40,6 +41,21 @@ type DbProduct = {
   show_wildlife_benefits: boolean | null;
   show_pollinator_benefits: boolean | null;
   show_host_species: boolean | null;
+  shipping_class: string | null;
+  shipping_enabled: boolean | null;
+  local_pickup_enabled: boolean | null;
+  packed_weight_oz: number | string | null;
+  packed_length_in: number | string | null;
+  packed_width_in: number | string | null;
+  packed_height_in: number | string | null;
+  ships_alone: boolean | null;
+  expedited_required: boolean | null;
+  allow_ground_advantage: boolean | null;
+  free_shipping_eligible: boolean | null;
+  shipping_surcharge_cents: number | null;
+  max_quantity_per_package: number | null;
+  preferred_package_id: string | null;
+  shipping_configuration_complete: boolean | null;
   local_pickup: boolean | null;
   ships: boolean | null;
   tags: string[] | null;
@@ -183,6 +199,21 @@ function mapDbProducts(
       showWildlifeBenefits: product.show_wildlife_benefits !== false,
       showPollinatorBenefits: product.show_pollinator_benefits !== false,
       showHostSpecies: product.show_host_species !== false,
+      shippingClass: isShippingClass(product.shipping_class) ? product.shipping_class : "",
+      shippingEnabled: Boolean(product.shipping_enabled),
+      localPickupEnabled: product.local_pickup_enabled !== false,
+      packedWeightOz: numberOrNull(product.packed_weight_oz),
+      packedLengthIn: numberOrNull(product.packed_length_in),
+      packedWidthIn: numberOrNull(product.packed_width_in),
+      packedHeightIn: numberOrNull(product.packed_height_in),
+      shipsAlone: Boolean(product.ships_alone),
+      expeditedRequired: Boolean(product.expedited_required),
+      allowGroundAdvantage: product.allow_ground_advantage !== false,
+      freeShippingEligible: Boolean(product.free_shipping_eligible),
+      shippingSurchargeCents: Number(product.shipping_surcharge_cents) || 0,
+      maxQuantityPerPackage: Number(product.max_quantity_per_package) || 1,
+      preferredPackageId: product.preferred_package_id ?? "",
+      shippingConfigurationComplete: Boolean(product.shipping_configuration_complete),
       localPickup: product.local_pickup !== false,
       ships: Boolean(product.ships),
       tags: product.tags ?? [],
@@ -192,6 +223,12 @@ function mapDbProducts(
       updatedAt: product.updated_at ?? ""
     };
   });
+}
+
+function numberOrNull(value: number | string | null | undefined) {
+  if (value === null || value === undefined || value === "") return null;
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : null;
 }
 
 const PLACEHOLDER_VALUES = new Set([

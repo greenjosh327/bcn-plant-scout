@@ -17,7 +17,15 @@ Run these files in the Supabase SQL Editor for the BCN project:
    - Adds planting/germination instructions.
    - Cleans old placeholder growing text to `null`.
 
-4. Add the owner/admin user.
+4. `sql/20260713_bcn_shipping_data_foundation.sql`
+   - Adds product shipping metadata, package presets, and shop shipping settings.
+   - Preserves the old `ships` and `local_pickup` flags while adding Phase 1 fields.
+   - Marks existing products as needing shipping setup until a class, weight, and package plan are selected.
+
+5. `sql/20260703_bcn_orders_schema.sql`
+   - Creates order tables, fulfillment fields, and inventory decrement functions.
+
+6. Add the owner/admin user.
    - Find your user id in Supabase Authentication > Users.
    - Run:
 
@@ -63,10 +71,29 @@ static catalog in `lib/imported-products.ts`.
 The admin editor currently supports:
 
 - product name, slug, names, category, description, tags, active/featured state
-- ship/local pickup flags
+- product shipping class, package preset, packed weight, package dimensions, surcharge, and setup validation
+- ship/local pickup flags mapped to the newer shipping settings
 - standardized growing information dropdowns with public display toggles
 - growing notes, planting/germination instructions, and shipping notes
 - variant price, SKU, active state, and inventory quick edits
 - automatic product inventory totals from active variants
 
 Product image editing is intentionally left for a later phase.
+
+## Phase 1 shipping setup
+
+Phase 1 creates the data foundation only. It does not call Shippo, quote rates,
+buy labels, or change checkout totals. Shippo secrets belong in Vercel/local
+environment variables, not in Supabase tables.
+
+After the migration is applied, each shippable product should be opened in the
+admin Shipping section and assigned:
+
+- a shipping class
+- a packed weight
+- a package preset or custom package dimensions
+- whether it ships alone, needs expedited handling, can use Ground Advantage,
+  and is eligible for free shipping
+
+Products with incomplete shipping metadata remain editable, but the admin will
+show them as needing shipping setup before the Phase 2 rules can use them.

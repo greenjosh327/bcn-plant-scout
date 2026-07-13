@@ -1,3 +1,5 @@
+import type { ShippingClass } from "./shipping/types";
+
 export type ProductCategory = "Plants" | "Cuttings" | "Seeds";
 
 export type ProductVariation = {
@@ -45,6 +47,21 @@ export type Product = {
   showWildlifeBenefits?: boolean;
   showPollinatorBenefits?: boolean;
   showHostSpecies?: boolean;
+  shippingClass?: ShippingClass | "";
+  shippingEnabled?: boolean;
+  localPickupEnabled?: boolean;
+  packedWeightOz?: number | null;
+  packedLengthIn?: number | null;
+  packedWidthIn?: number | null;
+  packedHeightIn?: number | null;
+  shipsAlone?: boolean;
+  expeditedRequired?: boolean;
+  allowGroundAdvantage?: boolean;
+  freeShippingEligible?: boolean;
+  shippingSurchargeCents?: number;
+  maxQuantityPerPackage?: number;
+  preferredPackageId?: string;
+  shippingConfigurationComplete?: boolean;
   localPickup: boolean;
   ships: boolean;
   tags: string[];
