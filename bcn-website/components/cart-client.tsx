@@ -369,40 +369,92 @@ export function CartClient({ products }: CartClientProps) {
         ) : null}
         <label className="mt-5 block">
           <span className="text-sm font-black text-pine">Email for order updates</span>
-          <input className="admin-input mt-2" type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
+          <input
+            autoComplete="email"
+            className="admin-input mt-2"
+            name="email"
+            type="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+          />
         </label>
 
         {fulfillment === "shipping" ? (
           <div className="mt-5 grid gap-3">
             <label className="block">
               <span className="text-sm font-black text-pine">Ship to name</span>
-              <input className="admin-input mt-2" value={shippingAddress.name} onChange={(event) => updateAddress("name", event.target.value)} />
+              <input
+                autoComplete="shipping name"
+                className="admin-input mt-2"
+                name="shipping-name"
+                value={shippingAddress.name}
+                onChange={(event) => updateAddress("name", event.target.value)}
+              />
             </label>
             <label className="block">
               <span className="text-sm font-black text-pine">Street address</span>
-              <input className="admin-input mt-2" value={shippingAddress.street1} onChange={(event) => updateAddress("street1", event.target.value)} />
+              <input
+                autoComplete="shipping address-line1"
+                className="admin-input mt-2"
+                name="shipping-address-line1"
+                value={shippingAddress.street1}
+                onChange={(event) => updateAddress("street1", event.target.value)}
+              />
             </label>
             <label className="block">
               <span className="text-sm font-black text-pine">Apartment, suite, or unit</span>
-              <input className="admin-input mt-2" value={shippingAddress.street2} onChange={(event) => updateAddress("street2", event.target.value)} />
+              <input
+                autoComplete="shipping address-line2"
+                className="admin-input mt-2"
+                name="shipping-address-line2"
+                value={shippingAddress.street2}
+                onChange={(event) => updateAddress("street2", event.target.value)}
+              />
             </label>
             <div className="grid gap-3 sm:grid-cols-[1fr_82px_112px]">
               <label className="block">
                 <span className="text-sm font-black text-pine">City</span>
-                <input className="admin-input mt-2" value={shippingAddress.city} onChange={(event) => updateAddress("city", event.target.value)} />
+                <input
+                  autoComplete="shipping address-level2"
+                  className="admin-input mt-2"
+                  name="shipping-address-level2"
+                  value={shippingAddress.city}
+                  onChange={(event) => updateAddress("city", event.target.value)}
+                />
               </label>
               <label className="block">
                 <span className="text-sm font-black text-pine">State</span>
-                <input className="admin-input mt-2 uppercase" maxLength={2} value={shippingAddress.state} onChange={(event) => updateAddress("state", event.target.value.toUpperCase())} />
+                <input
+                  autoComplete="shipping address-level1"
+                  className="admin-input mt-2 uppercase"
+                  maxLength={2}
+                  name="shipping-address-level1"
+                  value={shippingAddress.state}
+                  onChange={(event) => updateAddress("state", event.target.value.toUpperCase())}
+                />
               </label>
               <label className="block">
                 <span className="text-sm font-black text-pine">ZIP</span>
-                <input className="admin-input mt-2" value={shippingAddress.zip} onChange={(event) => updateAddress("zip", event.target.value)} />
+                <input
+                  autoComplete="shipping postal-code"
+                  className="admin-input mt-2"
+                  inputMode="numeric"
+                  name="shipping-postal-code"
+                  value={shippingAddress.zip}
+                  onChange={(event) => updateAddress("zip", event.target.value)}
+                />
               </label>
             </div>
             <label className="block">
               <span className="text-sm font-black text-pine">Phone</span>
-              <input className="admin-input mt-2" type="tel" value={shippingAddress.phone} onChange={(event) => updateAddress("phone", event.target.value)} />
+              <input
+                autoComplete="shipping tel"
+                className="admin-input mt-2"
+                name="shipping-tel"
+                type="tel"
+                value={shippingAddress.phone}
+                onChange={(event) => updateAddress("phone", event.target.value)}
+              />
             </label>
             <button className="button button-secondary w-full" type="button" disabled={!canRequestQuote} onClick={requestShippingQuote}>
               {quoteLoading ? "Getting options..." : "Get shipping options"}
