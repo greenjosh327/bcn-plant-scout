@@ -11,6 +11,12 @@ import {
   formatShippingProvider
 } from "@/lib/shipping/order-display";
 import {
+  formatLabelPurchaseStatus,
+  getLabelPurchaseEligibility,
+  hasPurchasedShippingLabels,
+  type LabelPurchaseStatus
+} from "@/lib/shipping/label-purchase";
+import {
   SHIPPING_CLASS_DESCRIPTIONS,
   SHIPPING_CLASS_LABELS,
   SHIPPING_CLASSES,
@@ -138,6 +144,19 @@ type ShopOrder = {
   shippo_rate_ids: string[] | null;
   estimated_delivery: string | null;
   internal_shipping_notes: string | null;
+  label_purchase_status: LabelPurchaseStatus | string | null;
+  label_provider: string | null;
+  label_transaction_ids: string[] | null;
+  label_rate_ids: string[] | null;
+  label_urls: string[] | null;
+  label_file_type: string | null;
+  label_purchase_test_mode: boolean | null;
+  label_purchased_at: string | null;
+  label_purchase_error: string | null;
+  label_metadata: Record<string, unknown> | null;
+  tracking_numbers: string[] | null;
+  tracking_urls: string[] | null;
+  tracking_status: string | null;
   subtotal: number;
   shipping_cost: number;
   tax: number;
@@ -1133,7 +1152,7 @@ export function AdminCatalogEditor() {
       </div>
 
       {activeTab === "orders" ? (
-        <AdminOrdersDashboard />
+        <AdminOrdersDashboard session={session} />
       ) : (
       <div className="mt-8 grid gap-6 lg:grid-cols-[360px_1fr]">
         <aside className="field-card p-4">
@@ -1350,13 +1369,14 @@ export function AdminCatalogEditor() {
   );
 }
 
-function AdminOrdersDashboard() {
+function AdminOrdersDashboard({ session }: { session: Session | null }) {
   const [orders, setOrders] = useState<ShopOrder[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filter, setFilter] = useState<"open" | "new" | "pickup" | "shipping" | "fulfilled" | "cancelled" | "all">("open");
   const [orderSearch, setOrderSearch] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [labelPurchasingOrderId, setLabelPurchasingOrderId] = useState<string | null>(null);
 
   const selected = orders.find((order) => order.id === selectedId) ?? orders[0] ?? null;
 
@@ -1386,6 +1406,9 @@ function AdminOrdersDashboard() {
         order.shipping_carrier,
         order.shipping_service,
         order.estimated_delivery,
+        order.label_purchase_status,
+        ...(order.tracking_numbers ?? []),
+        ...(order.label_transaction_ids ?? []),
         ...order.order_items.flatMap((item) => [item.product_name, item.variant_name, item.sku])
       ]
         .filter(Boolean)
@@ -1472,7 +1495,7 @@ function AdminOrdersDashboard() {
   }
 
   function exportCsv() {
-    const header = ["created_at", "customer", "email", "fulfillment", "shipping_method", "carrier_service", "estimated_delivery", "quote_id", "status", "payment", "total", "items"];
+    const header = ["created_at", "customer", "email", "fulfillment", "shipping_method", "carrier_service", "estimated_delivery", "label_status", "tracking", "quote_id", "status", "payment", "total", "items"];
     const rows = filteredOrders.map((order) => [
       order.created_at,
       order.customer_name ?? "",
@@ -1481,6 +1504,8 @@ function AdminOrdersDashboard() {
       order.fulfillment_type === "shipping" ? formatOrderShippingMethod(order) : "",
       order.fulfillment_type === "shipping" ? formatShippingCarrierService(order) : "",
       order.estimated_delivery ?? "",
+      formatLabelPurchaseStatus(order.label_purchase_status),
+      (order.tracking_numbers ?? []).join("; "),
       order.shipping_quote_id ?? "",
       order.order_status,
       order.payment_status,
@@ -1523,11 +1548,51 @@ function AdminOrdersDashboard() {
         ? "Your Base Camp North order is packed and moving toward shipping."
         : "Your Base Camp North order is being prepared for local pickup.";
     const shippingDetails = order.fulfillment_type === "shipping"
-      ? `\n\nShipping method: ${formatOrderShippingMethod(order)}${order.estimated_delivery ? `\nEstimated delivery: ${order.estimated_delivery}` : ""}`
+      ? `\n\nShipping method: ${formatOrderShippingMethod(order)}${order.estimated_delivery ? `\nEstimated delivery: ${order.estimated_delivery}` : ""}${(order.tracking_numbers ?? []).length > 0 ? `\nTracking: ${(order.tracking_numbers ?? []).join(", ")}` : ""}`
       : "";
     const body = `Hi ${name},\n\n${action}\n\nOrder: ${itemSummary}${shippingDetails}\n\nCurrent status: ${formatStatus(order.order_status)}\n\nThank you!\nBase Camp North`;
     await navigator.clipboard.writeText(body);
     setMessage("Customer update copied.");
+  }
+
+  async function buyShippingLabel(order: ShopOrder) {
+    if (!session?.access_token) {
+      setMessage("Sign in again before buying a label.");
+      return;
+    }
+
+    const eligibility = getLabelPurchaseEligibility(order);
+    if (!eligibility.eligible) {
+      setMessage(eligibility.reason);
+      return;
+    }
+
+    setLabelPurchasingOrderId(order.id);
+    setMessage("Buying Shippo label...");
+    try {
+      const response = await fetch(`/api/admin/orders/${order.id}/label`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`
+        }
+      });
+      const payload = await response.json().catch(() => ({}));
+      const updatedOrder = payload.order as ShopOrder | undefined;
+      if (updatedOrder) {
+        setOrders((current) =>
+          current.map((item) => item.id === updatedOrder.id ? { ...updatedOrder, order_items: updatedOrder.order_items ?? [] } : item)
+        );
+      }
+
+      if (!response.ok) {
+        setMessage(payload.error || "Shippo label purchase failed.");
+        return;
+      }
+
+      setMessage("Shippo label purchased.");
+    } finally {
+      setLabelPurchasingOrderId(null);
+    }
   }
 
   function printPackingSlip(order: ShopOrder) {
@@ -1656,6 +1721,12 @@ function AdminOrdersDashboard() {
                   {formatOrderShippingMethod(order)}{order.estimated_delivery ? ` / ${order.estimated_delivery}` : ""}
                 </p>
               ) : null}
+              {order.fulfillment_type === "shipping" ? (
+                <p className="mt-1 text-xs font-bold text-stone">
+                  Label: {formatLabelPurchaseStatus(order.label_purchase_status)}
+                  {(order.tracking_numbers ?? []).length > 0 ? ` / ${(order.tracking_numbers ?? []).join(", ")}` : ""}
+                </p>
+              ) : null}
             </button>
           ))}
         </div>
@@ -1669,6 +1740,8 @@ function AdminOrdersDashboard() {
             onCopyPickupEmail={copyPickupEmail}
             onCopyShippingAddress={copyShippingAddress}
             onCopyCustomerUpdate={copyCustomerUpdate}
+            onBuyShippingLabel={buyShippingLabel}
+            labelPurchasing={labelPurchasingOrderId === selected.id}
             onPrintPackingSlip={printPackingSlip}
           />
         ) : (
@@ -1685,6 +1758,8 @@ function OrderDetail({
   onCopyPickupEmail,
   onCopyShippingAddress,
   onCopyCustomerUpdate,
+  onBuyShippingLabel,
+  labelPurchasing,
   onPrintPackingSlip
 }: {
   order: ShopOrder;
@@ -1692,6 +1767,8 @@ function OrderDetail({
   onCopyPickupEmail: (order: ShopOrder) => void;
   onCopyShippingAddress: (order: ShopOrder) => void;
   onCopyCustomerUpdate: (order: ShopOrder) => void;
+  onBuyShippingLabel: (order: ShopOrder) => void;
+  labelPurchasing: boolean;
   onPrintPackingSlip: (order: ShopOrder) => void;
 }) {
   const shippingAddress = formatShippingAddress(order.shipping_address);
@@ -1699,6 +1776,9 @@ function OrderDetail({
   const carrierService = formatShippingCarrierService(order);
   const provider = formatShippingProvider(order.shipping_provider);
   const validationStatus = formatAddressValidationStatus(order.address_validation_status);
+  const labelEligibility = getLabelPurchaseEligibility(order);
+  const labelStatus = formatLabelPurchaseStatus(order.label_purchase_status);
+  const hasLabels = hasPurchasedShippingLabels(order);
 
   return (
     <div className="grid gap-6">
@@ -1752,6 +1832,18 @@ function OrderDetail({
               {order.estimated_delivery ? <p>Estimated delivery: {order.estimated_delivery}</p> : null}
               {validationStatus ? <p>Address validation: {validationStatus}</p> : null}
               {order.untracked_shipping_acknowledged ? <p>Economy Seed Mail no-tracking acknowledged.</p> : null}
+              <p>Label: {labelStatus}</p>
+              {order.label_purchase_error ? <p className="text-rust">Label error: {order.label_purchase_error}</p> : null}
+              {(order.tracking_numbers ?? []).length > 0 ? <p>Tracking: {(order.tracking_numbers ?? []).join(", ")}</p> : null}
+              {(order.label_urls ?? []).length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {(order.label_urls ?? []).map((url, index) => (
+                    <a key={url} className="button button-secondary" href={url} target="_blank" rel="noreferrer">
+                      Open Label {index + 1}
+                    </a>
+                  ))}
+                </div>
+              ) : null}
             </div>
           )}
           {order.notes ? <p className="mt-3 text-sm font-bold text-stone">Notes: {order.notes}</p> : null}
@@ -1761,6 +1853,9 @@ function OrderDetail({
           <p className="mt-2 break-all text-sm text-ink/75">Session: {order.stripe_session_id}</p>
           <p className="mt-2 break-all text-sm text-ink/75">Payment: {order.stripe_payment_intent || "not recorded"}</p>
           {order.shipping_quote_id ? <p className="mt-2 break-all text-sm text-ink/75">Quote: {order.shipping_quote_id}</p> : null}
+          {(order.label_transaction_ids ?? []).length > 0 ? (
+            <p className="mt-2 break-all text-sm text-ink/75">Label transaction: {(order.label_transaction_ids ?? []).join(", ")}</p>
+          ) : null}
         </section>
       </div>
 
@@ -1773,9 +1868,22 @@ function OrderDetail({
         {order.fulfillment_type === "shipping" ? (
           <button className="button button-secondary" onClick={() => onCopyShippingAddress(order)}>Copy Address</button>
         ) : null}
+        {order.fulfillment_type === "shipping" && !hasLabels ? (
+          <button
+            className="button button-primary"
+            disabled={!labelEligibility.eligible || labelPurchasing}
+            onClick={() => onBuyShippingLabel(order)}
+            title={labelEligibility.reason || "Buy Shippo label"}
+          >
+            {labelPurchasing ? "Buying Label..." : "Buy Label"}
+          </button>
+        ) : null}
         <button className="button button-secondary" onClick={() => onPrintPackingSlip(order)}>Print Packing Slip</button>
         <button className="button button-secondary text-rust" onClick={() => onStatus(order, "cancelled")}>Mark Issue/Cancelled</button>
       </div>
+      {order.fulfillment_type === "shipping" && !hasLabels && !labelEligibility.eligible ? (
+        <p className="text-sm font-bold text-stone">{labelEligibility.reason}</p>
+      ) : null}
     </div>
   );
 }
@@ -2255,6 +2363,8 @@ function formatPackingSlipFulfillment(order: ShopOrder) {
     carrierService && carrierService !== method ? `Service: ${carrierService}` : "",
     provider ? `Provider: ${provider}` : "",
     order.estimated_delivery ? `Estimated delivery: ${order.estimated_delivery}` : "",
+    `Label: ${formatLabelPurchaseStatus(order.label_purchase_status)}`,
+    (order.tracking_numbers ?? []).length > 0 ? `Tracking: ${(order.tracking_numbers ?? []).join(", ")}` : "",
     order.shipping_quote_id ? `Quote: ${order.shipping_quote_id}` : "",
     order.untracked_shipping_acknowledged ? "Economy Seed Mail no-tracking acknowledged." : ""
   ];

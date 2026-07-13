@@ -35,7 +35,7 @@ export type ShippoQuoteResult = {
   messages: string[];
 };
 
-function getShippoToken() {
+export function getShippoToken() {
   return process.env.SHIPPO_API_TOKEN || process.env.SHIPPO_TOKEN || process.env.SHIPPO_API_KEY || "";
 }
 
@@ -85,6 +85,48 @@ async function shippoPost(path: string, token: string, body: Record<string, unkn
   }
 
   return data as Record<string, unknown>;
+}
+
+function stringArray(value: unknown) {
+  return Array.isArray(value) ? value.map(clean).filter(Boolean) : [];
+}
+
+export type ShippoLabelPurchase = {
+  rateId: string;
+  transactionId: string;
+  status: string;
+  labelUrl: string;
+  trackingNumber: string;
+  trackingUrl: string;
+  test: boolean;
+  messages: string[];
+};
+
+export async function purchaseShippoLabelFromRate(input: {
+  rateId: string;
+  labelFileType?: string;
+  metadata?: string;
+}): Promise<ShippoLabelPurchase> {
+  const token = getShippoToken();
+  if (!token) throw new Error("Shippo API token is not configured.");
+
+  const data = await shippoPost("transactions/", token, {
+    rate: input.rateId,
+    async: false,
+    label_file_type: input.labelFileType || process.env.SHIPPO_LABEL_FILE_TYPE || "PDF_4x6",
+    metadata: input.metadata ? input.metadata.slice(0, 100) : undefined
+  });
+
+  return {
+    rateId: input.rateId,
+    transactionId: clean(data.object_id),
+    status: clean(data.status) || clean(data.object_status) || "UNKNOWN",
+    labelUrl: clean(data.label_url),
+    trackingNumber: clean(data.tracking_number),
+    trackingUrl: clean(data.tracking_url_provider),
+    test: data.test === true,
+    messages: stringArray(data.messages).concat(validationMessages(data.messages))
+  };
 }
 
 function toShippoAddress(address: ShippingAddress) {
