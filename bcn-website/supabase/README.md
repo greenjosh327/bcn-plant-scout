@@ -25,7 +25,22 @@ Run these files in the Supabase SQL Editor for the BCN project:
 5. `sql/20260703_bcn_orders_schema.sql`
    - Creates order tables, fulfillment fields, and inventory decrement functions.
 
-6. Add the owner/admin user.
+6. `sql/20260713_bcn_shipping_data_foundation.sql`
+   - Adds product shipping metadata, package presets, and shop shipping settings.
+
+7. `sql/20260713_bcn_shipping_quotes.sql`
+   - Adds server-owned shipping quote records and order shipping metadata.
+
+8. `sql/20260713_bcn_shipping_quote_checkout_link.sql`
+   - Links reserved shipping quotes to Stripe Checkout sessions and completed orders.
+
+9. `sql/20260713_bcn_label_purchase.sql`
+   - Adds admin-managed Shippo label purchase state.
+
+10. `sql/20260713_bcn_tracking_voids_hardening.sql`
+   - Adds Shippo tracking history, tracking detail, and label refund/void state.
+
+11. Add the owner/admin user.
    - Find your user id in Supabase Authentication > Users.
    - Run:
 

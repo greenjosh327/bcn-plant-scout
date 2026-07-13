@@ -8,6 +8,7 @@ import type {
 } from "./types";
 
 const SHIPPO_API_BASE = "https://api.goshippo.com/";
+const DEFAULT_SHIPPO_API_VERSION = "2018-02-08";
 
 export type LiveShippingRate = {
   packageKey: string;
@@ -73,9 +74,29 @@ async function shippoPost(path: string, token: string, body: Record<string, unkn
     method: "POST",
     headers: {
       Authorization: `ShippoToken ${token}`,
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
+      "SHIPPO-API-VERSION": process.env.SHIPPO_API_VERSION || DEFAULT_SHIPPO_API_VERSION
     },
     body: JSON.stringify(body)
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const detail = typeof data?.detail === "string" ? data.detail : response.statusText;
+    throw new Error(`Shippo request failed: ${detail}`);
+  }
+
+  return data as Record<string, unknown>;
+}
+
+async function shippoGet(path: string, token: string) {
+  const response = await fetch(`${SHIPPO_API_BASE}${path}`, {
+    method: "GET",
+    headers: {
+      Authorization: `ShippoToken ${token}`,
+      "Content-Type": "application/json",
+      "SHIPPO-API-VERSION": process.env.SHIPPO_API_VERSION || DEFAULT_SHIPPO_API_VERSION
+    }
   });
 
   const data = await response.json().catch(() => ({}));
@@ -98,6 +119,14 @@ export type ShippoLabelPurchase = {
   labelUrl: string;
   trackingNumber: string;
   trackingUrl: string;
+  test: boolean;
+  messages: string[];
+};
+
+export type ShippoLabelRefund = {
+  transactionId: string;
+  refundId: string;
+  status: "QUEUED" | "PENDING" | "SUCCESS" | "ERROR" | string;
   test: boolean;
   messages: string[];
 };
@@ -127,6 +156,38 @@ export async function purchaseShippoLabelFromRate(input: {
     test: data.test === true,
     messages: stringArray(data.messages).concat(validationMessages(data.messages))
   };
+}
+
+export async function refundShippoLabel(input: {
+  transactionId: string;
+}): Promise<ShippoLabelRefund> {
+  const token = getShippoToken();
+  if (!token) throw new Error("Shippo API token is not configured.");
+
+  const data = await shippoPost("refunds/", token, {
+    transaction: input.transactionId,
+    async: false
+  });
+
+  return {
+    transactionId: clean(data.transaction) || input.transactionId,
+    refundId: clean(data.object_id),
+    status: clean(data.status) || "UNKNOWN",
+    test: data.test === true,
+    messages: stringArray(data.messages).concat(validationMessages(data.messages))
+  };
+}
+
+export async function getShippoTrackingStatus(input: {
+  carrier: string;
+  trackingNumber: string;
+}) {
+  const token = getShippoToken();
+  if (!token) throw new Error("Shippo API token is not configured.");
+
+  const carrier = encodeURIComponent(input.carrier.toLowerCase());
+  const trackingNumber = encodeURIComponent(input.trackingNumber);
+  return shippoGet(`tracks/${carrier}/${trackingNumber}`, token);
 }
 
 function toShippoAddress(address: ShippingAddress) {

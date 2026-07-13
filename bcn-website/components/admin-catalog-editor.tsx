@@ -11,11 +11,14 @@ import {
   formatShippingProvider
 } from "@/lib/shipping/order-display";
 import {
+  formatLabelRefundStatus,
   formatLabelPurchaseStatus,
+  getLabelRefundEligibility,
   getLabelPurchaseEligibility,
   hasPurchasedShippingLabels,
   type LabelPurchaseStatus
 } from "@/lib/shipping/label-purchase";
+import { formatTrackingStatus } from "@/lib/shipping/tracking";
 import {
   SHIPPING_CLASS_DESCRIPTIONS,
   SHIPPING_CLASS_LABELS,
@@ -154,9 +157,23 @@ type ShopOrder = {
   label_purchased_at: string | null;
   label_purchase_error: string | null;
   label_metadata: Record<string, unknown> | null;
+  label_refund_status: string | null;
+  label_refund_ids: string[] | null;
+  label_refund_requested_at: string | null;
+  label_refund_updated_at: string | null;
+  label_refund_error: string | null;
+  label_refund_metadata: Record<string, unknown> | null;
+  tracking_carrier: string | null;
   tracking_numbers: string[] | null;
   tracking_urls: string[] | null;
   tracking_status: string | null;
+  tracking_status_detail: string | null;
+  tracking_substatus: string | null;
+  tracking_action_required: boolean | null;
+  tracking_eta: string | null;
+  tracking_history: Array<Record<string, unknown>> | null;
+  tracking_metadata: Record<string, unknown> | null;
+  tracking_updated_at: string | null;
   subtotal: number;
   shipping_cost: number;
   tax: number;
@@ -1377,6 +1394,8 @@ function AdminOrdersDashboard({ session }: { session: Session | null }) {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [labelPurchasingOrderId, setLabelPurchasingOrderId] = useState<string | null>(null);
+  const [labelVoidingOrderId, setLabelVoidingOrderId] = useState<string | null>(null);
+  const [trackingRefreshingOrderId, setTrackingRefreshingOrderId] = useState<string | null>(null);
 
   const selected = orders.find((order) => order.id === selectedId) ?? orders[0] ?? null;
 
@@ -1495,7 +1514,7 @@ function AdminOrdersDashboard({ session }: { session: Session | null }) {
   }
 
   function exportCsv() {
-    const header = ["created_at", "customer", "email", "fulfillment", "shipping_method", "carrier_service", "estimated_delivery", "label_status", "tracking", "quote_id", "status", "payment", "total", "items"];
+    const header = ["created_at", "customer", "email", "fulfillment", "shipping_method", "carrier_service", "estimated_delivery", "label_status", "refund_status", "tracking_status", "tracking", "quote_id", "status", "payment", "total", "items"];
     const rows = filteredOrders.map((order) => [
       order.created_at,
       order.customer_name ?? "",
@@ -1505,6 +1524,8 @@ function AdminOrdersDashboard({ session }: { session: Session | null }) {
       order.fulfillment_type === "shipping" ? formatShippingCarrierService(order) : "",
       order.estimated_delivery ?? "",
       formatLabelPurchaseStatus(order.label_purchase_status),
+      formatLabelRefundStatus(order.label_refund_status),
+      formatTrackingStatus(order.tracking_status),
       (order.tracking_numbers ?? []).join("; "),
       order.shipping_quote_id ?? "",
       order.order_status,
@@ -1592,6 +1613,87 @@ function AdminOrdersDashboard({ session }: { session: Session | null }) {
       setMessage("Shippo label purchased.");
     } finally {
       setLabelPurchasingOrderId(null);
+    }
+  }
+
+  function replaceOrder(updatedOrder: ShopOrder) {
+    setOrders((current) =>
+      current.map((item) => item.id === updatedOrder.id ? { ...updatedOrder, order_items: updatedOrder.order_items ?? [] } : item)
+    );
+  }
+
+  async function voidShippingLabel(order: ShopOrder) {
+    if (!session?.access_token) {
+      setMessage("Sign in again before voiding a label.");
+      return;
+    }
+
+    const eligibility = getLabelRefundEligibility(order);
+    if (!eligibility.eligible) {
+      setMessage(eligibility.reason);
+      return;
+    }
+
+    if (!window.confirm("Void this Shippo label and request a refund? Do this only if the package has not been scanned by USPS.")) {
+      return;
+    }
+
+    setLabelVoidingOrderId(order.id);
+    setMessage("Voiding Shippo label...");
+    try {
+      const response = await fetch(`/api/admin/orders/${order.id}/label/void`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`
+        }
+      });
+      const payload = await response.json().catch(() => ({}));
+      const updatedOrder = payload.order as ShopOrder | undefined;
+      if (updatedOrder) replaceOrder(updatedOrder);
+
+      if (!response.ok) {
+        setMessage(payload.error || "Shippo label void failed.");
+        return;
+      }
+
+      setMessage(payload.labelPurchaseStatus === "refunded" ? "Shippo label refunded." : "Shippo label refund requested.");
+    } finally {
+      setLabelVoidingOrderId(null);
+    }
+  }
+
+  async function refreshTracking(order: ShopOrder) {
+    if (!session?.access_token) {
+      setMessage("Sign in again before refreshing tracking.");
+      return;
+    }
+
+    if ((order.tracking_numbers ?? []).length === 0) {
+      setMessage("No tracking number is saved for this order.");
+      return;
+    }
+
+    setTrackingRefreshingOrderId(order.id);
+    setMessage("Refreshing tracking...");
+    try {
+      const response = await fetch(`/api/admin/orders/${order.id}/tracking`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`
+        }
+      });
+      const payload = await response.json().catch(() => ({}));
+      const updatedOrder = payload.order as ShopOrder | undefined;
+      if (updatedOrder) replaceOrder(updatedOrder);
+
+      if (!response.ok) {
+        setMessage(payload.error || "Tracking refresh failed.");
+        return;
+      }
+
+      setMessage(`Tracking refreshed${payload.trackingStatus ? `: ${formatTrackingStatus(payload.trackingStatus)}` : ""}.`);
+    } finally {
+      setTrackingRefreshingOrderId(null);
     }
   }
 
@@ -1724,6 +1826,7 @@ function AdminOrdersDashboard({ session }: { session: Session | null }) {
               {order.fulfillment_type === "shipping" ? (
                 <p className="mt-1 text-xs font-bold text-stone">
                   Label: {formatLabelPurchaseStatus(order.label_purchase_status)}
+                  {order.tracking_status ? ` / ${formatTrackingStatus(order.tracking_status)}` : ""}
                   {(order.tracking_numbers ?? []).length > 0 ? ` / ${(order.tracking_numbers ?? []).join(", ")}` : ""}
                 </p>
               ) : null}
@@ -1741,7 +1844,11 @@ function AdminOrdersDashboard({ session }: { session: Session | null }) {
             onCopyShippingAddress={copyShippingAddress}
             onCopyCustomerUpdate={copyCustomerUpdate}
             onBuyShippingLabel={buyShippingLabel}
+            onVoidShippingLabel={voidShippingLabel}
+            onRefreshTracking={refreshTracking}
             labelPurchasing={labelPurchasingOrderId === selected.id}
+            labelVoiding={labelVoidingOrderId === selected.id}
+            trackingRefreshing={trackingRefreshingOrderId === selected.id}
             onPrintPackingSlip={printPackingSlip}
           />
         ) : (
@@ -1759,7 +1866,11 @@ function OrderDetail({
   onCopyShippingAddress,
   onCopyCustomerUpdate,
   onBuyShippingLabel,
+  onVoidShippingLabel,
+  onRefreshTracking,
   labelPurchasing,
+  labelVoiding,
+  trackingRefreshing,
   onPrintPackingSlip
 }: {
   order: ShopOrder;
@@ -1768,7 +1879,11 @@ function OrderDetail({
   onCopyShippingAddress: (order: ShopOrder) => void;
   onCopyCustomerUpdate: (order: ShopOrder) => void;
   onBuyShippingLabel: (order: ShopOrder) => void;
+  onVoidShippingLabel: (order: ShopOrder) => void;
+  onRefreshTracking: (order: ShopOrder) => void;
   labelPurchasing: boolean;
+  labelVoiding: boolean;
+  trackingRefreshing: boolean;
   onPrintPackingSlip: (order: ShopOrder) => void;
 }) {
   const shippingAddress = formatShippingAddress(order.shipping_address);
@@ -1777,8 +1892,15 @@ function OrderDetail({
   const provider = formatShippingProvider(order.shipping_provider);
   const validationStatus = formatAddressValidationStatus(order.address_validation_status);
   const labelEligibility = getLabelPurchaseEligibility(order);
+  const refundEligibility = getLabelRefundEligibility(order);
   const labelStatus = formatLabelPurchaseStatus(order.label_purchase_status);
+  const refundStatus = formatLabelRefundStatus(order.label_refund_status);
+  const trackingStatus = formatTrackingStatus(order.tracking_status);
   const hasLabels = hasPurchasedShippingLabels(order);
+  const labelLinksAvailable = hasLabels && !["refund_pending", "refunded", "refund_failed", "refund_rejected"].includes(order.label_purchase_status || "");
+  const latestTrackingEvent = Array.isArray(order.tracking_history) && order.tracking_history.length > 0
+    ? order.tracking_history[order.tracking_history.length - 1]
+    : null;
 
   return (
     <div className="grid gap-6">
@@ -1833,9 +1955,19 @@ function OrderDetail({
               {validationStatus ? <p>Address validation: {validationStatus}</p> : null}
               {order.untracked_shipping_acknowledged ? <p>Economy Seed Mail no-tracking acknowledged.</p> : null}
               <p>Label: {labelStatus}</p>
+              {order.label_refund_status && order.label_refund_status !== "not_requested" ? <p>Refund: {refundStatus}</p> : null}
               {order.label_purchase_error ? <p className="text-rust">Label error: {order.label_purchase_error}</p> : null}
+              {order.label_refund_error ? <p className="text-rust">Refund error: {order.label_refund_error}</p> : null}
               {(order.tracking_numbers ?? []).length > 0 ? <p>Tracking: {(order.tracking_numbers ?? []).join(", ")}</p> : null}
-              {(order.label_urls ?? []).length > 0 ? (
+              {trackingStatus ? <p>Status: {trackingStatus}{order.tracking_status_detail ? ` - ${order.tracking_status_detail}` : ""}</p> : null}
+              {order.tracking_substatus ? <p>Tracking note: {order.tracking_substatus}</p> : null}
+              {order.tracking_action_required ? <p className="text-rust">Carrier action may be required.</p> : null}
+              {order.tracking_eta ? <p>ETA: {formatDateTime(order.tracking_eta)}</p> : null}
+              {order.tracking_updated_at ? <p>Tracking updated: {formatDateTime(order.tracking_updated_at)}</p> : null}
+              {latestTrackingEvent && typeof latestTrackingEvent === "object" && "status_details" in latestTrackingEvent ? (
+                <p>Latest scan: {String(latestTrackingEvent.status_details)}</p>
+              ) : null}
+              {(order.label_urls ?? []).length > 0 && labelLinksAvailable ? (
                 <div className="flex flex-wrap gap-2">
                   {(order.label_urls ?? []).map((url, index) => (
                     <a key={url} className="button button-secondary" href={url} target="_blank" rel="noreferrer">
@@ -1878,11 +2010,33 @@ function OrderDetail({
             {labelPurchasing ? "Buying Label..." : "Buy Label"}
           </button>
         ) : null}
+        {order.fulfillment_type === "shipping" && hasLabels ? (
+          <button
+            className="button button-secondary"
+            disabled={trackingRefreshing || (order.tracking_numbers ?? []).length === 0}
+            onClick={() => onRefreshTracking(order)}
+          >
+            {trackingRefreshing ? "Refreshing..." : "Refresh Tracking"}
+          </button>
+        ) : null}
+        {order.fulfillment_type === "shipping" && hasLabels && order.label_purchase_status !== "refunded" ? (
+          <button
+            className="button button-secondary text-rust"
+            disabled={!refundEligibility.eligible || labelVoiding}
+            onClick={() => onVoidShippingLabel(order)}
+            title={refundEligibility.reason || "Void Shippo label"}
+          >
+            {labelVoiding ? "Voiding..." : "Void Label"}
+          </button>
+        ) : null}
         <button className="button button-secondary" onClick={() => onPrintPackingSlip(order)}>Print Packing Slip</button>
         <button className="button button-secondary text-rust" onClick={() => onStatus(order, "cancelled")}>Mark Issue/Cancelled</button>
       </div>
       {order.fulfillment_type === "shipping" && !hasLabels && !labelEligibility.eligible ? (
         <p className="text-sm font-bold text-stone">{labelEligibility.reason}</p>
+      ) : null}
+      {order.fulfillment_type === "shipping" && hasLabels && !refundEligibility.eligible && order.label_purchase_status !== "refunded" ? (
+        <p className="text-sm font-bold text-stone">{refundEligibility.reason}</p>
       ) : null}
     </div>
   );

@@ -75,6 +75,8 @@ STRIPE_SECRET_KEY=sk_test_or_live_key_here
 STRIPE_WEBHOOK_SECRET=whsec_from_stripe_webhook
 SUPABASE_SERVICE_ROLE_KEY=server_only_service_role_key_here
 SHIPPO_API_TOKEN=shippo_live_or_test_token_here
+SHIPPO_API_VERSION=2018-02-08
+SHIPPO_WEBHOOK_TOKEN=choose_a_long_random_webhook_token
 SHIPPO_API_MODE=live
 SHIPPING_PROVIDER=shippo
 SHIPPING_FLAT_RATE_FALLBACK_ENABLED=true
@@ -92,7 +94,8 @@ BCN_SHIP_FROM_EMAIL=
 ```
 
 Only `NEXT_PUBLIC_*` values are safe for browser code. `STRIPE_SECRET_KEY`,
-`STRIPE_WEBHOOK_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`, and `SHIPPO_API_TOKEN`
+`STRIPE_WEBHOOK_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`, `SHIPPO_API_TOKEN`,
+and `SHIPPO_WEBHOOK_TOKEN`
 must stay server-side in Vercel environment variables or local `.env.local`.
 
 After the domain is live, add this Supabase Auth redirect URL:
@@ -127,6 +130,7 @@ Run the SQL files in this order from the Supabase SQL Editor:
 6. `supabase/sql/20260713_bcn_shipping_quotes.sql`
 7. `supabase/sql/20260713_bcn_shipping_quote_checkout_link.sql`
 8. `supabase/sql/20260713_bcn_label_purchase.sql`
+9. `supabase/sql/20260713_bcn_tracking_voids_hardening.sql`
 
 The shipping data migration creates:
 
@@ -153,6 +157,9 @@ quotes so abandoned sessions and completed orders can be traced cleanly.
 
 The label purchase migration adds admin-managed Shippo label state to orders,
 including transaction ids, label URLs, tracking numbers, and purchase errors.
+
+The tracking and voids migration adds Shippo tracking history, tracking detail,
+and label refund state used by the admin fulfillment tools.
 
 The Stripe webhook uses the Supabase service role key on the server to write
 orders and update inventory. The browser never writes directly to order tables.
@@ -202,6 +209,21 @@ Use the shop checkout flow with Stripe test cards. A successful checkout should:
 - reduce purchased product or variant inventory
 - ignore duplicate webhook retries for the same `stripe_session_id`
 
+## Shippo Tracking Webhook
+
+After `SHIPPO_WEBHOOK_TOKEN` is set in Vercel, add a second Shippo webhook for
+this shop without changing the existing Square webhook:
+
+```text
+Event Type: Track Updated
+Mode: Production
+URL: https://shop.basecampnorthpa.com/api/shippo/webhook?token=YOUR_SHIPPO_WEBHOOK_TOKEN
+```
+
+The webhook receiver stores tracking status, latest status detail, action-needed
+flags, ETA, and tracking history on the matching order. It matches by Shippo
+transaction id first, then tracking number.
+
 ## Owner Order Workflow
 
 Open the owner dashboard:
@@ -219,7 +241,9 @@ The admin area supports:
 - copying pickup/customer update messages
 - copying shipping addresses
 - buying Shippo labels for paid shipping orders that used saved live Shippo rates
-- opening purchased label PDFs and viewing tracking numbers
+- opening purchased label PDFs and viewing tracking numbers before a label is voided
+- refreshing Shippo tracking from the admin order detail
+- voiding unused Shippo labels by requesting a Shippo label refund
 - printing a packing slip
 - exporting the visible order list to CSV
 
@@ -244,8 +268,8 @@ again before Stripe Checkout, links reserved quotes to Stripe sessions, and reco
 delegated to Stripe automatic tax. Paid checkouts create Supabase orders and order items, reduce inventory,
 and can be fulfilled from the owner admin dashboard. Shippo live USPS rates are used when configured, and admins
 can manually buy Shippo labels from saved live rate ids on eligible paid shipping orders. Tracking webhooks,
-customer accounts, automated order emails, and refund handling are future
-steps.
+manual tracking refresh, and unused-label void/refund handling are implemented.
+Customer accounts and automated order emails are future steps.
 
 ## Future Data
 

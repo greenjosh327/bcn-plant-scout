@@ -4,7 +4,18 @@ export type LabelPurchaseStatus =
   | "purchased"
   | "failed"
   | "not_supported"
-  | "refunded";
+  | "refund_pending"
+  | "refunded"
+  | "refund_failed"
+  | "refund_rejected";
+
+export type LabelRefundStatus =
+  | "not_requested"
+  | "requested"
+  | "queued"
+  | "pending"
+  | "success"
+  | "error";
 
 export type LabelPurchaseOrder = {
   created_at: string;
@@ -18,12 +29,21 @@ export type LabelPurchaseOrder = {
   label_transaction_ids?: string[] | null;
 };
 
+export type LabelRefundOrder = LabelPurchaseOrder & {
+  label_purchased_at?: string | null;
+  label_refund_status?: LabelRefundStatus | string | null;
+  label_refund_ids?: string[] | null;
+  tracking_status?: string | null;
+};
+
 export type LabelPurchaseEligibility = {
   eligible: boolean;
   reason: string;
 };
 
 const RATE_PURCHASE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const LABEL_REFUND_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
+const USED_TRACKING_STATUSES = new Set(["TRANSIT", "DELIVERED", "RETURNED", "FAILURE"]);
 
 function cleanArray(value: string[] | null | undefined) {
   return Array.isArray(value) ? value.filter((item) => typeof item === "string" && item.trim().length > 0) : [];
@@ -40,7 +60,21 @@ export function formatLabelPurchaseStatus(status: string | null | undefined) {
   if (value === "purchased") return "Purchased";
   if (value === "failed") return "Failed";
   if (value === "not_supported") return "Not Supported";
+  if (value === "refund_pending") return "Refund Pending";
   if (value === "refunded") return "Refunded";
+  if (value === "refund_failed") return "Refund Failed";
+  if (value === "refund_rejected") return "Refund Rejected";
+  return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+export function formatLabelRefundStatus(status: string | null | undefined) {
+  const value = status || "not_requested";
+  if (value === "not_requested") return "Not Requested";
+  if (value === "requested") return "Requested";
+  if (value === "queued") return "Queued";
+  if (value === "pending") return "Pending";
+  if (value === "success") return "Success";
+  if (value === "error") return "Error";
   return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
@@ -80,6 +114,40 @@ export function getLabelPurchaseEligibility(order: LabelPurchaseOrder, now = new
 
   if (now.getTime() - createdAt >= RATE_PURCHASE_WINDOW_MS) {
     return { eligible: false, reason: "Shippo rates are older than 7 days and cannot be purchased." };
+  }
+
+  return { eligible: true, reason: "" };
+}
+
+export function getLabelRefundEligibility(order: LabelRefundOrder, now = new Date()): LabelPurchaseEligibility {
+  if (order.shipping_provider !== "shippo") {
+    return { eligible: false, reason: "Only Shippo labels can be voided here." };
+  }
+
+  if (!hasPurchasedShippingLabels(order)) {
+    return { eligible: false, reason: "No purchased Shippo label was found for this order." };
+  }
+
+  if (order.label_purchase_status === "refund_pending") {
+    return { eligible: false, reason: "A label refund is already pending for this order." };
+  }
+
+  if (order.label_purchase_status === "refunded" || order.label_refund_status === "success") {
+    return { eligible: false, reason: "This label has already been refunded." };
+  }
+
+  const trackingStatus = (order.tracking_status || "").toUpperCase();
+  if (USED_TRACKING_STATUSES.has(trackingStatus)) {
+    return { eligible: false, reason: "Shippo labels should only be voided before the package is scanned by the carrier." };
+  }
+
+  const purchasedAt = order.label_purchased_at ? new Date(order.label_purchased_at).getTime() : NaN;
+  if (!Number.isFinite(purchasedAt)) {
+    return { eligible: false, reason: "Label purchase date is not available." };
+  }
+
+  if (now.getTime() - purchasedAt >= LABEL_REFUND_WINDOW_MS) {
+    return { eligible: false, reason: "Shippo label refunds must be requested within 90 days of purchase." };
   }
 
   return { eligible: true, reason: "" };
