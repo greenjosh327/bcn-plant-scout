@@ -94,8 +94,63 @@ export type ShippingSettings = {
   economySeedMailEnabled: boolean;
   maxSeedPacketsPerEconomyEnvelope: number;
   maxEconomyEnvelopeWeightOz: number;
+  shipFromAddress: ShippingAddress | null;
   pickupDisplayLocation: string;
   liveRatesMaintenanceMode: boolean;
+};
+
+export type ShippingAddress = {
+  name?: string;
+  organization?: string;
+  street1: string;
+  street2?: string;
+  city: string;
+  state: string;
+  zip: string;
+  country: string;
+  phone?: string;
+  email?: string;
+};
+
+export type AddressValidationStatus =
+  | "not_required"
+  | "not_validated"
+  | "validated"
+  | "corrected"
+  | "customer_confirmed"
+  | "invalid"
+  | "validation_unavailable";
+
+export type ShippingQuoteOption = ShippingMethodOption & {
+  id: string;
+  amountCents: number;
+  carrier?: string;
+  serviceName?: string;
+  serviceToken?: string;
+  shippoRateIds?: string[];
+  shippoShipmentIds?: string[];
+  estimatedDays?: number | null;
+  durationTerms?: string;
+};
+
+export type ShippingQuoteRecord = {
+  id: string;
+  cart_fingerprint: string;
+  customer_email: string | null;
+  destination_address: ShippingAddress | Record<string, unknown>;
+  validated_address: ShippingAddress | Record<string, unknown>;
+  address_validation_status: AddressValidationStatus;
+  package_plan: BuiltShippingPackage[];
+  available_options: ShippingQuoteOption[];
+  selected_option_id: string | null;
+  selected_option: ShippingQuoteOption | null;
+  provider: string | null;
+  quote_status: "open" | "reserved" | "expired" | "converted" | "cancelled";
+  untracked_shipping_acknowledged: boolean;
+  expires_at: string;
+  used_at: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 export type ShippingCartItem = {

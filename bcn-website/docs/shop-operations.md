@@ -77,7 +77,7 @@ Check Stripe when:
 
 ## Shipping Setup
 
-Phase 2 shipping rules use the product Shipping section before checkout starts.
+Phase 3 shipping quotes use the product Shipping section before checkout starts.
 For a product to be shippable, the admin should set:
 
 - shipping class
@@ -88,8 +88,13 @@ For a product to be shippable, the admin should set:
 Products marked `Shipping setup pending` can still be edited and sold for local
 pickup when pickup is allowed, but they cannot start a shipping checkout.
 
-Tree shipping is intentionally blocked until live Shippo Priority Mail rates are
-added in a later phase. Local pickup can still be used for eligible tree orders.
+Tree shipping requires live USPS Priority Mail or Priority Mail Express rates.
+If Shippo live rates are unavailable, tree shipping stays blocked and eligible
+tree products can still use local pickup.
+
+Shipping checkout now creates a saved quote before Stripe Checkout. If the cart,
+address, package setup, or selected method changes, the customer must get a new
+quote before payment can start.
 
 ## Deploying Shop Changes
 
@@ -115,11 +120,12 @@ Use this short pass before calling a shop update good:
 7. Open Orders and confirm the order list loads.
 8. Do not run a real checkout unless payment behavior was changed.
 9. For shipping changes, run `npm test` and confirm the cart blocks products that still need shipping setup.
+10. For quote changes, confirm shipping checkout requires a saved option before Stripe opens.
 
 ## Known Watch Items
 
 - Webhook failures should be fixed before relying on inventory counts.
 - Product photos should stay under control so the page remains fast.
 - Shipping/tax rules need a real-world test before wide promotion.
-- Shippo live rates and label purchase are not enabled yet.
+- Label purchase and tracking webhooks are not enabled yet.
 - The admin screen is owner-only, but Supabase policies should stay tight.

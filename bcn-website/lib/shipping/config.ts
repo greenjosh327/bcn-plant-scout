@@ -1,4 +1,4 @@
-import type { ShippingPackagePreset, ShippingSettings } from "./types";
+import type { ShippingAddress, ShippingPackagePreset, ShippingSettings } from "./types";
 
 type ShippingSettingsRow = Record<string, unknown> | null | undefined;
 
@@ -23,6 +23,7 @@ export const DEFAULT_SHIPPING_SETTINGS: ShippingSettings = {
   economySeedMailEnabled: true,
   maxSeedPacketsPerEconomyEnvelope: 12,
   maxEconomyEnvelopeWeightOz: 1,
+  shipFromAddress: null,
   pickupDisplayLocation: "Effort, Pennsylvania",
   liveRatesMaintenanceMode: false
 };
@@ -108,6 +109,33 @@ function stringArrayFromRow(value: unknown, fallback: string[]) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : fallback;
 }
 
+function cleanString(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeAddressFromRow(value: unknown): ShippingAddress | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const row = value as Record<string, unknown>;
+  const address = {
+    name: cleanString(row.name) || undefined,
+    organization: cleanString(row.organization) || undefined,
+    street1: cleanString(row.street1 ?? row.line1),
+    street2: cleanString(row.street2 ?? row.line2) || undefined,
+    city: cleanString(row.city),
+    state: cleanString(row.state).toUpperCase(),
+    zip: cleanString(row.zip ?? row.postal_code ?? row.postalCode),
+    country: (cleanString(row.country) || "US").toUpperCase(),
+    phone: cleanString(row.phone) || undefined,
+    email: cleanString(row.email) || undefined
+  };
+
+  if (!address.street1 || !address.city || !address.state || !address.zip || !address.country) {
+    return null;
+  }
+
+  return address;
+}
+
 export function normalizeShippingSettings(row: ShippingSettingsRow): ShippingSettings {
   if (!row) return DEFAULT_SHIPPING_SETTINGS;
 
@@ -132,6 +160,7 @@ export function normalizeShippingSettings(row: ShippingSettingsRow): ShippingSet
     economySeedMailEnabled: booleanFromRow(row.economy_seed_mail_enabled, DEFAULT_SHIPPING_SETTINGS.economySeedMailEnabled),
     maxSeedPacketsPerEconomyEnvelope: numberFromRow(row.max_seed_packets_per_economy_envelope, DEFAULT_SHIPPING_SETTINGS.maxSeedPacketsPerEconomyEnvelope),
     maxEconomyEnvelopeWeightOz: numberFromRow(row.max_economy_envelope_weight_oz, DEFAULT_SHIPPING_SETTINGS.maxEconomyEnvelopeWeightOz),
+    shipFromAddress: normalizeAddressFromRow(row.ship_from_address),
     pickupDisplayLocation: typeof row.pickup_display_location === "string" ? row.pickup_display_location : DEFAULT_SHIPPING_SETTINGS.pickupDisplayLocation,
     liveRatesMaintenanceMode: booleanFromRow(row.live_rates_maintenance_mode, DEFAULT_SHIPPING_SETTINGS.liveRatesMaintenanceMode)
   };

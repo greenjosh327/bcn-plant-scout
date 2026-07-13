@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { getSupabaseServiceClient } from "@/lib/supabase-service";
+import type { ShippingQuoteOption, ShippingQuoteRecord } from "@/lib/shipping/types";
 
 export const runtime = "nodejs";
 
@@ -65,6 +66,47 @@ function getShippingAddress(session: Stripe.Checkout.Session) {
   };
 }
 
+function hasKeys(value: Record<string, unknown>) {
+  return Object.keys(value).length > 0;
+}
+
+function stringArray(value: unknown) {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.length > 0) : [];
+}
+
+function getSelectedQuoteOption(quote: ShippingQuoteRecord | null): ShippingQuoteOption | null {
+  if (!quote) return null;
+  if (quote.selected_option) return quote.selected_option;
+  return quote.available_options.find((option) => option.id === quote.selected_option_id) ?? null;
+}
+
+async function fetchShippingQuote(
+  supabase: ReturnType<typeof getSupabaseServiceClient>,
+  session: Stripe.Checkout.Session
+) {
+  const quoteId = session.metadata?.shipping_quote_id;
+  if (!quoteId) return null;
+
+  const { data, error } = await supabase
+    .from("shipping_quotes")
+    .select("*")
+    .eq("id", quoteId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Could not load shipping quote for order: ${error.message}`);
+  }
+
+  return data as ShippingQuoteRecord | null;
+}
+
+function estimatedDelivery(option: ShippingQuoteOption | null) {
+  if (!option) return null;
+  if (option.durationTerms) return option.durationTerms;
+  if (option.estimatedDays) return `${option.estimatedDays} business day${option.estimatedDays === 1 ? "" : "s"}`;
+  return null;
+}
+
 async function fetchProductsAndVariants(
   supabase: ReturnType<typeof getSupabaseServiceClient>,
   productIds: string[],
@@ -126,6 +168,9 @@ async function createOrCompleteOrder(session: Stripe.Checkout.Session, stripe: S
     .filter((value): value is string => Boolean(value));
 
   const { productById, variantById } = await fetchProductsAndVariants(supabase, productIds, variantIds);
+  const shippingQuote = await fetchShippingQuote(supabase, session);
+  const selectedShippingOption = getSelectedQuoteOption(shippingQuote);
+  const stripeShippingAddress = getShippingAddress(session);
 
   let orderId = existingOrder?.id as string | undefined;
 
@@ -143,7 +188,21 @@ async function createOrCompleteOrder(session: Stripe.Checkout.Session, stripe: S
         payment_status: session.payment_status ?? "unpaid",
         fulfillment_type: session.metadata?.fulfillment === "shipping" ? "shipping" : "pickup",
         pickup_location: session.metadata?.fulfillment === "shipping" ? null : "Base Camp North local pickup",
-        shipping_address: getShippingAddress(session),
+        shipping_address: hasKeys(stripeShippingAddress) ? stripeShippingAddress : shippingQuote?.destination_address ?? {},
+        shipping_quote_id: shippingQuote?.id ?? null,
+        shipping_method_code: selectedShippingOption?.methodCode ?? session.metadata?.shipping_method_code ?? null,
+        shipping_method_name: selectedShippingOption?.displayName ?? session.metadata?.shipping_method_name ?? null,
+        shipping_provider: selectedShippingOption?.provider ?? session.metadata?.shipping_provider ?? null,
+        shipping_carrier: selectedShippingOption?.carrier ?? session.metadata?.shipping_carrier ?? null,
+        shipping_service: selectedShippingOption?.serviceName ?? session.metadata?.shipping_service ?? null,
+        shipping_amount_cents: selectedShippingOption?.amountCents ?? session.total_details?.amount_shipping ?? null,
+        address_validation_status: shippingQuote?.address_validation_status ?? session.metadata?.address_validation_status ?? null,
+        validated_shipping_address: shippingQuote?.validated_address ?? {},
+        untracked_shipping_acknowledged: shippingQuote?.untracked_shipping_acknowledged ?? session.metadata?.untracked_shipping_acknowledged === "true",
+        package_plan: shippingQuote?.package_plan ?? [],
+        shippo_shipment_ids: stringArray(selectedShippingOption?.shippoShipmentIds),
+        shippo_rate_ids: stringArray(selectedShippingOption?.shippoRateIds),
+        estimated_delivery: estimatedDelivery(selectedShippingOption),
         subtotal: centsToDollars(session.amount_subtotal),
         shipping_cost: centsToDollars(session.total_details?.amount_shipping),
         tax: centsToDollars(session.total_details?.amount_tax),
@@ -223,6 +282,21 @@ async function createOrCompleteOrder(session: Stripe.Checkout.Session, stripe: S
         productId: item.product_id,
         variantId: item.variant_id,
         error
+      });
+    }
+  }
+
+  if (shippingQuote?.id) {
+    const { error: quoteUpdateError } = await supabase
+      .from("shipping_quotes")
+      .update({ quote_status: "converted" })
+      .eq("id", shippingQuote.id);
+
+    if (quoteUpdateError) {
+      console.error("Order saved, but shipping quote status update failed.", {
+        orderId,
+        shippingQuoteId: shippingQuote.id,
+        error: quoteUpdateError
       });
     }
   }

@@ -19,7 +19,7 @@ function shippablePhysicalItems(items: ShippingCartItem[]) {
   return physicalItems(items).filter((item) => item.shippingClass !== "oversized_pickup_only" && item.shippingEnabled);
 }
 
-function shippingExtras(items: ShippingCartItem[], settings: ShippingSettings, subtotalCents: number) {
+export function getShippingExtras(items: ShippingCartItem[], settings: ShippingSettings, subtotalCents: number) {
   const shippableItems = shippablePhysicalItems(items);
   const qualifiesForFreeShipping = settings.freeShippingThresholdCents !== null
     && subtotalCents >= settings.freeShippingThresholdCents
@@ -77,7 +77,7 @@ export function evaluateShippingRules(
   const localPickupEligible = physical.length > 0 && physical.every((item) => item.localPickupEnabled);
   const allPhysicalCanShip = physical.length > 0 && physical.every((item) => item.shippingClass !== "oversized_pickup_only" && item.shippingEnabled);
   const packageCount = packagePlan.packages.length;
-  const extras = shippingExtras(items, settings, subtotalCents);
+  const extras = getShippingExtras(items, settings, subtotalCents);
   const options: ShippingMethodOption[] = [];
 
   if (digitalOnly) {

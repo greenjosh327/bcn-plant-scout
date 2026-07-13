@@ -16,12 +16,77 @@ type EnrichedCartLine = CartLine & {
   maxInventory: number;
 };
 
+type ShippingAddressForm = {
+  name: string;
+  street1: string;
+  street2: string;
+  city: string;
+  state: string;
+  zip: string;
+  phone: string;
+};
+
+type ShippingQuoteOption = {
+  id: string;
+  methodCode: string;
+  displayName: string;
+  amountCents: number;
+  currency: "usd";
+  provider: string;
+  carrier?: string;
+  serviceName?: string;
+  trackingIncluded: boolean;
+  packageCount: number;
+  warningText?: string;
+  requiresUntrackedAcknowledgement?: boolean;
+  estimatedDays?: number | null;
+  durationTerms?: string;
+};
+
+type ShippingQuoteResponse = {
+  quoteId: string;
+  expiresAt: string;
+  addressValidationStatus: string;
+  validatedAddress: Record<string, unknown>;
+  options: ShippingQuoteOption[];
+  messages: string[];
+};
+
+const EMPTY_SHIPPING_ADDRESS: ShippingAddressForm = {
+  name: "",
+  street1: "",
+  street2: "",
+  city: "",
+  state: "",
+  zip: "",
+  phone: ""
+};
+
+function getLineKey(line: Pick<CartLine, "productId" | "variantKey">) {
+  return `${line.productId}::${line.variantKey ?? ""}`;
+}
+
+function optionDetail(option: ShippingQuoteOption) {
+  const parts = [
+    option.trackingIncluded ? "Tracking included" : "No tracking",
+    option.estimatedDays ? `${option.estimatedDays} business day${option.estimatedDays === 1 ? "" : "s"}` : "",
+    option.packageCount > 1 ? `${option.packageCount} packages` : ""
+  ].filter(Boolean);
+
+  return parts.join(" / ");
+}
+
 export function CartClient({ products }: CartClientProps) {
   const [lines, setLines] = useState<CartLine[]>([]);
   const [fulfillment, setFulfillment] = useState<Fulfillment>("pickup");
   const [email, setEmail] = useState("");
   const [checkingOut, setCheckingOut] = useState(false);
+  const [quoteLoading, setQuoteLoading] = useState(false);
   const [message, setMessage] = useState("");
+  const [shippingAddress, setShippingAddress] = useState<ShippingAddressForm>(EMPTY_SHIPPING_ADDRESS);
+  const [quote, setQuote] = useState<ShippingQuoteResponse | null>(null);
+  const [selectedShippingOptionId, setSelectedShippingOptionId] = useState("");
+  const [untrackedAcknowledged, setUntrackedAcknowledged] = useState(false);
 
   useEffect(() => {
     try {
@@ -52,6 +117,15 @@ export function CartClient({ products }: CartClientProps) {
       .filter(Boolean) as EnrichedCartLine[];
   }, [lines, products]);
 
+  const normalizedLinesKey = useMemo(() => JSON.stringify(normalizeCartLines(lines)), [lines]);
+  const shippingAddressKey = useMemo(() => JSON.stringify(shippingAddress), [shippingAddress]);
+
+  useEffect(() => {
+    setQuote(null);
+    setSelectedShippingOptionId("");
+    setUntrackedAcknowledged(false);
+  }, [normalizedLinesKey, fulfillment, shippingAddressKey]);
+
   const subtotal = enriched.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0);
   const digitalOnly = enriched.every((line) => line.product.shippingClass === "digital");
   const hasShippingBlockedItems = enriched.some((line) => line.product.shippingClass !== "digital" && !(line.product.shippingEnabled ?? line.product.ships));
@@ -61,15 +135,24 @@ export function CartClient({ products }: CartClientProps) {
     && (line.product.shippingEnabled ?? line.product.ships)
     && !line.product.shippingConfigurationComplete
   );
+  const selectedShippingOption = quote?.options.find((option) => option.id === selectedShippingOptionId) ?? null;
+  const addressComplete = Boolean(shippingAddress.street1.trim() && shippingAddress.city.trim() && shippingAddress.state.trim() && shippingAddress.zip.trim());
+  const fulfillmentAllowed = fulfillment === "pickup"
+    ? (digitalOnly || !hasPickupBlockedItems)
+    : (!digitalOnly && !hasShippingBlockedItems && !hasShippingSetupMissing);
+  const shippingReady = fulfillment !== "shipping"
+    || Boolean(selectedShippingOption && (!selectedShippingOption.requiresUntrackedAcknowledgement || untrackedAcknowledged));
+  const canRequestQuote = enriched.length > 0
+    && fulfillment === "shipping"
+    && fulfillmentAllowed
+    && addressComplete
+    && !quoteLoading;
   const canCheckout = enriched.length > 0
+    && fulfillmentAllowed
+    && shippingReady
     && !checkingOut
-    && (fulfillment === "pickup"
-      ? (digitalOnly || !hasPickupBlockedItems)
-      : (!digitalOnly && !hasShippingBlockedItems && !hasShippingSetupMissing));
-
-  function getLineKey(line: Pick<CartLine, "productId" | "variantKey">) {
-    return `${line.productId}::${line.variantKey ?? ""}`;
-  }
+    && !quoteLoading;
+  const shippingAmount = selectedShippingOption ? selectedShippingOption.amountCents / 100 : 0;
 
   function updateQuantity(target: CartLine, quantity: number) {
     const targetKey = getLineKey(target);
@@ -87,6 +170,10 @@ export function CartClient({ products }: CartClientProps) {
     setLines((current) => current.filter((line) => getLineKey(line) !== targetKey));
   }
 
+  function updateAddress(field: keyof ShippingAddressForm, value: string) {
+    setShippingAddress((current) => ({ ...current, [field]: value }));
+  }
+
   function fulfillmentLabel(product: CartProduct) {
     if (product.shippingClass === "digital") return "Digital delivery";
     const ships = product.shippingEnabled ?? product.ships;
@@ -97,7 +184,54 @@ export function CartClient({ products }: CartClientProps) {
     return "Fulfillment setup pending";
   }
 
+  async function requestShippingQuote() {
+    setQuoteLoading(true);
+    setMessage("");
+
+    try {
+      const response = await fetch("/api/shipping/quote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          lines,
+          fulfillment,
+          email,
+          destinationAddress: {
+            name: shippingAddress.name,
+            street1: shippingAddress.street1,
+            street2: shippingAddress.street2,
+            city: shippingAddress.city,
+            state: shippingAddress.state,
+            zip: shippingAddress.zip,
+            country: "US",
+            phone: shippingAddress.phone,
+            email
+          }
+        })
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        setMessage(data.error ?? "Shipping quote could not be created.");
+        return;
+      }
+
+      setQuote(data);
+      setSelectedShippingOptionId(data.options?.[0]?.id ?? "");
+      setUntrackedAcknowledged(false);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Shipping quote could not be created.");
+    } finally {
+      setQuoteLoading(false);
+    }
+  }
+
   async function checkout() {
+    if (fulfillment === "shipping" && !selectedShippingOption) {
+      setMessage("Choose a shipping option before checkout.");
+      return;
+    }
+
     setCheckingOut(true);
     setMessage("");
 
@@ -105,7 +239,25 @@ export function CartClient({ products }: CartClientProps) {
       const response = await fetch("/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lines, fulfillment, email })
+        body: JSON.stringify({
+          lines,
+          fulfillment,
+          email,
+          shippingQuoteId: quote?.quoteId,
+          selectedShippingOptionId,
+          destinationAddress: {
+            name: shippingAddress.name,
+            street1: shippingAddress.street1,
+            street2: shippingAddress.street2,
+            city: shippingAddress.city,
+            state: shippingAddress.state,
+            zip: shippingAddress.zip,
+            country: "US",
+            phone: shippingAddress.phone,
+            email
+          },
+          untrackedShippingAcknowledged: untrackedAcknowledged
+        })
       });
       const data = await response.json();
 
@@ -176,7 +328,10 @@ export function CartClient({ products }: CartClientProps) {
           <button
             className={`button ${fulfillment === "pickup" ? "button-primary" : "button-secondary"}`}
             type="button"
-            onClick={() => setFulfillment("pickup")}
+            onClick={() => {
+              setFulfillment("pickup");
+              setMessage("");
+            }}
           >
             Local pickup
           </button>
@@ -184,7 +339,10 @@ export function CartClient({ products }: CartClientProps) {
             className={`button ${fulfillment === "shipping" ? "button-primary" : "button-secondary"}`}
             type="button"
             disabled={digitalOnly}
-            onClick={() => setFulfillment("shipping")}
+            onClick={() => {
+              setFulfillment("shipping");
+              setMessage("");
+            }}
           >
             Ship eligible items
           </button>
@@ -213,6 +371,90 @@ export function CartClient({ products }: CartClientProps) {
           <span className="text-sm font-black text-pine">Email for order updates</span>
           <input className="admin-input mt-2" type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
         </label>
+
+        {fulfillment === "shipping" ? (
+          <div className="mt-5 grid gap-3">
+            <label className="block">
+              <span className="text-sm font-black text-pine">Ship to name</span>
+              <input className="admin-input mt-2" value={shippingAddress.name} onChange={(event) => updateAddress("name", event.target.value)} />
+            </label>
+            <label className="block">
+              <span className="text-sm font-black text-pine">Street address</span>
+              <input className="admin-input mt-2" value={shippingAddress.street1} onChange={(event) => updateAddress("street1", event.target.value)} />
+            </label>
+            <label className="block">
+              <span className="text-sm font-black text-pine">Apartment, suite, or unit</span>
+              <input className="admin-input mt-2" value={shippingAddress.street2} onChange={(event) => updateAddress("street2", event.target.value)} />
+            </label>
+            <div className="grid gap-3 sm:grid-cols-[1fr_82px_112px]">
+              <label className="block">
+                <span className="text-sm font-black text-pine">City</span>
+                <input className="admin-input mt-2" value={shippingAddress.city} onChange={(event) => updateAddress("city", event.target.value)} />
+              </label>
+              <label className="block">
+                <span className="text-sm font-black text-pine">State</span>
+                <input className="admin-input mt-2 uppercase" maxLength={2} value={shippingAddress.state} onChange={(event) => updateAddress("state", event.target.value.toUpperCase())} />
+              </label>
+              <label className="block">
+                <span className="text-sm font-black text-pine">ZIP</span>
+                <input className="admin-input mt-2" value={shippingAddress.zip} onChange={(event) => updateAddress("zip", event.target.value)} />
+              </label>
+            </div>
+            <label className="block">
+              <span className="text-sm font-black text-pine">Phone</span>
+              <input className="admin-input mt-2" type="tel" value={shippingAddress.phone} onChange={(event) => updateAddress("phone", event.target.value)} />
+            </label>
+            <button className="button button-secondary w-full" type="button" disabled={!canRequestQuote} onClick={requestShippingQuote}>
+              {quoteLoading ? "Getting options..." : "Get shipping options"}
+            </button>
+
+            {quote?.messages?.length ? (
+              <div className="rounded-md bg-sage/60 p-3 text-sm font-bold text-stone">
+                {quote.messages.map((item) => (
+                  <p key={item}>{item}</p>
+                ))}
+              </div>
+            ) : null}
+
+            {quote?.options?.length ? (
+              <div className="grid gap-3">
+                {quote.options.map((option) => (
+                  <label
+                    key={option.id}
+                    className={`cursor-pointer rounded-md border p-3 ${selectedShippingOptionId === option.id ? "border-rust bg-rust/10" : "border-pine/15 bg-white/70"}`}
+                  >
+                    <input
+                      className="sr-only"
+                      type="radio"
+                      name="shipping-option"
+                      checked={selectedShippingOptionId === option.id}
+                      onChange={() => {
+                        setSelectedShippingOptionId(option.id);
+                        setUntrackedAcknowledged(false);
+                      }}
+                    />
+                    <span className="flex items-start justify-between gap-3">
+                      <span>
+                        <span className="block font-black text-pine">{option.displayName}</span>
+                        <span className="mt-1 block text-xs font-bold uppercase tracking-[0.16em] text-stone">{optionDetail(option)}</span>
+                      </span>
+                      <span className="font-black text-pine">{formatMoney(option.amountCents / 100)}</span>
+                    </span>
+                    {option.warningText ? <span className="mt-2 block text-sm font-bold text-rust">{option.warningText}</span> : null}
+                  </label>
+                ))}
+              </div>
+            ) : null}
+
+            {selectedShippingOption?.requiresUntrackedAcknowledgement ? (
+              <label className="flex items-start gap-3 rounded-md bg-rust/10 p-3 text-sm font-bold text-rust">
+                <input className="mt-1" type="checkbox" checked={untrackedAcknowledged} onChange={(event) => setUntrackedAcknowledged(event.target.checked)} />
+                <span>I understand this shipping method does not include tracking.</span>
+              </label>
+            ) : null}
+          </div>
+        ) : null}
+
         <div className="mt-6 rounded-md bg-sage/55 p-5">
           <div className="flex items-center justify-between">
             <span className="font-bold">Subtotal</span>
@@ -220,12 +462,18 @@ export function CartClient({ products }: CartClientProps) {
           </div>
           <div className="mt-3 flex items-center justify-between text-stone">
             <span>Shipping</span>
-            <span>{digitalOnly ? "Not needed" : fulfillment === "pickup" ? "Free pickup" : "Selected in Stripe"}</span>
+            <span>{digitalOnly ? "Not needed" : fulfillment === "pickup" ? "Free pickup" : selectedShippingOption ? formatMoney(shippingAmount) : "Get quote"}</span>
           </div>
           <div className="mt-3 flex items-center justify-between text-stone">
             <span>Tax</span>
             <span>Calculated in Stripe</span>
           </div>
+          {selectedShippingOption ? (
+            <div className="mt-3 flex items-center justify-between border-t border-pine/10 pt-3 text-pine">
+              <span className="font-black">Before tax</span>
+              <span className="font-black">{formatMoney(subtotal + shippingAmount)}</span>
+            </div>
+          ) : null}
         </div>
         {message ? <p className="mt-4 rounded-md bg-rust/10 p-3 text-sm font-bold text-rust">{message}</p> : null}
         <button className="button button-primary mt-6 w-full" type="button" disabled={!canCheckout} onClick={checkout}>

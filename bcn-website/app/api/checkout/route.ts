@@ -1,17 +1,30 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
-import { getCatalogProducts } from "@/lib/catalog-db";
-import { getVariationKey, type CartLine, normalizeCartLines } from "@/lib/cart";
+import { getVariationKey, type CartLine } from "@/lib/cart";
+import { getSupabaseServiceClient } from "@/lib/supabase-service";
 import { buildPackagePlan } from "@/lib/shipping/package-builder";
-import { evaluateShippingRules, getCheckoutShippingOptions, getPickupBlockMessage, getShippingBlockMessage } from "@/lib/shipping/rules";
-import { productToShippingCartItem } from "@/lib/shipping/cart-items";
+import { CheckoutCartError, buildCheckoutCart, type CheckoutCart } from "@/lib/shipping/checkout-cart";
 import { getShippingRuntimeConfig } from "@/lib/shipping/server";
-import type { ShippingMethodOption } from "@/lib/shipping/types";
+import { buildShippingQuoteDraft, ShippingQuoteError } from "@/lib/shipping/quote-builder";
+import { createShippingQuoteFingerprint } from "@/lib/shipping/fingerprint";
+import { normalizeShippingAddress, shippingAddressEquals, type ShippingAddressInput } from "@/lib/shipping/address";
+import type { ShippingPackagePreset, ShippingQuoteOption, ShippingQuoteRecord, ShippingSettings } from "@/lib/shipping/types";
+
+export const runtime = "nodejs";
 
 type CheckoutRequest = {
   lines?: CartLine[];
   fulfillment?: "pickup" | "shipping";
   email?: string;
+  shippingQuoteId?: string;
+  selectedShippingOptionId?: string;
+  destinationAddress?: ShippingAddressInput;
+  untrackedShippingAcknowledged?: boolean;
+};
+
+type RuntimeConfig = {
+  packagePresets: ShippingPackagePreset[];
+  settings: ShippingSettings;
 };
 
 function getBaseUrl(request: Request) {
@@ -20,11 +33,15 @@ function getBaseUrl(request: Request) {
   return new URL(request.url).origin;
 }
 
-function toStripeShippingOption(option: ShippingMethodOption) {
+function metadataValue(value: unknown) {
+  return String(value ?? "").slice(0, 500);
+}
+
+function toStripeShippingOption(option: ShippingQuoteOption) {
   return {
     shipping_rate_data: {
       type: "fixed_amount" as const,
-      fixed_amount: { amount: option.amountCents ?? 0, currency: option.currency },
+      fixed_amount: { amount: option.amountCents, currency: option.currency },
       display_name: option.displayName,
       metadata: {
         bcn_method_code: option.methodCode,
@@ -36,73 +53,165 @@ function toStripeShippingOption(option: ShippingMethodOption) {
   };
 }
 
-export async function POST(request: Request) {
-  const body = (await request.json()) as CheckoutRequest;
-  const lines = normalizeCartLines(body.lines ?? []);
-  let fulfillment = body.fulfillment === "shipping" ? "shipping" : "pickup";
+function metadataFromQuoteOption(option: ShippingQuoteOption, quote?: ShippingQuoteRecord | null) {
+  return {
+    shipping_quote_id: metadataValue(quote?.id),
+    shipping_method_code: metadataValue(option.methodCode),
+    shipping_method_name: metadataValue(option.displayName),
+    shipping_provider: metadataValue(option.provider),
+    shipping_carrier: metadataValue(option.carrier),
+    shipping_service: metadataValue(option.serviceName),
+    shipping_amount_cents: metadataValue(option.amountCents),
+    address_validation_status: metadataValue(quote?.address_validation_status),
+    untracked_shipping_acknowledged: metadataValue(quote?.untracked_shipping_acknowledged),
+    package_count: metadataValue(option.packageCount)
+  };
+}
 
-  if (lines.length === 0) {
-    return NextResponse.json({ error: "Your cart is empty." }, { status: 400 });
+function parseQuoteOptions(row: ShippingQuoteRecord) {
+  return Array.isArray(row.available_options) ? row.available_options : [];
+}
+
+async function reserveShippingQuote(input: {
+  body: CheckoutRequest;
+  cart: CheckoutCart;
+  runtimeConfig: RuntimeConfig;
+}) {
+  if (!input.body.shippingQuoteId || !input.body.selectedShippingOptionId) {
+    throw new ShippingQuoteError("Get a shipping quote and choose a shipping option before checkout.");
   }
 
-  const products = await getCatalogProducts();
-  const checkoutItems = lines.map((line) => {
-    const product = products.find((item) => item.id === line.productId);
-    if (!product) return null;
-    const variant = product.variations?.find((option) => getVariationKey(option) === line.variantKey);
-    if (product.variations && product.variations.length > 0 && !variant) return null;
-    const inventory = variant?.inventory ?? product.inventory;
-    const price = variant?.price ?? product.price;
-    const quantity = Math.min(line.quantity, inventory);
-    return { product, variant, price, inventory, quantity };
+  const requestedAddress = normalizeShippingAddress(input.body.destinationAddress);
+  const supabase = getSupabaseServiceClient();
+  const { data: row, error } = await supabase
+    .from("shipping_quotes")
+    .select("*")
+    .eq("id", input.body.shippingQuoteId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Could not load shipping quote: ${error.message}`);
+  }
+
+  if (!row) {
+    throw new ShippingQuoteError("Shipping quote was not found. Please get a new quote.");
+  }
+
+  const quote = row as ShippingQuoteRecord;
+  if (quote.quote_status !== "open" || quote.used_at) {
+    throw new ShippingQuoteError("Shipping quote has already been used. Please get a new quote.");
+  }
+
+  if (new Date(quote.expires_at).getTime() <= Date.now()) {
+    throw new ShippingQuoteError("Shipping quote expired. Please get a new quote.");
+  }
+
+  if (!shippingAddressEquals(requestedAddress, quote.destination_address as ShippingAddressInput)) {
+    throw new ShippingQuoteError("Shipping address changed after the quote was created. Please get a new quote.");
+  }
+
+  const packagePlan = buildPackagePlan(input.cart.shippingItems, input.runtimeConfig.packagePresets, input.runtimeConfig.settings);
+  const fingerprint = createShippingQuoteFingerprint({
+    shippingItems: input.cart.shippingItems,
+    packagePlan,
+    destinationAddress: normalizeShippingAddress(quote.destination_address as ShippingAddressInput)
   });
 
-  if (checkoutItems.some((item) => !item || item.quantity <= 0)) {
-    return NextResponse.json({ error: "One or more cart items are no longer available." }, { status: 400 });
+  if (fingerprint !== quote.cart_fingerprint) {
+    throw new ShippingQuoteError("Cart changed after the shipping quote was created. Please get a new quote.");
   }
 
+  const selectedOption = parseQuoteOptions(quote).find((option) => option.id === input.body.selectedShippingOptionId);
+  if (!selectedOption) {
+    throw new ShippingQuoteError("Selected shipping option is no longer available. Please get a new quote.");
+  }
+
+  if (selectedOption.requiresUntrackedAcknowledgement && !input.body.untrackedShippingAcknowledged) {
+    throw new ShippingQuoteError("Please acknowledge that Economy Seed Mail does not include tracking.");
+  }
+
+  const { data: reserved, error: reserveError } = await supabase
+    .from("shipping_quotes")
+    .update({
+      selected_option_id: selectedOption.id,
+      selected_option: selectedOption,
+      quote_status: "reserved",
+      used_at: new Date().toISOString(),
+      untracked_shipping_acknowledged: Boolean(input.body.untrackedShippingAcknowledged)
+    })
+    .eq("id", quote.id)
+    .eq("quote_status", "open")
+    .is("used_at", null)
+    .select("*")
+    .single();
+
+  if (reserveError || !reserved) {
+    throw new ShippingQuoteError("Shipping quote could not be reserved. Please get a new quote.");
+  }
+
+  return {
+    quote: reserved as ShippingQuoteRecord,
+    option: selectedOption
+  };
+}
+
+async function getPickupOrDigitalOption(input: {
+  cart: CheckoutCart;
+  fulfillment: "pickup" | "shipping";
+  email?: string;
+  runtimeConfig: RuntimeConfig;
+}) {
+  const draft = await buildShippingQuoteDraft({
+    cart: input.cart,
+    fulfillment: input.fulfillment,
+    email: input.email,
+    packagePresets: input.runtimeConfig.packagePresets,
+    settings: input.runtimeConfig.settings
+  });
+
+  const option = draft.availableOptions[0];
+  if (!option) throw new ShippingQuoteError("No checkout option is available for this cart.");
+  return option;
+}
+
+export async function POST(request: Request) {
+  let body: CheckoutRequest;
+  try {
+    body = (await request.json()) as CheckoutRequest;
+  } catch {
+    return NextResponse.json({ error: "Checkout request was not valid JSON." }, { status: 400 });
+  }
+
+  let cart: CheckoutCart;
+  let runtimeConfig: RuntimeConfig;
+  let fulfillment: "pickup" | "shipping" = body.fulfillment === "shipping" ? "shipping" : "pickup";
   let shippingOptions: ReturnType<typeof toStripeShippingOption>[] | undefined;
   let shippingMetadata: Record<string, string> = {};
 
   try {
-    const { packagePresets, settings } = await getShippingRuntimeConfig();
-    const shippingItems = checkoutItems.map((item) =>
-      productToShippingCartItem(item!.product, item!.quantity, item!.variant ? getVariationKey(item!.variant) : undefined)
-    );
-    const packagePlan = buildPackagePlan(shippingItems, packagePresets, settings);
-    const subtotalCents = checkoutItems.reduce((sum, item) => sum + Math.round(item!.price * 100) * item!.quantity, 0);
-    const shippingRules = evaluateShippingRules(shippingItems, packagePlan, settings, subtotalCents);
+    [cart, runtimeConfig] = await Promise.all([
+      buildCheckoutCart(body.lines ?? []),
+      getShippingRuntimeConfig()
+    ]);
 
-    if (shippingRules.digitalOnly) {
-      fulfillment = "pickup";
-      shippingMetadata = {
-        shipping_method_code: "digital_delivery",
-        shipping_provider: "digital_delivery",
-        package_count: "0"
-      };
-    } else if (fulfillment === "pickup") {
-      const pickupError = getPickupBlockMessage(shippingRules);
-      if (pickupError) {
-        return NextResponse.json({ error: pickupError }, { status: 400 });
-      }
-      shippingMetadata = {
-        shipping_method_code: "local_pickup",
-        shipping_provider: "local_pickup",
-        package_count: "0"
-      };
+    if (fulfillment === "shipping") {
+      const reserved = await reserveShippingQuote({ body, cart, runtimeConfig });
+      shippingOptions = [toStripeShippingOption(reserved.option)];
+      shippingMetadata = metadataFromQuoteOption(reserved.option, reserved.quote);
     } else {
-      const checkoutShippingOptions = getCheckoutShippingOptions(shippingRules);
-      if (checkoutShippingOptions.length === 0) {
-        return NextResponse.json({ error: getShippingBlockMessage(shippingRules) }, { status: 400 });
-      }
-      shippingOptions = checkoutShippingOptions.map(toStripeShippingOption);
-      shippingMetadata = {
-        shipping_method_codes: checkoutShippingOptions.map((option) => option.methodCode).join(","),
-        shipping_provider: checkoutShippingOptions.map((option) => option.provider).join(","),
-        package_count: String(packagePlan.packages.length)
-      };
+      const option = await getPickupOrDigitalOption({
+        cart,
+        fulfillment,
+        email: body.email,
+        runtimeConfig
+      });
+      fulfillment = option.methodCode === "digital_delivery" ? "pickup" : fulfillment;
+      shippingMetadata = metadataFromQuoteOption(option);
     }
   } catch (error) {
+    if (error instanceof CheckoutCartError || error instanceof ShippingQuoteError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     const message = error instanceof Error ? error.message : "Shipping rules could not be loaded.";
     return NextResponse.json({ error: message }, { status: 500 });
   }
@@ -125,19 +234,19 @@ export async function POST(request: Request) {
     billing_address_collection: "auto",
     shipping_address_collection: fulfillment === "shipping" ? { allowed_countries: ["US"] } : undefined,
     shipping_options: shippingOptions,
-    line_items: checkoutItems.map((item) => ({
-      quantity: item!.quantity,
+    line_items: cart.items.map((item) => ({
+      quantity: item.quantity,
       price_data: {
         currency: "usd",
-        unit_amount: Math.round(item!.price * 100),
+        unit_amount: Math.round(item.price * 100),
         product_data: {
-          name: item!.variant ? `${item!.product.name} - ${item!.variant.name}` : item!.product.name,
-          description: item!.product.scientificName || item!.product.category,
-          images: item!.product.images.filter((image) => image.startsWith("https://")).slice(0, 1),
+          name: item.variant ? `${item.product.name} - ${item.variant.name}` : item.product.name,
+          description: item.product.scientificName || item.product.category,
+          images: item.product.images.filter((image) => image.startsWith("https://")).slice(0, 1),
           metadata: {
-            product_id: item!.product.id,
-            slug: item!.product.slug,
-            variant: item!.variant ? getVariationKey(item!.variant) : ""
+            product_id: item.product.id,
+            slug: item.product.slug,
+            variant: item.variant ? getVariationKey(item.variant) : ""
           }
         },
         tax_behavior: "exclusive"
@@ -146,7 +255,7 @@ export async function POST(request: Request) {
     metadata: {
       fulfillment,
       source: "bcn-website",
-      product_ids: checkoutItems.map((item) => item!.product.id).join(","),
+      product_ids: cart.items.map((item) => item.product.id).join(","),
       ...shippingMetadata
     },
     success_url: `${baseUrl}/cart/success?session_id={CHECKOUT_SESSION_ID}`,
