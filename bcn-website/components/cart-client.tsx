@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
-import { CART_STORAGE_KEY, type CartLine, type CartProduct, formatMoney, getVariationKey, normalizeCartLines } from "@/lib/cart";
+import { CART_STORAGE_KEY, type CartLine, type CartProduct, formatMoney, getVariationKey, normalizeCartLines, pruneCartLinesForProducts } from "@/lib/cart";
 
 type CartClientProps = {
   products: CartProduct[];
@@ -92,11 +92,11 @@ export function CartClient({ products }: CartClientProps) {
     try {
       const raw = window.localStorage.getItem(CART_STORAGE_KEY);
       const parsed = raw ? JSON.parse(raw) : [];
-      setLines(normalizeCartLines(parsed));
+      setLines(pruneCartLinesForProducts(parsed, products));
     } catch {
       setLines([]);
     }
-  }, []);
+  }, [products]);
 
   useEffect(() => {
     window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(lines));

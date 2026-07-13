@@ -50,6 +50,17 @@ export function normalizeCartLines(lines: CartLine[]) {
   }));
 }
 
+export function pruneCartLinesForProducts(lines: CartLine[], products: CartProduct[]) {
+  const productsById = new Map(products.map((product) => [product.id, product]));
+
+  return normalizeCartLines(lines).filter((line) => {
+    const product = productsById.get(line.productId);
+    if (!product) return false;
+    if (!line.variantKey) return true;
+    return Boolean(product.variations?.some((variation) => getVariationKey(variation) === line.variantKey));
+  });
+}
+
 export function formatMoney(amount: number) {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
