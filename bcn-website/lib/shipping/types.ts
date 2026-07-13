@@ -44,6 +44,19 @@ export const SHIPPING_METHOD_CODES = [
 
 export type ShippingMethodCode = (typeof SHIPPING_METHOD_CODES)[number];
 
+export type ShippingProviderName = "shippo" | "flat_rate" | "manual_usps_letter" | "local_pickup" | "digital_delivery";
+
+export type ShippingRateMode = "no_charge" | "manual_flat" | "fallback_flat" | "live_rate_required";
+
+export const SHIPPING_METHOD_LABELS: Record<ShippingMethodCode, string> = {
+  economy_seed_untracked: "Economy Seed Mail - No Tracking",
+  usps_ground_advantage: "USPS Ground Advantage - Tracked",
+  usps_priority: "USPS Priority Mail",
+  usps_priority_express: "USPS Priority Mail Express",
+  local_pickup: "Local Pickup - Effort, Pennsylvania",
+  digital_delivery: "Digital Delivery"
+};
+
 export type ShippingPackagePreset = {
   id: string;
   name: string;
@@ -58,6 +71,107 @@ export type ShippingPackagePreset = {
   sort_order: number;
   created_at?: string;
   updated_at?: string;
+};
+
+export type ShippingSettings = {
+  shippoEnabled: boolean;
+  shippoMode: "test" | "live";
+  allowedCarrier: "usps";
+  flatRateFallbackEnabled: boolean;
+  automaticLabelPurchase: boolean;
+  economySeedMailCents: number;
+  trackedSeedFallbackCents: number;
+  cuttingSmallPlantFallbackCents: number;
+  treeFallbackEnabled: boolean;
+  localPickupCents: number;
+  quoteExpirationMinutes: number;
+  handlingFeeCents: number;
+  freeShippingThresholdCents: number | null;
+  allowedUspsServiceLevels: string[];
+  groundAdvantageEnabled: boolean;
+  priorityMailEnabled: boolean;
+  priorityMailExpressEnabled: boolean;
+  economySeedMailEnabled: boolean;
+  maxSeedPacketsPerEconomyEnvelope: number;
+  maxEconomyEnvelopeWeightOz: number;
+  pickupDisplayLocation: string;
+  liveRatesMaintenanceMode: boolean;
+};
+
+export type ShippingCartItem = {
+  productId: string;
+  variantKey?: string;
+  name: string;
+  quantity: number;
+  shippingClass: ShippingClass | "";
+  shippingEnabled: boolean;
+  localPickupEnabled: boolean;
+  packedWeightOz: number | null;
+  packedLengthIn: number | null;
+  packedWidthIn: number | null;
+  packedHeightIn: number | null;
+  shipsAlone: boolean;
+  expeditedRequired: boolean;
+  allowGroundAdvantage: boolean;
+  freeShippingEligible: boolean;
+  shippingSurchargeCents: number;
+  maxQuantityPerPackage: number;
+  preferredPackageId: string;
+};
+
+export type ShippingPackageItem = {
+  productId: string;
+  variantKey?: string;
+  name: string;
+  quantity: number;
+  shippingClass: ShippingClass;
+};
+
+export type BuiltShippingPackage = {
+  packageIndex: number;
+  packageKey: string;
+  items: ShippingPackageItem[];
+  shippingClasses: ShippingClass[];
+  packagePresetId: string | null;
+  packagePresetCode: string | null;
+  weightOz: number;
+  lengthIn: number;
+  widthIn: number;
+  heightIn: number;
+  shipsAlone: boolean;
+  containsTree: boolean;
+};
+
+export type PackagePlanResult = {
+  packages: BuiltShippingPackage[];
+  ignoredDigitalItems: ShippingCartItem[];
+  pickupOnlyItems: ShippingCartItem[];
+  errors: string[];
+};
+
+export type ShippingMethodOption = {
+  methodCode: ShippingMethodCode;
+  displayName: string;
+  amountCents: number | null;
+  currency: "usd";
+  provider: ShippingProviderName;
+  rateMode: ShippingRateMode;
+  trackingIncluded: boolean;
+  packageCount: number;
+  warningText?: string;
+  requiresUntrackedAcknowledgement?: boolean;
+  checkoutSupported: boolean;
+};
+
+export type ShippingRuleEvaluation = {
+  hasPhysicalItems: boolean;
+  hasShippablePhysicalItems: boolean;
+  hasTree: boolean;
+  hasPickupOnlyItem: boolean;
+  localPickupEligible: boolean;
+  digitalOnly: boolean;
+  availableMethods: ShippingMethodOption[];
+  packageErrors: string[];
 };
 
 export function isShippingClass(value: string | null | undefined): value is ShippingClass {

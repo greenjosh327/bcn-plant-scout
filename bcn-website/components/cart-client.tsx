@@ -53,8 +53,19 @@ export function CartClient({ products }: CartClientProps) {
   }, [lines, products]);
 
   const subtotal = enriched.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0);
-  const hasPickupOnlyItems = enriched.some((line) => !line.product.ships);
-  const canCheckout = enriched.length > 0 && !checkingOut && !(fulfillment === "shipping" && hasPickupOnlyItems);
+  const digitalOnly = enriched.every((line) => line.product.shippingClass === "digital");
+  const hasShippingBlockedItems = enriched.some((line) => line.product.shippingClass !== "digital" && !(line.product.shippingEnabled ?? line.product.ships));
+  const hasPickupBlockedItems = enriched.some((line) => line.product.shippingClass !== "digital" && !(line.product.localPickupEnabled ?? line.product.localPickup));
+  const hasShippingSetupMissing = enriched.some((line) =>
+    line.product.shippingClass !== "digital"
+    && (line.product.shippingEnabled ?? line.product.ships)
+    && !line.product.shippingConfigurationComplete
+  );
+  const canCheckout = enriched.length > 0
+    && !checkingOut
+    && (fulfillment === "pickup"
+      ? (digitalOnly || !hasPickupBlockedItems)
+      : (!digitalOnly && !hasShippingBlockedItems && !hasShippingSetupMissing));
 
   function getLineKey(line: Pick<CartLine, "productId" | "variantKey">) {
     return `${line.productId}::${line.variantKey ?? ""}`;
@@ -74,6 +85,16 @@ export function CartClient({ products }: CartClientProps) {
   function removeLine(target: CartLine) {
     const targetKey = getLineKey(target);
     setLines((current) => current.filter((line) => getLineKey(line) !== targetKey));
+  }
+
+  function fulfillmentLabel(product: CartProduct) {
+    if (product.shippingClass === "digital") return "Digital delivery";
+    const ships = product.shippingEnabled ?? product.ships;
+    const pickup = product.localPickupEnabled ?? product.localPickup;
+    if (ships && pickup) return product.shippingConfigurationComplete ? "Ships or pickup" : "Shipping setup pending";
+    if (ships) return product.shippingConfigurationComplete ? "Ships" : "Shipping setup pending";
+    if (pickup) return "Pickup only";
+    return "Fulfillment setup pending";
   }
 
   async function checkout() {
@@ -128,7 +149,7 @@ export function CartClient({ products }: CartClientProps) {
                 {line.variant ? (
                   <p className="mt-1 text-sm font-black text-rust">{line.variant.name}</p>
                 ) : null}
-                <p className="mt-1 text-sm font-bold text-stone">{line.product.ships ? "Ships or pickup" : "Pickup only"}</p>
+                <p className="mt-1 text-sm font-bold text-stone">{fulfillmentLabel(line.product)}</p>
                 <p className="mt-3 font-black text-pine">{formatMoney(line.unitPrice)}</p>
               </div>
               <div className="flex items-center gap-3 md:flex-col md:items-end">
@@ -162,14 +183,30 @@ export function CartClient({ products }: CartClientProps) {
           <button
             className={`button ${fulfillment === "shipping" ? "button-primary" : "button-secondary"}`}
             type="button"
+            disabled={digitalOnly}
             onClick={() => setFulfillment("shipping")}
           >
             Ship eligible items
           </button>
         </div>
-        {fulfillment === "shipping" && hasPickupOnlyItems ? (
+        {fulfillment === "shipping" && hasShippingBlockedItems ? (
           <p className="mt-4 rounded-md bg-rust/10 p-3 text-sm font-bold text-rust">
             Your cart includes pickup-only items. Remove them or choose local pickup.
+          </p>
+        ) : null}
+        {fulfillment === "shipping" && hasShippingSetupMissing ? (
+          <p className="mt-4 rounded-md bg-rust/10 p-3 text-sm font-bold text-rust">
+            One or more products need shipping setup before they can be shipped.
+          </p>
+        ) : null}
+        {fulfillment === "pickup" && hasPickupBlockedItems ? (
+          <p className="mt-4 rounded-md bg-rust/10 p-3 text-sm font-bold text-rust">
+            Your cart includes an item that is not eligible for local pickup.
+          </p>
+        ) : null}
+        {digitalOnly ? (
+          <p className="mt-4 rounded-md bg-sage/60 p-3 text-sm font-bold text-stone">
+            Digital-only carts do not need shipping or pickup.
           </p>
         ) : null}
         <label className="mt-5 block">
@@ -183,7 +220,7 @@ export function CartClient({ products }: CartClientProps) {
           </div>
           <div className="mt-3 flex items-center justify-between text-stone">
             <span>Shipping</span>
-            <span>{fulfillment === "pickup" ? "Free pickup" : "Calculated in Stripe"}</span>
+            <span>{digitalOnly ? "Not needed" : fulfillment === "pickup" ? "Free pickup" : "Selected in Stripe"}</span>
           </div>
           <div className="mt-3 flex items-center justify-between text-stone">
             <span>Tax</span>

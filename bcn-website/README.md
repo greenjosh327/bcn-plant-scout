@@ -34,6 +34,17 @@ cd C:\BCNPlantTracker\bcn-website
 npm run build
 ```
 
+## Test
+
+```powershell
+cd C:\BCNPlantTracker\bcn-website
+npm test
+```
+
+The current automated tests cover the Phase 2 shipping rule engine and package
+planner: seed envelope mail, mixed carts, tree restrictions, pickup-only,
+digital-only, `ships_alone`, max quantity per package, and missing package data.
+
 ## Vercel Deployment
 
 Deploy this folder as its own Vercel project. Do not point the existing
@@ -209,11 +220,11 @@ Recommended morning test:
 The site reads products from Supabase when configured and falls back to sample product data in `lib/products.ts`.
 
 Cart, Stripe Checkout, webhook order persistence, customer receipt display, and owner order fulfillment tools
-are implemented. Shipping is a simple flat-rate first pass, pickup is supported, and tax is delegated to Stripe
-automatic tax. Paid checkouts create Supabase orders and order items, reduce inventory, and can be fulfilled
-from the owner admin dashboard. The admin now has Phase 1 shipping setup fields, but checkout still uses the
-existing simple flat-rate path until Phase 2 shipping rules are approved. Customer accounts, automated order
-emails, shipping labels, and refund handling are future steps.
+are implemented. Checkout now uses the Phase 2 shipping rules and package planner instead of the old one-price
+shipping shortcut. Pickup is supported, and tax is delegated to Stripe automatic tax. Paid checkouts create
+Supabase orders and order items, reduce inventory, and can be fulfilled from the owner admin dashboard.
+Shippo live rates, shipping quote storage, label purchase, tracking webhooks, customer accounts, automated
+order emails, and refund handling are future steps.
 
 ## Future Data
 

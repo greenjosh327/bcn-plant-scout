@@ -2,6 +2,11 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { getCatalogProducts } from "@/lib/catalog-db";
 import { getVariationKey, type CartLine, normalizeCartLines } from "@/lib/cart";
+import { buildPackagePlan } from "@/lib/shipping/package-builder";
+import { evaluateShippingRules, getCheckoutShippingOptions, getPickupBlockMessage, getShippingBlockMessage } from "@/lib/shipping/rules";
+import { productToShippingCartItem } from "@/lib/shipping/cart-items";
+import { getShippingRuntimeConfig } from "@/lib/shipping/server";
+import type { ShippingMethodOption } from "@/lib/shipping/types";
 
 type CheckoutRequest = {
   lines?: CartLine[];
@@ -15,15 +20,26 @@ function getBaseUrl(request: Request) {
   return new URL(request.url).origin;
 }
 
-export async function POST(request: Request) {
-  const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
-  if (!stripeSecretKey) {
-    return NextResponse.json({ error: "Stripe is not configured yet." }, { status: 500 });
-  }
+function toStripeShippingOption(option: ShippingMethodOption) {
+  return {
+    shipping_rate_data: {
+      type: "fixed_amount" as const,
+      fixed_amount: { amount: option.amountCents ?? 0, currency: option.currency },
+      display_name: option.displayName,
+      metadata: {
+        bcn_method_code: option.methodCode,
+        bcn_provider: option.provider,
+        bcn_rate_mode: option.rateMode,
+        bcn_package_count: String(option.packageCount)
+      }
+    }
+  };
+}
 
+export async function POST(request: Request) {
   const body = (await request.json()) as CheckoutRequest;
   const lines = normalizeCartLines(body.lines ?? []);
-  const fulfillment = body.fulfillment === "shipping" ? "shipping" : "pickup";
+  let fulfillment = body.fulfillment === "shipping" ? "shipping" : "pickup";
 
   if (lines.length === 0) {
     return NextResponse.json({ error: "Your cart is empty." }, { status: 400 });
@@ -45,8 +61,55 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "One or more cart items are no longer available." }, { status: 400 });
   }
 
-  if (fulfillment === "shipping" && checkoutItems.some((item) => item && !item.product.ships)) {
-    return NextResponse.json({ error: "Your cart includes pickup-only items." }, { status: 400 });
+  let shippingOptions: ReturnType<typeof toStripeShippingOption>[] | undefined;
+  let shippingMetadata: Record<string, string> = {};
+
+  try {
+    const { packagePresets, settings } = await getShippingRuntimeConfig();
+    const shippingItems = checkoutItems.map((item) =>
+      productToShippingCartItem(item!.product, item!.quantity, item!.variant ? getVariationKey(item!.variant) : undefined)
+    );
+    const packagePlan = buildPackagePlan(shippingItems, packagePresets, settings);
+    const subtotalCents = checkoutItems.reduce((sum, item) => sum + Math.round(item!.price * 100) * item!.quantity, 0);
+    const shippingRules = evaluateShippingRules(shippingItems, packagePlan, settings, subtotalCents);
+
+    if (shippingRules.digitalOnly) {
+      fulfillment = "pickup";
+      shippingMetadata = {
+        shipping_method_code: "digital_delivery",
+        shipping_provider: "digital_delivery",
+        package_count: "0"
+      };
+    } else if (fulfillment === "pickup") {
+      const pickupError = getPickupBlockMessage(shippingRules);
+      if (pickupError) {
+        return NextResponse.json({ error: pickupError }, { status: 400 });
+      }
+      shippingMetadata = {
+        shipping_method_code: "local_pickup",
+        shipping_provider: "local_pickup",
+        package_count: "0"
+      };
+    } else {
+      const checkoutShippingOptions = getCheckoutShippingOptions(shippingRules);
+      if (checkoutShippingOptions.length === 0) {
+        return NextResponse.json({ error: getShippingBlockMessage(shippingRules) }, { status: 400 });
+      }
+      shippingOptions = checkoutShippingOptions.map(toStripeShippingOption);
+      shippingMetadata = {
+        shipping_method_codes: checkoutShippingOptions.map((option) => option.methodCode).join(","),
+        shipping_provider: checkoutShippingOptions.map((option) => option.provider).join(","),
+        package_count: String(packagePlan.packages.length)
+      };
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Shipping rules could not be loaded.";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+
+  const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+  if (!stripeSecretKey) {
+    return NextResponse.json({ error: "Stripe is not configured yet." }, { status: 500 });
   }
 
   const baseUrl = getBaseUrl(request);
@@ -61,21 +124,7 @@ export async function POST(request: Request) {
     allow_promotion_codes: true,
     billing_address_collection: "auto",
     shipping_address_collection: fulfillment === "shipping" ? { allowed_countries: ["US"] } : undefined,
-    shipping_options: fulfillment === "shipping"
-      ? [
-          {
-            shipping_rate_data: {
-              type: "fixed_amount",
-              fixed_amount: { amount: 900, currency: "usd" },
-              display_name: "Standard shipping",
-              delivery_estimate: {
-                minimum: { unit: "business_day", value: 3 },
-                maximum: { unit: "business_day", value: 7 }
-              }
-            }
-          }
-        ]
-      : undefined,
+    shipping_options: shippingOptions,
     line_items: checkoutItems.map((item) => ({
       quantity: item!.quantity,
       price_data: {
@@ -97,7 +146,8 @@ export async function POST(request: Request) {
     metadata: {
       fulfillment,
       source: "bcn-website",
-      product_ids: checkoutItems.map((item) => item!.product.id).join(",")
+      product_ids: checkoutItems.map((item) => item!.product.id).join(","),
+      ...shippingMetadata
     },
     success_url: `${baseUrl}/cart/success?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${baseUrl}/cart`

@@ -6,7 +6,24 @@ export type CartLine = {
   quantity: number;
 };
 
-export type CartProduct = Pick<Product, "id" | "slug" | "name" | "scientificName" | "category" | "price" | "inventory" | "images" | "ships" | "localPickup" | "variations">;
+export type CartProduct = Pick<
+  Product,
+  | "id"
+  | "slug"
+  | "name"
+  | "scientificName"
+  | "category"
+  | "price"
+  | "inventory"
+  | "images"
+  | "shippingClass"
+  | "shippingEnabled"
+  | "localPickupEnabled"
+  | "shippingConfigurationComplete"
+  | "ships"
+  | "localPickup"
+  | "variations"
+>;
 
 export const CART_STORAGE_KEY = "bcn_cart_v1";
 
