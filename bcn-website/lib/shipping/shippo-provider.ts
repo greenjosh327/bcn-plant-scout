@@ -350,6 +350,11 @@ export async function getShippoQuoteRates(input: {
 }): Promise<ShippoQuoteResult> {
   const token = getShippoToken();
   if (!input.settings.shippoEnabled || input.settings.liveRatesMaintenanceMode || !token) {
+    console.warn("Shippo live rates skipped.", {
+      shippoEnabled: input.settings.shippoEnabled,
+      liveRatesMaintenanceMode: input.settings.liveRatesMaintenanceMode,
+      hasShippoToken: Boolean(token)
+    });
     return {
       providerAvailable: false,
       validationStatus: "validation_unavailable",
@@ -361,6 +366,7 @@ export async function getShippoQuoteRates(input: {
 
   const shipFromAddress = getShipFromAddress(input.settings);
   if (!shipFromAddress) {
+    console.warn("Shippo live rates skipped: ship-from address is incomplete.");
     return {
       providerAvailable: false,
       validationStatus: "validation_unavailable",
@@ -413,6 +419,7 @@ export async function getShippoQuoteRates(input: {
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Shippo could not return live rates.";
+    console.warn("Shippo live rates unavailable.", { message });
     return {
       providerAvailable: true,
       validationStatus: "validation_unavailable",
