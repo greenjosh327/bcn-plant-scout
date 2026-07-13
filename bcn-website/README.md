@@ -125,6 +125,7 @@ Run the SQL files in this order from the Supabase SQL Editor:
 4. `supabase/sql/20260703_bcn_orders_schema.sql`
 5. `supabase/sql/20260713_bcn_shipping_data_foundation.sql`
 6. `supabase/sql/20260713_bcn_shipping_quotes.sql`
+7. `supabase/sql/20260713_bcn_shipping_quote_checkout_link.sql`
 
 The shipping data migration creates:
 
@@ -145,6 +146,9 @@ The shipping quote migration creates:
 - `shipping_quotes` for server-owned cart/address/package quotes
 - order columns for selected shipping method, provider, package plan, and rate IDs
 - admin-only RLS policies for quote review
+
+The checkout link migration adds Stripe session tracking to reserved shipping
+quotes so abandoned sessions and completed orders can be traced cleanly.
 
 The Stripe webhook uses the Supabase service role key on the server to write
 orders and update inventory. The browser never writes directly to order tables.
@@ -230,7 +234,7 @@ The site reads products from Supabase when configured and falls back to sample p
 Cart, Stripe Checkout, webhook order persistence, customer receipt display, and owner order fulfillment tools
 are implemented. Checkout now uses server-owned shipping quotes built from the shipping rules and package
 planner. The cart collects a destination address, saves quote options in Supabase, verifies the selected quote
-again before Stripe Checkout, and records quote metadata on paid orders. Pickup is supported, and tax is
+again before Stripe Checkout, links reserved quotes to Stripe sessions, and records quote metadata on paid orders. Pickup is supported, and tax is
 delegated to Stripe automatic tax. Paid checkouts create Supabase orders and order items, reduce inventory,
 and can be fulfilled from the owner admin dashboard. Shippo live USPS rates are used when configured, while
 label purchase, tracking webhooks, customer accounts, automated order emails, and refund handling are future

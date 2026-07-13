@@ -1,5 +1,10 @@
 import Link from "next/link";
 import { getSupabaseServiceClient } from "@/lib/supabase-service";
+import {
+  formatOrderShippingMethod,
+  formatShippingAddress,
+  formatShippingCarrierService
+} from "@/lib/shipping/order-display";
 
 type SuccessPageProps = {
   searchParams?: Promise<{
@@ -25,6 +30,13 @@ type ReceiptOrder = {
   payment_status: string;
   fulfillment_type: "pickup" | "shipping";
   pickup_location: string | null;
+  shipping_address: Record<string, unknown> | null;
+  shipping_method_name: string | null;
+  shipping_provider: string | null;
+  shipping_carrier: string | null;
+  shipping_service: string | null;
+  estimated_delivery: string | null;
+  untracked_shipping_acknowledged: boolean | null;
   subtotal: number;
   shipping_cost: number;
   tax: number;
@@ -50,6 +62,13 @@ async function getOrder(sessionId?: string) {
         payment_status,
         fulfillment_type,
         pickup_location,
+        shipping_address,
+        shipping_method_name,
+        shipping_provider,
+        shipping_carrier,
+        shipping_service,
+        estimated_delivery,
+        untracked_shipping_acknowledged,
         subtotal,
         shipping_cost,
         tax,
@@ -81,6 +100,9 @@ async function getOrder(sessionId?: string) {
 export default async function CartSuccessPage({ searchParams }: SuccessPageProps) {
   const params = await searchParams;
   const order = await getOrder(params?.session_id);
+  const shippingMethod = order ? formatOrderShippingMethod(order) : "";
+  const carrierService = order ? formatShippingCarrierService(order) : "";
+  const shippingAddress = order ? formatShippingAddress(order.shipping_address) : "";
 
   return (
     <main className="container py-12">
@@ -118,7 +140,23 @@ export default async function CartSuccessPage({ searchParams }: SuccessPageProps
               <p>Subtotal: {formatMoney(Number(order.subtotal), order.currency)}</p>
               <p>Shipping: {formatMoney(Number(order.shipping_cost), order.currency)}</p>
               <p>Tax: {formatMoney(Number(order.tax), order.currency)}</p>
-              <p>Fulfillment: {order.fulfillment_type === "pickup" ? order.pickup_location || "Base Camp North local pickup" : "Shipping"}</p>
+              {order.fulfillment_type === "pickup" ? (
+                <p>Fulfillment: {order.pickup_location || "Base Camp North local pickup"}</p>
+              ) : (
+                <>
+                  <p>Fulfillment: Shipping</p>
+                  <p>Shipping method: {shippingMethod}</p>
+                  {carrierService && carrierService !== shippingMethod ? <p>Carrier/service: {carrierService}</p> : null}
+                  {order.estimated_delivery ? <p>Estimated delivery: {order.estimated_delivery}</p> : null}
+                  {shippingAddress ? (
+                    <div>
+                      <p>Shipping to:</p>
+                      <p className="mt-1 whitespace-pre-line">{shippingAddress}</p>
+                    </div>
+                  ) : null}
+                  {order.untracked_shipping_acknowledged ? <p>Economy Seed Mail does not include tracking.</p> : null}
+                </>
+              )}
               {order.customer_email ? <p>Receipt email: {order.customer_email}</p> : null}
             </div>
           </div>

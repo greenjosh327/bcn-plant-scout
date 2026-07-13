@@ -148,6 +148,8 @@ export type ShippingQuoteRecord = {
   quote_status: "open" | "reserved" | "expired" | "converted" | "cancelled";
   untracked_shipping_acknowledged: boolean;
   expires_at: string;
+  reserved_at: string | null;
+  stripe_session_id: string | null;
   used_at: string | null;
   created_at: string;
   updated_at: string;

@@ -98,7 +98,7 @@ async function reserveShippingQuote(input: {
   }
 
   const quote = row as ShippingQuoteRecord;
-  if (quote.quote_status !== "open" || quote.used_at) {
+  if (quote.quote_status !== "open" || quote.used_at || quote.stripe_session_id) {
     throw new ShippingQuoteError("Shipping quote has already been used. Please get a new quote.");
   }
 
@@ -136,12 +136,14 @@ async function reserveShippingQuote(input: {
       selected_option_id: selectedOption.id,
       selected_option: selectedOption,
       quote_status: "reserved",
-      used_at: new Date().toISOString(),
+      reserved_at: new Date().toISOString(),
+      used_at: null,
       untracked_shipping_acknowledged: Boolean(input.body.untrackedShippingAcknowledged)
     })
     .eq("id", quote.id)
     .eq("quote_status", "open")
     .is("used_at", null)
+    .is("stripe_session_id", null)
     .select("*")
     .single();
 
@@ -153,6 +155,44 @@ async function reserveShippingQuote(input: {
     quote: reserved as ShippingQuoteRecord,
     option: selectedOption
   };
+}
+
+async function releaseReservedShippingQuote(quoteId: string) {
+  const supabase = getSupabaseServiceClient();
+  const { error } = await supabase
+    .from("shipping_quotes")
+    .update({
+      selected_option_id: null,
+      selected_option: null,
+      quote_status: "open",
+      reserved_at: null,
+      used_at: null,
+      untracked_shipping_acknowledged: false
+    })
+    .eq("id", quoteId)
+    .eq("quote_status", "reserved")
+    .is("stripe_session_id", null);
+
+  if (error) {
+    console.error("Shipping quote reservation could not be released.", { quoteId, error });
+  }
+}
+
+async function attachStripeSessionToQuote(quoteId: string, stripeSessionId: string) {
+  const supabase = getSupabaseServiceClient();
+  const { error } = await supabase
+    .from("shipping_quotes")
+    .update({ stripe_session_id: stripeSessionId })
+    .eq("id", quoteId)
+    .eq("quote_status", "reserved");
+
+  if (error) {
+    console.error("Shipping quote could not be linked to Stripe session.", {
+      quoteId,
+      stripeSessionId,
+      error
+    });
+  }
 }
 
 async function getPickupOrDigitalOption(input: {
@@ -182,11 +222,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Checkout request was not valid JSON." }, { status: 400 });
   }
 
+  const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+  if (!stripeSecretKey) {
+    return NextResponse.json({ error: "Stripe is not configured yet." }, { status: 500 });
+  }
+
+  const stripe = new Stripe(stripeSecretKey, {
+    apiVersion: "2025-02-24.acacia"
+  });
+
   let cart: CheckoutCart;
   let runtimeConfig: RuntimeConfig;
   let fulfillment: "pickup" | "shipping" = body.fulfillment === "shipping" ? "shipping" : "pickup";
   let shippingOptions: ReturnType<typeof toStripeShippingOption>[] | undefined;
   let shippingMetadata: Record<string, string> = {};
+  let reservedShippingQuoteId: string | null = null;
 
   try {
     [cart, runtimeConfig] = await Promise.all([
@@ -196,6 +246,7 @@ export async function POST(request: Request) {
 
     if (fulfillment === "shipping") {
       const reserved = await reserveShippingQuote({ body, cart, runtimeConfig });
+      reservedShippingQuoteId = reserved.quote.id;
       shippingOptions = [toStripeShippingOption(reserved.option)];
       shippingMetadata = metadataFromQuoteOption(reserved.option, reserved.quote);
     } else {
@@ -212,55 +263,63 @@ export async function POST(request: Request) {
     if (error instanceof CheckoutCartError || error instanceof ShippingQuoteError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
+    if (reservedShippingQuoteId) {
+      await releaseReservedShippingQuote(reservedShippingQuoteId);
+    }
     const message = error instanceof Error ? error.message : "Shipping rules could not be loaded.";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 
-  const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
-  if (!stripeSecretKey) {
-    return NextResponse.json({ error: "Stripe is not configured yet." }, { status: 500 });
+  const baseUrl = getBaseUrl(request);
+
+  let session: Stripe.Checkout.Session;
+  try {
+    session = await stripe.checkout.sessions.create({
+      mode: "payment",
+      customer_email: body.email || undefined,
+      automatic_tax: { enabled: true },
+      allow_promotion_codes: true,
+      billing_address_collection: "auto",
+      shipping_address_collection: fulfillment === "shipping" ? { allowed_countries: ["US"] } : undefined,
+      shipping_options: shippingOptions,
+      line_items: cart.items.map((item) => ({
+        quantity: item.quantity,
+        price_data: {
+          currency: "usd",
+          unit_amount: Math.round(item.price * 100),
+          product_data: {
+            name: item.variant ? `${item.product.name} - ${item.variant.name}` : item.product.name,
+            description: item.product.scientificName || item.product.category,
+            images: item.product.images.filter((image) => image.startsWith("https://")).slice(0, 1),
+            metadata: {
+              product_id: item.product.id,
+              slug: item.product.slug,
+              variant: item.variant ? getVariationKey(item.variant) : ""
+            }
+          },
+          tax_behavior: "exclusive"
+        }
+      })),
+      metadata: {
+        fulfillment,
+        source: "bcn-website",
+        product_ids: cart.items.map((item) => item.product.id).join(","),
+        ...shippingMetadata
+      },
+      success_url: `${baseUrl}/cart/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${baseUrl}/cart`
+    });
+  } catch (error) {
+    if (reservedShippingQuoteId) {
+      await releaseReservedShippingQuote(reservedShippingQuoteId);
+    }
+    const message = error instanceof Error ? error.message : "Stripe Checkout could not be created.";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 
-  const baseUrl = getBaseUrl(request);
-  const stripe = new Stripe(stripeSecretKey, {
-    apiVersion: "2025-02-24.acacia"
-  });
-
-  const session = await stripe.checkout.sessions.create({
-    mode: "payment",
-    customer_email: body.email || undefined,
-    automatic_tax: { enabled: true },
-    allow_promotion_codes: true,
-    billing_address_collection: "auto",
-    shipping_address_collection: fulfillment === "shipping" ? { allowed_countries: ["US"] } : undefined,
-    shipping_options: shippingOptions,
-    line_items: cart.items.map((item) => ({
-      quantity: item.quantity,
-      price_data: {
-        currency: "usd",
-        unit_amount: Math.round(item.price * 100),
-        product_data: {
-          name: item.variant ? `${item.product.name} - ${item.variant.name}` : item.product.name,
-          description: item.product.scientificName || item.product.category,
-          images: item.product.images.filter((image) => image.startsWith("https://")).slice(0, 1),
-          metadata: {
-            product_id: item.product.id,
-            slug: item.product.slug,
-            variant: item.variant ? getVariationKey(item.variant) : ""
-          }
-        },
-        tax_behavior: "exclusive"
-      }
-    })),
-    metadata: {
-      fulfillment,
-      source: "bcn-website",
-      product_ids: cart.items.map((item) => item.product.id).join(","),
-      ...shippingMetadata
-    },
-    success_url: `${baseUrl}/cart/success?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${baseUrl}/cart`
-  });
+  if (reservedShippingQuoteId) {
+    await attachStripeSessionToQuote(reservedShippingQuoteId, session.id);
+  }
 
   return NextResponse.json({ url: session.url });
 }

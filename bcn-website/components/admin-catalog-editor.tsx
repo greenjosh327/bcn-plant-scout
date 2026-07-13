@@ -4,6 +4,13 @@ import { useEffect, useMemo, useState, type Dispatch, type ReactNode, type SetSt
 import type { Session } from "@supabase/supabase-js";
 import { hasSupabaseBrowserConfig, supabase } from "@/lib/supabase-browser";
 import {
+  formatAddressValidationStatus,
+  formatOrderShippingMethod,
+  formatShippingAddress,
+  formatShippingCarrierService,
+  formatShippingProvider
+} from "@/lib/shipping/order-display";
+import {
   SHIPPING_CLASS_DESCRIPTIONS,
   SHIPPING_CLASS_LABELS,
   SHIPPING_CLASSES,
@@ -116,6 +123,21 @@ type ShopOrder = {
   fulfillment_type: "pickup" | "shipping";
   pickup_location: string | null;
   shipping_address: Record<string, unknown> | null;
+  shipping_quote_id: string | null;
+  shipping_method_code: string | null;
+  shipping_method_name: string | null;
+  shipping_provider: string | null;
+  shipping_carrier: string | null;
+  shipping_service: string | null;
+  shipping_amount_cents: number | null;
+  address_validation_status: string | null;
+  validated_shipping_address: Record<string, unknown> | null;
+  untracked_shipping_acknowledged: boolean | null;
+  package_plan: Array<Record<string, unknown>> | null;
+  shippo_shipment_ids: string[] | null;
+  shippo_rate_ids: string[] | null;
+  estimated_delivery: string | null;
+  internal_shipping_notes: string | null;
   subtotal: number;
   shipping_cost: number;
   tax: number;
@@ -1358,6 +1380,12 @@ function AdminOrdersDashboard() {
         order.fulfillment_type,
         order.payment_status,
         order.stripe_session_id,
+        order.shipping_quote_id,
+        order.shipping_method_name,
+        order.shipping_provider,
+        order.shipping_carrier,
+        order.shipping_service,
+        order.estimated_delivery,
         ...order.order_items.flatMap((item) => [item.product_name, item.variant_name, item.sku])
       ]
         .filter(Boolean)
@@ -1444,12 +1472,16 @@ function AdminOrdersDashboard() {
   }
 
   function exportCsv() {
-    const header = ["created_at", "customer", "email", "fulfillment", "status", "payment", "total", "items"];
+    const header = ["created_at", "customer", "email", "fulfillment", "shipping_method", "carrier_service", "estimated_delivery", "quote_id", "status", "payment", "total", "items"];
     const rows = filteredOrders.map((order) => [
       order.created_at,
       order.customer_name ?? "",
       order.customer_email ?? "",
       order.fulfillment_type,
+      order.fulfillment_type === "shipping" ? formatOrderShippingMethod(order) : "",
+      order.fulfillment_type === "shipping" ? formatShippingCarrierService(order) : "",
+      order.estimated_delivery ?? "",
+      order.shipping_quote_id ?? "",
       order.order_status,
       order.payment_status,
       order.total,
@@ -1477,7 +1509,7 @@ function AdminOrdersDashboard() {
   }
 
   async function copyShippingAddress(order: ShopOrder) {
-    await navigator.clipboard.writeText(formatShippingAddress(order.shipping_address));
+    await navigator.clipboard.writeText(formatShippingAddress(order.shipping_address) || "Shipping address not recorded.");
     setMessage("Shipping address copied.");
   }
 
@@ -1490,7 +1522,10 @@ function AdminOrdersDashboard() {
       order.fulfillment_type === "shipping"
         ? "Your Base Camp North order is packed and moving toward shipping."
         : "Your Base Camp North order is being prepared for local pickup.";
-    const body = `Hi ${name},\n\n${action}\n\nOrder: ${itemSummary}\n\nCurrent status: ${formatStatus(order.order_status)}\n\nThank you!\nBase Camp North`;
+    const shippingDetails = order.fulfillment_type === "shipping"
+      ? `\n\nShipping method: ${formatOrderShippingMethod(order)}${order.estimated_delivery ? `\nEstimated delivery: ${order.estimated_delivery}` : ""}`
+      : "";
+    const body = `Hi ${name},\n\n${action}\n\nOrder: ${itemSummary}${shippingDetails}\n\nCurrent status: ${formatStatus(order.order_status)}\n\nThank you!\nBase Camp North`;
     await navigator.clipboard.writeText(body);
     setMessage("Customer update copied.");
   }
@@ -1513,6 +1548,7 @@ function AdminOrdersDashboard() {
           </tr>`
       )
       .join("");
+    const fulfillmentDetails = formatPackingSlipFulfillment(order);
 
     printWindow.document.write(`
       <!doctype html>
@@ -1544,7 +1580,7 @@ function AdminOrdersDashboard() {
           </div>
           <div class="box">
             <strong>${escapeHtml(formatStatus(order.fulfillment_type))}</strong><br>
-            <pre>${escapeHtml(order.fulfillment_type === "pickup" ? order.pickup_location || "Base Camp North local pickup" : formatShippingAddress(order.shipping_address))}</pre>
+            <pre>${escapeHtml(fulfillmentDetails)}</pre>
           </div>
           <h2>Items</h2>
           <table>
@@ -1615,6 +1651,11 @@ function AdminOrdersDashboard() {
               <p className="mt-2 text-sm font-bold text-ink/75">
                 {formatStatus(order.order_status)} / {order.fulfillment_type} / {order.order_items.length} item{order.order_items.length === 1 ? "" : "s"}
               </p>
+              {order.fulfillment_type === "shipping" ? (
+                <p className="mt-1 text-xs font-bold text-stone">
+                  {formatOrderShippingMethod(order)}{order.estimated_delivery ? ` / ${order.estimated_delivery}` : ""}
+                </p>
+              ) : null}
             </button>
           ))}
         </div>
@@ -1653,6 +1694,12 @@ function OrderDetail({
   onCopyCustomerUpdate: (order: ShopOrder) => void;
   onPrintPackingSlip: (order: ShopOrder) => void;
 }) {
+  const shippingAddress = formatShippingAddress(order.shipping_address);
+  const shippingMethod = formatOrderShippingMethod(order);
+  const carrierService = formatShippingCarrierService(order);
+  const provider = formatShippingProvider(order.shipping_provider);
+  const validationStatus = formatAddressValidationStatus(order.address_validation_status);
+
   return (
     <div className="grid gap-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -1694,13 +1741,26 @@ function OrderDetail({
       <div className="grid gap-4 lg:grid-cols-2">
         <section className="rounded-md border border-pine/15 bg-sage/45 p-4">
           <h3 className="text-lg font-black text-pine">Fulfillment</h3>
-          <p className="mt-2 text-ink/75">{order.fulfillment_type === "pickup" ? `Pickup: ${order.pickup_location || "Base Camp North"}` : formatShippingAddress(order.shipping_address)}</p>
+          {order.fulfillment_type === "pickup" ? (
+            <p className="mt-2 text-ink/75">Pickup: {order.pickup_location || "Base Camp North"}</p>
+          ) : (
+            <div className="mt-2 grid gap-2 text-sm font-bold text-ink/75">
+              {shippingAddress ? <p className="whitespace-pre-line">{shippingAddress}</p> : <p>Shipping address not recorded.</p>}
+              <p>Method: {shippingMethod}</p>
+              {carrierService && carrierService !== shippingMethod ? <p>Service: {carrierService}</p> : null}
+              {provider ? <p>Provider: {provider}</p> : null}
+              {order.estimated_delivery ? <p>Estimated delivery: {order.estimated_delivery}</p> : null}
+              {validationStatus ? <p>Address validation: {validationStatus}</p> : null}
+              {order.untracked_shipping_acknowledged ? <p>Economy Seed Mail no-tracking acknowledged.</p> : null}
+            </div>
+          )}
           {order.notes ? <p className="mt-3 text-sm font-bold text-stone">Notes: {order.notes}</p> : null}
         </section>
         <section className="rounded-md border border-pine/15 bg-sage/45 p-4">
           <h3 className="text-lg font-black text-pine">Stripe</h3>
           <p className="mt-2 break-all text-sm text-ink/75">Session: {order.stripe_session_id}</p>
           <p className="mt-2 break-all text-sm text-ink/75">Payment: {order.stripe_payment_intent || "not recorded"}</p>
+          {order.shipping_quote_id ? <p className="mt-2 break-all text-sm text-ink/75">Quote: {order.shipping_quote_id}</p> : null}
         </section>
       </div>
 
@@ -2181,15 +2241,25 @@ function formatStatus(value: string) {
   return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function formatShippingAddress(address: Record<string, unknown> | null) {
-  if (!address || Object.keys(address).length === 0) return "Shipping address not recorded.";
-  const parts = [
-    address.line1,
-    address.line2,
-    [address.city, address.state, address.postal_code].filter(Boolean).join(", "),
-    address.country
-  ].filter(Boolean);
-  return parts.length ? parts.join("\n") : JSON.stringify(address);
+function formatPackingSlipFulfillment(order: ShopOrder) {
+  if (order.fulfillment_type === "pickup") {
+    return order.pickup_location || "Base Camp North local pickup";
+  }
+
+  const method = formatOrderShippingMethod(order);
+  const carrierService = formatShippingCarrierService(order);
+  const provider = formatShippingProvider(order.shipping_provider);
+  const lines = [
+    formatShippingAddress(order.shipping_address) || "Shipping address not recorded.",
+    `Method: ${method}`,
+    carrierService && carrierService !== method ? `Service: ${carrierService}` : "",
+    provider ? `Provider: ${provider}` : "",
+    order.estimated_delivery ? `Estimated delivery: ${order.estimated_delivery}` : "",
+    order.shipping_quote_id ? `Quote: ${order.shipping_quote_id}` : "",
+    order.untracked_shipping_acknowledged ? "Economy Seed Mail no-tracking acknowledged." : ""
+  ];
+
+  return lines.filter(Boolean).join("\n");
 }
 
 function escapeHtml(value: string) {

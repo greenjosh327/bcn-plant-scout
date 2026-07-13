@@ -85,13 +85,15 @@ async function fetchShippingQuote(
   session: Stripe.Checkout.Session
 ) {
   const quoteId = session.metadata?.shipping_quote_id;
-  if (!quoteId) return null;
+  if (!quoteId && session.metadata?.fulfillment !== "shipping") return null;
 
-  const { data, error } = await supabase
+  let query = supabase
     .from("shipping_quotes")
-    .select("*")
-    .eq("id", quoteId)
-    .maybeSingle();
+    .select("*");
+
+  query = quoteId ? query.eq("id", quoteId) : query.eq("stripe_session_id", session.id);
+
+  const { data, error } = await query.maybeSingle();
 
   if (error) {
     throw new Error(`Could not load shipping quote for order: ${error.message}`);
@@ -105,6 +107,36 @@ function estimatedDelivery(option: ShippingQuoteOption | null) {
   if (option.durationTerms) return option.durationTerms;
   if (option.estimatedDays) return `${option.estimatedDays} business day${option.estimatedDays === 1 ? "" : "s"}`;
   return null;
+}
+
+async function markShippingQuoteConverted(input: {
+  supabase: ReturnType<typeof getSupabaseServiceClient>;
+  session: Stripe.Checkout.Session;
+  quoteId?: string | null;
+  orderId: string;
+}) {
+  const quoteId = input.quoteId || input.session.metadata?.shipping_quote_id || null;
+  if (!quoteId && input.session.metadata?.fulfillment !== "shipping") return;
+
+  let query = input.supabase
+    .from("shipping_quotes")
+    .update({
+      quote_status: "converted",
+      stripe_session_id: input.session.id,
+      used_at: new Date().toISOString()
+    });
+
+  query = quoteId ? query.eq("id", quoteId) : query.eq("stripe_session_id", input.session.id);
+
+  const { error } = await query;
+  if (error) {
+    console.error("Order saved, but shipping quote status update failed.", {
+      orderId: input.orderId,
+      shippingQuoteId: quoteId,
+      stripeSessionId: input.session.id,
+      error
+    });
+  }
 }
 
 async function fetchProductsAndVariants(
@@ -151,6 +183,12 @@ async function createOrCompleteOrder(session: Stripe.Checkout.Session, stripe: S
     }
 
     if ((count ?? 0) > 0) {
+      await markShippingQuoteConverted({
+        supabase,
+        session,
+        quoteId: session.metadata?.shipping_quote_id,
+        orderId: existingOrder.id
+      });
       return { status: "duplicate", orderId: existingOrder.id };
     }
   }
@@ -287,18 +325,12 @@ async function createOrCompleteOrder(session: Stripe.Checkout.Session, stripe: S
   }
 
   if (shippingQuote?.id) {
-    const { error: quoteUpdateError } = await supabase
-      .from("shipping_quotes")
-      .update({ quote_status: "converted" })
-      .eq("id", shippingQuote.id);
-
-    if (quoteUpdateError) {
-      console.error("Order saved, but shipping quote status update failed.", {
-        orderId,
-        shippingQuoteId: shippingQuote.id,
-        error: quoteUpdateError
-      });
-    }
+    await markShippingQuoteConverted({
+      supabase,
+      session,
+      quoteId: shippingQuote.id,
+      orderId
+    });
   }
 
   return { status: "created", orderId };
