@@ -6,7 +6,7 @@ import { Footer } from "@/components/footer";
 import { ShopAnalyticsPageView } from "@/components/shop-analytics-page-view";
 import { SiteHeader } from "@/components/site-header";
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://shop.basecampnorthpa.com";
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://shop.basecampnorthpa.com";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
