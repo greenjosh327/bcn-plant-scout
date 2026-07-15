@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { CART_STORAGE_KEY, normalizeCartLines } from "@/lib/cart";
+import { trackGoogleEvent, type GoogleAnalyticsItem } from "@/lib/marketing/google-analytics";
 
 type AddToCartButtonProps = {
   productId: string;
@@ -9,9 +10,19 @@ type AddToCartButtonProps = {
   disabled?: boolean;
   label?: string;
   className?: string;
+  analyticsItem?: GoogleAnalyticsItem;
+  analyticsValue?: number;
 };
 
-export function AddToCartButton({ productId, variantKey, disabled = false, label = "Add to Cart", className = "button button-primary" }: AddToCartButtonProps) {
+export function AddToCartButton({
+  productId,
+  variantKey,
+  disabled = false,
+  label = "Add to Cart",
+  className = "button button-primary",
+  analyticsItem,
+  analyticsValue
+}: AddToCartButtonProps) {
   const [added, setAdded] = useState(false);
 
   useEffect(() => {
@@ -26,6 +37,13 @@ export function AddToCartButton({ productId, variantKey, disabled = false, label
     const next = normalizeCartLines([...current, { productId, variantKey, quantity: 1 }]);
     window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(next));
     window.dispatchEvent(new CustomEvent("bcn-cart-updated"));
+    if (analyticsItem) {
+      trackGoogleEvent("add_to_cart", {
+        currency: "USD",
+        value: Number(analyticsValue ?? analyticsItem.price ?? 0),
+        items: [analyticsItem]
+      });
+    }
     setAdded(true);
   }
 

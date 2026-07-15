@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { AddToCartButton } from "@/components/add-to-cart-button";
 import { formatMoney, getVariationKey } from "@/lib/cart";
+import { productToGoogleAnalyticsItem } from "@/lib/marketing/google-analytics";
 import type { Product } from "@/lib/types";
 
 export function ProductPurchasePanel({ product }: { product: Product }) {
@@ -61,6 +62,8 @@ export function ProductPurchasePanel({ product }: { product: Product }) {
         variantKey={selectedVariation ? getVariationKey(selectedVariation) : undefined}
         disabled={inventory <= 0 || (hasOptions && !selectedVariation)}
         className="button button-primary w-full md:w-auto"
+        analyticsItem={productToGoogleAnalyticsItem(product, selectedVariation)}
+        analyticsValue={price}
       />
     </div>
   );

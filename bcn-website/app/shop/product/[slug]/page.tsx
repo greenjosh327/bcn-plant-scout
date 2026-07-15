@@ -1,9 +1,11 @@
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { GoogleEcommerceTracker } from "@/components/google-ecommerce-tracker";
 import { ProductCard } from "@/components/product-card";
 import { ProductPurchasePanel } from "@/components/product-purchase-panel";
 import { getCatalogProductBySlug, getRelatedCatalogProducts } from "@/lib/catalog-db";
+import { productToGoogleAnalyticsItem } from "@/lib/marketing/google-analytics";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +37,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
   ].filter((block) => block.value);
 
   const hasGrowingInformation = growingFacts.length > 0 || growingDetailBlocks.length > 0;
+  const showSeedShippingNote = product.shippingClass === "seed_envelope";
   const growingSectionClass =
     growingFacts.length > 0 && growingDetailBlocks.length > 0
       ? "mt-16 grid gap-6 lg:grid-cols-[0.8fr_1.2fr]"
@@ -42,6 +45,14 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
 
   return (
     <main className="container py-12">
+      <GoogleEcommerceTracker
+        eventName="view_item"
+        params={{
+          currency: "USD",
+          value: product.price,
+          items: [productToGoogleAnalyticsItem(product)]
+        }}
+      />
       <div className="grid gap-10 lg:grid-cols-[1.05fr_0.95fr]">
         <div className="grid gap-4">
           {product.images.map((image) => (
@@ -77,6 +88,11 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
             </div>
           ) : null}
           <ProductPurchasePanel product={product} />
+          {showSeedShippingNote ? (
+            <p className="mt-4 rounded-md bg-sage/60 p-4 text-sm font-bold leading-6 text-stone">
+              Seed packets can ship by $2 Economy Seed Mail without tracking when they fit in one envelope. Tracked USPS options are available at checkout, and up to 12 seed packets usually fit in one envelope.
+            </p>
+          ) : null}
           <p className="mt-3 text-sm text-stone">Checkout runs through Stripe. Pickup and shipping options are checked before payment.</p>
         </section>
       </div>

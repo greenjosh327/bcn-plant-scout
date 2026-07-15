@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { CART_STORAGE_KEY, type CartLine, type CartProduct, formatMoney, getVariationKey, normalizeCartLines, pruneCartLinesForProducts } from "@/lib/cart";
+import { productToGoogleAnalyticsItem, trackGoogleEvent } from "@/lib/marketing/google-analytics";
 
 type CartClientProps = {
   products: CartProduct[];
@@ -128,6 +129,7 @@ export function CartClient({ products }: CartClientProps) {
 
   const subtotal = enriched.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0);
   const digitalOnly = enriched.every((line) => line.product.shippingClass === "digital");
+  const hasSeedEnvelopeItems = enriched.some((line) => line.product.shippingClass === "seed_envelope");
   const hasShippingBlockedItems = enriched.some((line) => line.product.shippingClass !== "digital" && !(line.product.shippingEnabled ?? line.product.ships));
   const hasPickupBlockedItems = enriched.some((line) => line.product.shippingClass !== "digital" && !(line.product.localPickupEnabled ?? line.product.localPickup));
   const hasShippingSetupMissing = enriched.some((line) =>
@@ -234,6 +236,12 @@ export function CartClient({ products }: CartClientProps) {
 
     setCheckingOut(true);
     setMessage("");
+    trackGoogleEvent("begin_checkout", {
+      currency: "USD",
+      value: subtotal + shippingAmount,
+      shipping: shippingAmount,
+      items: enriched.map((line) => productToGoogleAnalyticsItem(line.product, line.variant, line.quantity))
+    });
 
     try {
       const response = await fetch("/api/checkout", {
@@ -365,6 +373,11 @@ export function CartClient({ products }: CartClientProps) {
         {digitalOnly ? (
           <p className="mt-4 rounded-md bg-sage/60 p-3 text-sm font-bold text-stone">
             Digital-only carts do not need shipping or pickup.
+          </p>
+        ) : null}
+        {fulfillment === "shipping" && hasSeedEnvelopeItems ? (
+          <p className="mt-4 rounded-md bg-sage/60 p-3 text-sm font-bold text-stone">
+            Seed-only carts under the envelope limit can use $2 Economy Seed Mail without tracking. Tracked USPS options are shown with live rates.
           </p>
         ) : null}
         <label className="mt-5 block">

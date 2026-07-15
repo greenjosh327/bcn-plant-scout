@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { GoogleEcommerceTracker } from "@/components/google-ecommerce-tracker";
 import { getSupabaseServiceClient } from "@/lib/supabase-service";
 import {
   formatOrderShippingMethod,
@@ -106,6 +107,25 @@ export default async function CartSuccessPage({ searchParams }: SuccessPageProps
 
   return (
     <main className="container py-12">
+      {order ? (
+        <GoogleEcommerceTracker
+          eventName="purchase"
+          params={{
+            transaction_id: order.id,
+            currency: order.currency.toUpperCase(),
+            value: Number(order.total) || 0,
+            tax: Number(order.tax) || 0,
+            shipping: Number(order.shipping_cost) || 0,
+            items: order.order_items.map((item) => ({
+              item_id: item.id,
+              item_name: item.product_name,
+              item_variant: item.variant_name ?? undefined,
+              price: Number(item.line_total) / Math.max(item.quantity, 1),
+              quantity: item.quantity
+            }))
+          }}
+        />
+      ) : null}
       <section className="field-card max-w-3xl p-8">
         <p className="text-xs font-black uppercase tracking-[0.22em] text-stone">Order received</p>
         <h1 className="mt-3 text-5xl font-black text-pine">Thanks for your order.</h1>

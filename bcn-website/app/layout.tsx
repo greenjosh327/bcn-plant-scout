@@ -11,22 +11,30 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  const googleTagId = process.env.NEXT_PUBLIC_GOOGLE_TAG_ID || "G-KHYPDHB4W4";
+  const googleAdsId = process.env.NEXT_PUBLIC_GOOGLE_ADS_ID;
+  const googleConfigIds = Array.from(new Set([googleTagId, googleAdsId].filter(Boolean)));
+
   return (
     <html lang="en">
       <body>
-        <Script
-          async
-          src="https://www.googletagmanager.com/gtag/js?id=G-KHYPDHB4W4"
-          strategy="afterInteractive"
-        />
-        <Script id="google-analytics" strategy="afterInteractive">
-          {`
-            window.dataLayer = window.dataLayer || [];
-            function gtag(){window.dataLayer.push(arguments);}
-            gtag('js', new Date());
-            gtag('config', 'G-KHYPDHB4W4');
-          `}
-        </Script>
+        {googleTagId ? (
+          <>
+            <Script
+              async
+              src={`https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(googleTagId)}`}
+              strategy="afterInteractive"
+            />
+            <Script id="google-analytics" strategy="afterInteractive">
+              {`
+                window.dataLayer = window.dataLayer || [];
+                function gtag(){window.dataLayer.push(arguments);}
+                gtag('js', new Date());
+                ${googleConfigIds.map((id) => `gtag('config', ${JSON.stringify(id)});`).join("\n")}
+              `}
+            </Script>
+          </>
+        ) : null}
         <SiteHeader />
         {children}
         <Footer />

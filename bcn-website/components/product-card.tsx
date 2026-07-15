@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { AddToCartButton } from "@/components/add-to-cart-button";
+import { productToGoogleAnalyticsItem } from "@/lib/marketing/google-analytics";
 import type { Product } from "@/lib/types";
 
 export function ProductCard({ product }: { product: Product }) {
@@ -55,6 +56,8 @@ export function ProductCard({ product }: { product: Product }) {
             productId={product.id}
             disabled={product.inventory <= 0}
             className="button button-primary w-full"
+            analyticsItem={productToGoogleAnalyticsItem(product)}
+            analyticsValue={product.price}
           />
         )}
       </div>
