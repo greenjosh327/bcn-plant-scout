@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import Script from "next/script";
 import "./globals.css";
 import { Footer } from "@/components/footer";
+import { ShopAnalyticsPageView } from "@/components/shop-analytics-page-view";
 import { SiteHeader } from "@/components/site-header";
 
 export const metadata: Metadata = {
@@ -35,6 +37,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             </Script>
           </>
         ) : null}
+        <Suspense fallback={null}>
+          <ShopAnalyticsPageView />
+        </Suspense>
         <SiteHeader />
         {children}
         <Footer />

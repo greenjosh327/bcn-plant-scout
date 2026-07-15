@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
+import { trackShopAnalyticsEvent } from "@/lib/analytics/shop-analytics";
 import { CART_STORAGE_KEY, type CartLine, type CartProduct, formatMoney, getVariationKey, normalizeCartLines, pruneCartLinesForProducts } from "@/lib/cart";
 import { productToGoogleAnalyticsItem, trackGoogleEvent } from "@/lib/marketing/google-analytics";
 
@@ -241,6 +242,16 @@ export function CartClient({ products }: CartClientProps) {
       value: subtotal + shippingAmount,
       shipping: shippingAmount,
       items: enriched.map((line) => productToGoogleAnalyticsItem(line.product, line.variant, line.quantity))
+    });
+    trackShopAnalyticsEvent("begin_checkout", {
+      valueCents: Math.round((subtotal + shippingAmount) * 100),
+      currency: "usd",
+      metadata: {
+        fulfillment,
+        line_count: enriched.length,
+        item_count: enriched.reduce((sum, line) => sum + line.quantity, 0),
+        shipping_cents: Math.round(shippingAmount * 100)
+      }
     });
 
     try {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { trackShopAnalyticsEvent } from "@/lib/analytics/shop-analytics";
 import { CART_STORAGE_KEY, normalizeCartLines } from "@/lib/cart";
 import { trackGoogleEvent, type GoogleAnalyticsItem } from "@/lib/marketing/google-analytics";
 
@@ -42,6 +43,16 @@ export function AddToCartButton({
         currency: "USD",
         value: Number(analyticsValue ?? analyticsItem.price ?? 0),
         items: [analyticsItem]
+      });
+      trackShopAnalyticsEvent("add_to_cart", {
+        productId: analyticsItem.item_id,
+        productSlug: analyticsItem.item_slug,
+        productName: analyticsItem.item_name,
+        variantId: analyticsItem.variant_id,
+        variantName: analyticsItem.item_variant,
+        quantity: analyticsItem.quantity ?? 1,
+        valueCents: Math.round(Number(analyticsValue ?? analyticsItem.price ?? 0) * 100),
+        currency: "usd"
       });
     }
     setAdded(true);

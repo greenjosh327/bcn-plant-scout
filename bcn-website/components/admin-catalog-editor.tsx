@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import type { Session } from "@supabase/supabase-js";
+import type { AnalyticsSummary } from "@/lib/analytics/admin-summary";
 import { hasSupabaseBrowserConfig, supabase } from "@/lib/supabase-browser";
 import {
   formatAddressValidationStatus,
@@ -185,7 +186,7 @@ type ShopOrder = {
 };
 
 type AdminState = "checking" | "signed-out" | "not-admin" | "ready" | "missing-config";
-type AdminTab = "orders" | "catalog";
+type AdminTab = "orders" | "catalog" | "analytics";
 type CatalogFilter = "all" | "needsPhotos" | "lowStock" | "soldOut" | "hidden";
 const PRODUCT_IMAGE_BUCKET = "product-images";
 const LOW_STOCK_THRESHOLD = 5;
@@ -1142,12 +1143,14 @@ export function AdminCatalogEditor() {
     );
   }
 
+  const adminTitle = activeTab === "orders" ? "Orders" : activeTab === "analytics" ? "Analytics" : "Catalog editor";
+
   return (
     <main className="container py-12">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-xs font-black uppercase tracking-[0.22em] text-stone">Owner admin</p>
-          <h1 className="mt-3 text-5xl font-black text-pine">{activeTab === "orders" ? "Orders" : "Catalog editor"}</h1>
+          <h1 className="mt-3 text-5xl font-black text-pine">{adminTitle}</h1>
           <p className="mt-4 text-ink/70">Signed in as {session?.user.email}</p>
         </div>
         <button className="button button-secondary" onClick={signOut}>Sign Out</button>
@@ -1166,10 +1169,18 @@ export function AdminCatalogEditor() {
         >
           Catalog
         </button>
+        <button
+          className={`button ${activeTab === "analytics" ? "button-primary" : "button-secondary"}`}
+          onClick={() => setActiveTab("analytics")}
+        >
+          Analytics
+        </button>
       </div>
 
       {activeTab === "orders" ? (
         <AdminOrdersDashboard session={session} />
+      ) : activeTab === "analytics" ? (
+        <AdminAnalyticsDashboard session={session} />
       ) : (
       <div className="mt-8 grid gap-6 lg:grid-cols-[360px_1fr]">
         <aside className="field-card p-4">
@@ -1383,6 +1394,196 @@ export function AdminCatalogEditor() {
       </div>
       )}
     </main>
+  );
+}
+
+function AdminAnalyticsDashboard({ session }: { session: Session | null }) {
+  const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
+  const [days, setDays] = useState(30);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    void loadAnalytics();
+  }, [days]);
+
+  async function loadAnalytics() {
+    if (!session?.access_token) {
+      setMessage("Sign in again before loading analytics.");
+      return;
+    }
+
+    setLoading(true);
+    setMessage("Loading analytics...");
+    try {
+      const response = await fetch(`/api/admin/analytics?days=${days}`, {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`
+        }
+      });
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        setMessage(payload.error || "Analytics could not be loaded.");
+        return;
+      }
+
+      setSummary(payload.summary as AnalyticsSummary);
+      setMessage(`Loaded ${days} day analytics.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Analytics could not be loaded.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const totals = summary?.totals;
+
+  return (
+    <div className="mt-8 grid gap-6">
+      <section className="field-card p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-stone">Shop signals</p>
+            <h2 className="mt-2 text-2xl font-black text-pine">First-party analytics</h2>
+            <p className="mt-2 text-sm font-bold text-stone">
+              Tracks visits and shopping actions without storing customer emails or raw IP addresses.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {[7, 30, 90].map((option) => (
+              <button
+                key={option}
+                className={`rounded-full border px-4 py-2 text-sm font-black ${days === option ? "border-pine bg-pine text-white" : "border-pine/20 bg-sage text-pine"}`}
+                onClick={() => setDays(option)}
+              >
+                {option} days
+              </button>
+            ))}
+            <button className="button button-secondary" onClick={loadAnalytics} disabled={loading}>
+              {loading ? "Loading..." : "Refresh"}
+            </button>
+          </div>
+        </div>
+        {message ? <p className="mt-4 rounded-md bg-sage/60 p-3 text-sm font-bold text-stone">{message}</p> : null}
+      </section>
+
+      {summary && totals ? (
+        <>
+          <section className="grid gap-3 md:grid-cols-4">
+            <OrderMetric label="Visitors" value={totals.visitors} />
+            <OrderMetric label="Sessions" value={totals.sessions} />
+            <OrderMetric label="Page views" value={totals.pageViews} />
+            <OrderMetric label="Product views" value={totals.productViews} />
+            <OrderMetric label="Add to carts" value={totals.addToCarts} />
+            <OrderMetric label="Checkouts" value={totals.checkouts} />
+            <OrderMetric label="Orders" value={totals.orders} />
+            <OrderMetric label="Revenue" value={formatMoney(totals.revenueCents / 100)} />
+          </section>
+
+          <section className="grid gap-6 lg:grid-cols-[0.85fr_1.15fr]">
+            <div className="field-card p-5">
+              <h2 className="text-2xl font-black text-pine">Funnel</h2>
+              <div className="mt-5 grid gap-3">
+                {summary.funnel.map((step, index) => {
+                  const previous = summary.funnel[index - 1]?.count ?? step.count;
+                  const rate = index === 0 ? 100 : formatPercent(step.count, previous);
+                  return (
+                    <div key={step.label} className="rounded-md border border-pine/15 bg-sage/45 p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="font-black text-pine">{step.label}</p>
+                        <p className="font-black text-pine">{step.count}</p>
+                      </div>
+                      <p className="mt-1 text-xs font-black uppercase tracking-[0.14em] text-stone">
+                        {index === 0 ? "Entry point" : `${rate} from previous step`}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="mt-4 text-sm font-bold text-stone">
+                Checkout to order rate: {totals.checkoutToOrderRate}%
+              </p>
+            </div>
+
+            <div className="field-card p-5">
+              <h2 className="text-2xl font-black text-pine">Daily activity</h2>
+              <div className="mt-5 grid gap-2">
+                {summary.byDay.slice(-14).map((day) => (
+                  <div key={day.date} className="grid gap-2 rounded-md bg-sage/45 p-3 text-sm font-bold text-stone md:grid-cols-[110px_repeat(5,1fr)]">
+                    <span className="font-black text-pine">{day.date.slice(5)}</span>
+                    <span>{day.pageViews} views</span>
+                    <span>{day.productViews} products</span>
+                    <span>{day.addToCarts} carts</span>
+                    <span>{day.orders} orders</span>
+                    <span>{formatMoney(day.revenueCents / 100)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          <section className="grid gap-6 lg:grid-cols-2">
+            <div className="field-card p-5">
+              <h2 className="text-2xl font-black text-pine">Product performance</h2>
+              <div className="mt-5 grid gap-3">
+                {summary.products.length > 0 ? summary.products.map((product) => (
+                  <div key={product.productId || product.productSlug || product.productName} className="rounded-md border border-pine/15 bg-white/70 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="font-black text-pine">{product.productName}</p>
+                      <p className="font-black text-pine">{formatMoney(product.revenueCents / 100)}</p>
+                    </div>
+                    <p className="mt-2 text-sm font-bold text-stone">
+                      {product.views} views / {product.addToCarts} carts / {product.purchases} purchased
+                    </p>
+                    <p className="mt-1 text-xs font-black uppercase tracking-[0.14em] text-stone">
+                      {product.viewToCartRate}% view to cart / {product.viewToPurchaseRate}% view to purchase
+                    </p>
+                  </div>
+                )) : (
+                  <p className="rounded-md bg-sage/60 p-4 text-sm font-bold text-stone">No product analytics yet.</p>
+                )}
+              </div>
+            </div>
+
+            <div className="field-card p-5">
+              <h2 className="text-2xl font-black text-pine">Traffic sources</h2>
+              <div className="mt-5 grid gap-3">
+                {summary.sources.length > 0 ? summary.sources.map((source) => (
+                  <div key={source.source} className="rounded-md border border-pine/15 bg-white/70 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="font-black text-pine">{source.source}</p>
+                      <p className="font-black text-pine">{source.visits}</p>
+                    </div>
+                    <p className="mt-2 text-sm font-bold text-stone">
+                      {source.addToCarts} carts / {source.checkouts} checkouts / {source.purchases} purchases
+                    </p>
+                  </div>
+                )) : (
+                  <p className="rounded-md bg-sage/60 p-4 text-sm font-bold text-stone">No source data yet.</p>
+                )}
+              </div>
+            </div>
+          </section>
+
+          <section className="field-card p-5">
+            <h2 className="text-2xl font-black text-pine">Recent events</h2>
+            <div className="mt-5 grid gap-2">
+              {summary.recentEvents.length > 0 ? summary.recentEvents.map((event) => (
+                <div key={event.id} className="grid gap-2 rounded-md bg-sage/45 p-3 text-sm font-bold text-stone md:grid-cols-[160px_150px_1fr_170px]">
+                  <span>{formatDateTime(event.createdAt)}</span>
+                  <span className="font-black text-pine">{formatStatus(event.eventName)}</span>
+                  <span>{event.productName || event.path || "Site event"}</span>
+                  <span>{event.source}</span>
+                </div>
+              )) : (
+                <p className="rounded-md bg-sage/60 p-4 text-sm font-bold text-stone">No events recorded yet.</p>
+              )}
+            </div>
+          </section>
+        </>
+      ) : null}
+    </div>
   );
 }
 
@@ -2487,6 +2688,11 @@ function formatMoney(value: number, currency = "usd") {
     style: "currency",
     currency: currency.toUpperCase()
   }).format(Number(value) || 0);
+}
+
+function formatPercent(numerator: number, denominator: number) {
+  if (!denominator) return "0%";
+  return `${Math.round((numerator / denominator) * 1000) / 10}%`;
 }
 
 function formatDateTime(value: string) {

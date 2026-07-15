@@ -15,9 +15,12 @@ type SuccessPageProps = {
 
 type OrderItem = {
   id: string;
+  product_id: string | null;
+  variant_id: string | null;
   product_name: string;
   variant_name: string | null;
   quantity: number;
+  unit_price: number;
   line_total: number;
 };
 
@@ -77,9 +80,12 @@ async function getOrder(sessionId?: string) {
         currency,
         order_items (
           id,
+          product_id,
+          variant_id,
           product_name,
           variant_name,
           quantity,
+          unit_price,
           line_total
         )
       `)
@@ -117,10 +123,11 @@ export default async function CartSuccessPage({ searchParams }: SuccessPageProps
             tax: Number(order.tax) || 0,
             shipping: Number(order.shipping_cost) || 0,
             items: order.order_items.map((item) => ({
-              item_id: item.id,
+              item_id: item.product_id || item.id,
               item_name: item.product_name,
+              variant_id: item.variant_id ?? undefined,
               item_variant: item.variant_name ?? undefined,
-              price: Number(item.line_total) / Math.max(item.quantity, 1),
+              price: Number(item.unit_price) || Number(item.line_total) / Math.max(item.quantity, 1),
               quantity: item.quantity
             }))
           }}

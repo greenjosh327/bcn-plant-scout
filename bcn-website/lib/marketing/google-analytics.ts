@@ -3,7 +3,9 @@ import type { Product, ProductVariation } from "@/lib/types";
 export type GoogleAnalyticsItem = {
   item_id: string;
   item_name: string;
+  item_slug?: string;
   item_category?: string;
+  variant_id?: string;
   item_variant?: string;
   price?: number;
   quantity?: number;
@@ -19,14 +21,16 @@ declare global {
 }
 
 export function productToGoogleAnalyticsItem(
-  product: Pick<Product, "id" | "name" | "category" | "price">,
+  product: Pick<Product, "id" | "slug" | "name" | "category" | "price">,
   variation?: Pick<ProductVariation, "id" | "name" | "sku" | "price"> | null,
   quantity = 1
 ): GoogleAnalyticsItem {
   return {
-    item_id: variation?.id || variation?.sku || product.id,
+    item_id: product.id,
     item_name: product.name,
+    item_slug: product.slug,
     item_category: product.category,
+    variant_id: variation?.id,
     item_variant: variation?.name,
     price: Number(variation?.price ?? product.price) || 0,
     quantity
