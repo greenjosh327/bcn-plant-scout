@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { CartLink } from "@/components/cart-link";
 
 const navItems = [
@@ -14,8 +15,15 @@ export function SiteHeader() {
     <header className="border-b border-pine/10 bg-[#f8faf3]/92 backdrop-blur">
       <div className="container flex min-h-20 items-center justify-between gap-4">
         <Link href="/" className="flex items-center gap-3">
-          <span className="grid h-11 w-11 place-items-center rounded-md border border-pine/15 bg-white text-lg font-black text-pine">
-            BCN
+          <span className="relative h-12 w-12 shrink-0 overflow-hidden rounded-md border border-pine/15 bg-white">
+            <Image
+              src="/bcn-icon.png"
+              alt=""
+              fill
+              sizes="48px"
+              className="object-cover"
+              priority
+            />
           </span>
           <span>
             <span className="block text-lg font-black leading-tight text-pine">Base Camp North</span>

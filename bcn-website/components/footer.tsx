@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 
 export function Footer() {
@@ -5,7 +6,16 @@ export function Footer() {
     <footer className="mt-20 border-t border-pine/10 bg-pine text-white">
       <div className="container grid gap-8 py-12 md:grid-cols-[1.5fr_1fr_1fr]">
         <div>
-          <p className="text-xs font-black uppercase tracking-[0.22em] text-sage">Base Camp North</p>
+          <div className="relative h-24 w-64 overflow-hidden rounded-md bg-white sm:w-72">
+            <Image
+              src="/images/bcn-logo.png"
+              alt="Base Camp North"
+              fill
+              sizes="(min-width: 640px) 288px, 256px"
+              loading="eager"
+              className="object-contain p-2"
+            />
+          </div>
           <h2 className="mt-3 text-3xl font-black">Resilience into roots.</h2>
           <p className="mt-4 max-w-xl text-sm leading-6 text-sage">
             Native plants, seed collection, and GIS work for people rebuilding habitat one
