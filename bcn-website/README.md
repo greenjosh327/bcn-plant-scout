@@ -111,7 +111,7 @@ https://shop.basecampnorthpa.com/**
 - `/shop/product/[slug]` Product detail page
 - `/gis` GIS services placeholder
 - `/about` Base Camp North story
-- `/contact` Contact placeholder
+- `/contact` Purpose-based contact links for general, sales, orders, and Plant Scout support
 - `/articles` Article placeholders
 - `/cart` Cart and checkout scaffold
 - `/cart/success` Stripe checkout success page
