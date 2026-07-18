@@ -7,6 +7,12 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 const app = document.querySelector("#app");
 const PLANT_PHOTOS_BUCKET = "plant-photos";
+const DASHBOARD_URL = "https://scout.basecampnorthpa.com";
+const ADMIN_PATH = "/admin";
+const SUPPORT_URL = `${DASHBOARD_URL}/support`;
+const DELETE_ACCOUNT_URL = `${DASHBOARD_URL}/delete-account`;
+const PRIVACY_POLICY_URL = `${DASHBOARD_URL}/privacy-policy`;
+const ETSY_SHOP_URL = "https://basecampnorthpa.etsy.com";
 const APP_STORE_URL = "#";
 const BCN_FACEBOOK_URL = "https://www.facebook.com/profile.php?id=61581856435743";
 const IOS_TEST_DM_TEXT =
@@ -19,6 +25,8 @@ const PLAY_STORE_URL =
 
 let supabase = null;
 let session = null;
+let isAdmin = false;
+let dashboardMode = getInitialDashboardMode();
 let observations = [];
 let photosByObservation = new Map();
 let signedPhotoUrls = new Map();
@@ -28,6 +36,7 @@ let activeFilters = {
   interest: "all",
   privacy: "all",
   returnWindow: "all",
+  user: "all",
   advanced: false
 };
 let map = null;
@@ -51,6 +60,11 @@ async function boot() {
 
   supabase.auth.onAuthStateChange((_event, nextSession) => {
     session = nextSession;
+    if (!session) {
+      isAdmin = false;
+      dashboardMode = getInitialDashboardMode();
+      activeFilters.user = "all";
+    }
     render();
     if (session) {
       loadDashboard();
@@ -61,6 +75,10 @@ async function boot() {
   if (session) {
     await loadDashboard();
   }
+}
+
+function getInitialDashboardMode() {
+  return window.location.pathname === ADMIN_PATH ? "admin" : "member";
 }
 
 function renderMissingConfig() {
@@ -114,6 +132,35 @@ function renderSignIn() {
             <strong>Dirt</strong>
             <strong>Trees</strong>
           </div>
+        </div>
+      </section>
+
+      <section class="dashboard-link-panel panel">
+        <div class="dashboard-link-copy">
+          <p class="eyebrow">Web dashboard link</p>
+          <h2>Send this page to yourself before you head outside.</h2>
+          <p>BCN Plant Scout is two pieces: the phone app for field records, and this private web dashboard for reviewing synced photos, map points, return dates, and collection notes on a bigger screen. Send the link to your email, messages, Facebook, or wherever you keep links you need later.</p>
+          <p class="dashboard-link-url">${escapeHtml(DASHBOARD_URL)}</p>
+        </div>
+        <div class="dashboard-link-actions">
+          <button id="share-dashboard-link" class="share-action primary-share" type="button">Share Link</button>
+          <button id="email-dashboard-link" class="share-action" type="button">Email Link</button>
+          <button id="copy-dashboard-link" class="share-action secondary-share" type="button">Copy Link</button>
+          <p id="share-link-message" class="message share-link-message"></p>
+        </div>
+      </section>
+
+      <section class="public-info-panel panel">
+        <div>
+          <p class="eyebrow">Support and account</p>
+          <h2>Need help with BCN Plant Scout?</h2>
+          <p>Use these links for app support, privacy details, account deletion help, and the Base Camp North Etsy shop.</p>
+        </div>
+        <div class="public-link-actions">
+          <a class="store-button" href="${SUPPORT_URL}">Support</a>
+          <a class="store-button secondary-store" href="${DELETE_ACCOUNT_URL}">Delete Account</a>
+          <a class="store-button secondary-store" href="${PRIVACY_POLICY_URL}">Privacy Policy</a>
+          <a class="store-button secondary-store" href="${ETSY_SHOP_URL}" target="_blank" rel="noreferrer">BCN Etsy</a>
         </div>
       </section>
 
@@ -234,6 +281,9 @@ function renderSignIn() {
 
   document.querySelector("#email-form").addEventListener("submit", signInWithEmail);
   document.querySelector("#google-sign-in").addEventListener("click", signInWithGoogle);
+  document.querySelector("#share-dashboard-link").addEventListener("click", shareDashboardLink);
+  document.querySelector("#email-dashboard-link").addEventListener("click", emailDashboardLink);
+  document.querySelector("#copy-dashboard-link").addEventListener("click", copyDashboardLink);
 }
 
 function renderReview(text, author) {
@@ -274,7 +324,7 @@ async function signInWithGoogle() {
   const { error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
-      redirectTo: window.location.origin
+      redirectTo: getAuthRedirectUrl()
     }
   });
 
@@ -283,20 +333,99 @@ async function signInWithGoogle() {
   }
 }
 
+function getAuthRedirectUrl() {
+  if (window.location.pathname === ADMIN_PATH) {
+    return new URL(ADMIN_PATH, window.location.origin).toString();
+  }
+
+  return window.location.origin;
+}
+
+async function shareDashboardLink() {
+  const shareData = {
+    title: "BCN Plant Scout Dashboard",
+    text: "Open the BCN Plant Scout web dashboard to review synced plant photos, map points, return dates, and collection notes.",
+    url: DASHBOARD_URL
+  };
+
+  if (navigator.share) {
+    try {
+      await navigator.share(shareData);
+      setMessage("share-link-message", "Dashboard link ready to send.");
+      return;
+    } catch (error) {
+      if (error?.name === "AbortError") {
+        setMessage("share-link-message", "Share canceled.");
+        return;
+      }
+    }
+  }
+
+  emailDashboardLink();
+}
+
+function emailDashboardLink() {
+  const subject = encodeURIComponent("BCN Plant Scout dashboard link");
+  const body = encodeURIComponent(
+    `Here is the BCN Plant Scout web dashboard:\n\n${DASHBOARD_URL}\n\nUse the same account as the mobile app to review synced plant records, photos, map points, return dates, and collection notes.`
+  );
+  window.location.href = `mailto:?subject=${subject}&body=${body}`;
+  setMessage("share-link-message", "Opening an email draft with the dashboard link.");
+}
+
+async function copyDashboardLink() {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(DASHBOARD_URL);
+      setMessage("share-link-message", "Dashboard link copied.");
+      return;
+    }
+
+    throw new Error("Clipboard is unavailable.");
+  } catch {
+    window.prompt("Copy the BCN Plant Scout dashboard link:", DASHBOARD_URL);
+    setMessage("share-link-message", "Copy the dashboard link from the prompt.");
+  }
+}
+
 function renderDashboard() {
   resetMap();
+  const adminMode = isAdminMode();
+  const dashboardRecords = getDashboardRecords();
+  const signedInLabel = escapeHtml(session.user.email ?? "field user");
   app.innerHTML = `
     <main class="page">
       <header class="topbar">
         <div>
           <p class="eyebrow">Base Camp North</p>
           <h1>BCN Plant Scout Dashboard</h1>
-          <p class="muted">Signed in as ${escapeHtml(session.user.email ?? "field user")}</p>
+          <p class="muted">${
+            isAdmin
+              ? `${adminMode ? "Admin view" : "My records"} for ${signedInLabel}`
+              : `Signed in as ${signedInLabel}`
+          }</p>
         </div>
-        <button id="sign-out" class="secondary">Sign Out</button>
+        <div class="topbar-actions">
+          ${
+            isAdmin
+              ? `
+                <div class="mode-switch" aria-label="Dashboard mode">
+                  <button id="mode-member" class="mode-button ${
+                    !adminMode ? "active" : ""
+                  }" type="button">My Records</button>
+                  <button id="mode-admin" class="mode-button ${
+                    adminMode ? "active" : ""
+                  }" type="button">Admin</button>
+                </div>
+              `
+              : ""
+          }
+          <button id="sign-out" class="secondary">Sign Out</button>
+        </div>
       </header>
 
       <section class="stats-grid" id="stats"></section>
+      ${adminMode ? `<section class="admin-console panel" id="admin-console"></section>` : ""}
 
       <section class="toolbar panel">
         <label>
@@ -305,20 +434,30 @@ function renderDashboard() {
         </label>
         <label>
           Status
-          <select id="status-filter">${renderOptions(["all", ...uniqueValues(observations.map((item) => item.collection_status))], activeFilters.status)}</select>
+          <select id="status-filter">${renderOptions(["all", ...uniqueValues(dashboardRecords.map((item) => item.collection_status))], activeFilters.status)}</select>
         </label>
         <label>
           Interest
-          <select id="interest-filter">${renderOptions(["all", ...uniqueValues(observations.flatMap((item) => item.collection_interests ?? []))], activeFilters.interest)}</select>
+          <select id="interest-filter">${renderOptions(["all", ...uniqueValues(dashboardRecords.flatMap((item) => item.collection_interests ?? []))], activeFilters.interest)}</select>
         </label>
         <label>
           Privacy
-          <select id="privacy-filter">${renderOptions(["all", ...uniqueValues(observations.map((item) => item.privacy_level))], activeFilters.privacy)}</select>
+          <select id="privacy-filter">${renderOptions(["all", ...uniqueValues(dashboardRecords.map((item) => item.privacy_level))], activeFilters.privacy)}</select>
         </label>
         <label>
           Return
           <select id="return-filter">${renderOptions(["all", "ready now", "overdue", "next 7 days", "next 30 days", "no date"], activeFilters.returnWindow)}</select>
         </label>
+        ${
+          adminMode
+            ? `
+              <label>
+                Member
+                <select id="user-filter">${renderUserOptions()}</select>
+              </label>
+            `
+            : ""
+        }
         <label class="toggle-row">
           <input id="advanced-toggle" type="checkbox" ${activeFilters.advanced ? "checked" : ""} />
           <span>Show Advanced</span>
@@ -361,6 +500,14 @@ function renderDashboard() {
 
 function hydrateDashboard() {
   document.querySelector("#sign-out").addEventListener("click", () => supabase.auth.signOut());
+  const memberModeButton = document.querySelector("#mode-member");
+  const adminModeButton = document.querySelector("#mode-admin");
+  if (memberModeButton) {
+    memberModeButton.addEventListener("click", () => setDashboardMode("member"));
+  }
+  if (adminModeButton) {
+    adminModeButton.addEventListener("click", () => setDashboardMode("admin"));
+  }
   document.querySelector("#refresh").addEventListener("click", loadDashboard);
   document.querySelector("#search").addEventListener("input", (event) => {
     activeFilters.search = event.target.value;
@@ -382,6 +529,13 @@ function hydrateDashboard() {
     activeFilters.returnWindow = event.target.value;
     redrawDashboardData();
   });
+  const userFilter = document.querySelector("#user-filter");
+  if (userFilter) {
+    userFilter.addEventListener("change", (event) => {
+      activeFilters.user = event.target.value;
+      redrawDashboardData();
+    });
+  }
   document.querySelector("#advanced-toggle").addEventListener("change", (event) => {
     activeFilters.advanced = event.target.checked;
     renderDashboard();
@@ -390,8 +544,23 @@ function hydrateDashboard() {
   });
 }
 
+function setDashboardMode(nextMode) {
+  if (!isAdmin || dashboardMode === nextMode) return;
+
+  dashboardMode = nextMode;
+  activeFilters.user = "all";
+  selectedRecordId = null;
+  renderDashboard();
+  hydrateDashboard();
+  redrawDashboardData();
+}
+
 async function loadDashboard() {
   setRecordsLoading();
+  await loadAdminStatus();
+  if (!isAdmin) {
+    dashboardMode = "member";
+  }
 
   const { data: observationRows, error: observationError } = await supabase
     .from("observations")
@@ -415,6 +584,11 @@ async function loadDashboard() {
   }
 
   observations = observationRows ?? [];
+  const adminMode = isAdminMode();
+  const dashboardRecords = getDashboardRecords();
+  if (!adminMode || !dashboardRecords.some((record) => getRecordUserId(record) === activeFilters.user)) {
+    activeFilters.user = "all";
+  }
   const visibleObservationIds = new Set(observations.map((record) => record.id));
   const visiblePhotoRows = (photoRows ?? []).filter((photo) =>
     visibleObservationIds.has(photo.observation_id)
@@ -424,6 +598,24 @@ async function loadDashboard() {
   renderDashboard();
   hydrateDashboard();
   redrawDashboardData();
+}
+
+async function loadAdminStatus() {
+  isAdmin = false;
+  if (!session?.user?.id) return;
+
+  const { data, error } = await supabase
+    .from("bcn_admins")
+    .select("user_id")
+    .eq("user_id", session.user.id)
+    .limit(1);
+
+  if (error) {
+    console.warn("Admin status check failed:", error.message);
+    return;
+  }
+
+  isAdmin = (data ?? []).length > 0;
 }
 
 function setRecordsLoading() {
@@ -455,6 +647,7 @@ async function createSignedPhotoUrlMap(photoRows) {
 function redrawDashboardData() {
   const filtered = getFilteredObservations();
   renderStats(filtered);
+  renderAdminConsole(filtered);
   renderReturnSoon(filtered);
   renderRecords(filtered);
   renderMap(filtered);
@@ -462,9 +655,11 @@ function redrawDashboardData() {
 }
 
 function getFilteredObservations() {
+  const adminMode = isAdminMode();
+  const dashboardRecords = getDashboardRecords();
   const search = activeFilters.search.trim().toLowerCase();
 
-  return observations.filter((item) => {
+  return dashboardRecords.filter((item) => {
     const interests = item.collection_interests ?? [];
     const haystack = [
       item.common_name,
@@ -473,6 +668,7 @@ function getFilteredObservations() {
       item.gather_notes,
       item.collection_status,
       item.privacy_level,
+      adminMode ? getRecordUserId(item) : "",
       ...(item.other_names ?? []),
       ...(item.tags ?? []),
       ...interests
@@ -486,15 +682,18 @@ function getFilteredObservations() {
       (activeFilters.status === "all" || item.collection_status === activeFilters.status) &&
       (activeFilters.interest === "all" || interests.includes(activeFilters.interest)) &&
       (activeFilters.privacy === "all" || item.privacy_level === activeFilters.privacy) &&
+      (!adminMode || activeFilters.user === "all" || getRecordUserId(item) === activeFilters.user) &&
       matchesReturnFilter(item, activeFilters.returnWindow)
     );
   });
 }
 
 function renderStats(filtered) {
+  const adminMode = isAdminMode();
   const stats = [
-    ["Records", filtered.length],
+    [adminMode ? "Matching" : "Records", filtered.length],
     ["Photos", filtered.reduce((sum, item) => sum + (photosByObservation.get(item.id)?.length ?? 0), 0)],
+    ...(adminMode ? [["Members", uniqueValues(filtered.map(getRecordUserId)).length]] : []),
     ["Ready now", filtered.filter((item) => item.collection_status === "ready now").length],
     ["Return later", filtered.filter((item) => item.collection_status === "return later").length],
     ["Private", filtered.filter((item) => item.privacy_level === "private").length],
@@ -515,11 +714,113 @@ function renderStats(filtered) {
   renderAdminSnapshot(filtered);
 }
 
+function renderAdminConsole(filtered) {
+  const container = document.querySelector("#admin-console");
+  if (!container || !isAdminMode()) return;
+
+  const memberSummaries = getMemberSummaries(observations);
+  const topPlants = getTopCounts(
+    observations.map((record) => record.common_name || record.scientific_name || "Unknown plant"),
+    8
+  );
+  const recentRecords = [...observations]
+    .sort((a, b) => getRecordTime(b) - getRecordTime(a))
+    .slice(0, 8);
+  const totalPhotos = countPhotosForRecords(observations);
+  const returnNext30 = observations.filter((record) => matchesReturnFilter(record, "next 30 days")).length;
+  const failedSyncs = observations.filter((record) => record.sync_status === "sync failed").length;
+  const recordsWithoutPhotos = observations.filter((record) => (photosByObservation.get(record.id)?.length ?? 0) === 0).length;
+  const recordsWithoutGps = observations.filter((record) => !hasCoordinates(record)).length;
+  const addedLast7 = observations.filter((record) => {
+    const timestamp = getRecordTime(record, "created_at");
+    return timestamp > 0 && Date.now() - timestamp <= 7 * 86400000;
+  }).length;
+
+  container.innerHTML = `
+    <div class="section-heading tight-heading">
+      <div>
+        <p class="eyebrow">Admin Console</p>
+        <h2>System Overview</h2>
+      </div>
+      <p class="muted">Visible only to accounts listed in <code>bcn_admins</code>.</p>
+    </div>
+
+    <div class="admin-metrics">
+      ${[
+        ["Total plants", observations.length],
+        ["Active members", memberSummaries.length],
+        ["Total photos", totalPhotos],
+        ["Added last 7 days", addedLast7],
+        ["Return next 30", returnNext30],
+        ["Sync issues", failedSyncs],
+        ["No photos", recordsWithoutPhotos],
+        ["No GPS", recordsWithoutGps]
+      ]
+        .map(
+          ([label, value]) => `
+            <div class="admin-metric">
+              <strong>${value}</strong>
+              <span>${label}</span>
+            </div>
+          `
+        )
+        .join("")}
+    </div>
+
+    <div class="admin-layout">
+      <section class="admin-block">
+        <div class="admin-block-heading">
+          <h3>Top Plants</h3>
+          <span>${topPlants.length} groups</span>
+        </div>
+        ${renderAdminList(topPlants, "No plant records yet.", ({ label, count }) => `
+          <li>
+            <span>${escapeHtml(label)}</span>
+            <strong>${count}</strong>
+          </li>
+        `)}
+      </section>
+
+      <section class="admin-block">
+        <div class="admin-block-heading">
+          <h3>Member Activity</h3>
+          <span>${memberSummaries.length} members</span>
+        </div>
+        ${renderAdminList(memberSummaries.slice(0, 8), "No member records yet.", (member) => `
+          <li>
+            <span>
+              <strong>${escapeHtml(formatMemberLabel(member.userId))}</strong>
+              <small>${member.count} plants, ${member.photos} photos, latest ${escapeHtml(formatDateFromTime(member.latestAt))}</small>
+            </span>
+            <em>${member.readyNow} ready</em>
+          </li>
+        `)}
+      </section>
+
+      <section class="admin-block">
+        <div class="admin-block-heading">
+          <h3>Recent Records</h3>
+          <span>${filtered.length} matching filters</span>
+        </div>
+        ${renderAdminList(recentRecords, "No recent records yet.", (record) => `
+          <li>
+            <span>
+              <strong>${escapeHtml(record.common_name || "Unknown plant")}</strong>
+              <small>${escapeHtml(formatMemberLabel(getRecordUserId(record)))} | ${escapeHtml(formatDate(record.observed_at))}</small>
+            </span>
+            <em>${escapeHtml(record.collection_status ?? "unknown")}</em>
+          </li>
+        `)}
+      </section>
+    </div>
+  `;
+}
+
 function renderAdminSnapshot(filtered) {
   const container = document.querySelector("#admin-snapshot");
   if (!container) return;
 
-  const userCount = uniqueValues(filtered.map((item) => item.user_id ?? item.owner_id)).length;
+  const userCount = uniqueValues(filtered.map(getRecordUserId)).length;
   const photoCount = filtered.reduce(
     (sum, item) => sum + (photosByObservation.get(item.id)?.length ?? 0),
     0
@@ -537,7 +838,7 @@ function renderAdminSnapshot(filtered) {
         <p class="eyebrow">Owner/Admin Snapshot</p>
         <h2>Advanced Health Check</h2>
       </div>
-      <p class="muted">Based on records this signed-in account can access.</p>
+      <p class="muted">${isAdminMode() ? "Based on all synced records visible to admins." : "Based on records this signed-in account can access."}</p>
     </div>
     <div class="stats-grid compact-stats">
       ${[
@@ -563,7 +864,8 @@ function renderAdminSnapshot(filtered) {
 }
 
 function renderRecords(filtered) {
-  document.querySelector("#record-count").textContent = `${filtered.length} of ${observations.length} synced records`;
+  const dashboardRecords = getDashboardRecords();
+  document.querySelector("#record-count").textContent = `${filtered.length} of ${dashboardRecords.length} synced records`;
 
   const records = document.querySelector("#records");
   if (filtered.length === 0) {
@@ -595,6 +897,7 @@ function renderRecordCard(record) {
   const primaryPhoto = photos.find((photo) => photo.photo_role === "primary") ?? photos[0];
   const photoUrl = primaryPhoto ? signedPhotoUrls.get(primaryPhoto.id) : null;
   const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${record.latitude},${record.longitude}`)}`;
+  const canDelete = canManageRecord(record);
 
   return `
     <article class="plant-card">
@@ -616,6 +919,7 @@ function renderRecordCard(record) {
           ${
             activeFilters.advanced
               ? `
+                ${isAdmin ? renderMeta("Member", formatMemberLabel(getRecordUserId(record))) : ""}
                 ${renderMeta("Privacy", record.privacy_level ?? "private")}
                 ${renderMeta("Accuracy", record.accuracy_meters ? `${Number(record.accuracy_meters).toFixed(1)} m` : "n/a")}
                 ${renderMeta("Sync", record.sync_status ?? "unknown")}
@@ -630,7 +934,8 @@ function renderRecordCard(record) {
           <a href="${mapsUrl}" target="_blank" rel="noreferrer">Open Map</a>
           ${photoUrl ? `<a href="${photoUrl}" target="_blank" rel="noreferrer">Open Photo</a>` : ""}
           <button class="link-button" type="button" data-card-id="${escapeHtml(record.id)}">Share Plant Card</button>
-          <button class="link-button danger-link" type="button" data-delete-id="${escapeHtml(record.id)}">Delete</button>
+          ${canDelete ? `<button class="link-button danger-link" type="button" data-delete-id="${escapeHtml(record.id)}">Delete</button>` : ""}
+          ${isAdmin && !canDelete ? `<span class="read-only-note">Read-only member record</span>` : ""}
         </div>
       </div>
     </article>
@@ -721,6 +1026,7 @@ function renderDetailModal() {
 
   const photos = photosByObservation.get(record.id) ?? [];
   const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${record.latitude},${record.longitude}`)}`;
+  const canDelete = canManageRecord(record);
   const photoTiles = photos
     .map((photo) => {
       const photoUrl = signedPhotoUrls.get(photo.id);
@@ -743,6 +1049,7 @@ function renderDetailModal() {
           ${renderMeta("Status", record.collection_status ?? "unknown")}
           ${renderMeta("Interest", (record.collection_interests ?? []).join(", ") || "none")}
           ${renderMeta("Return Date", record.return_date || "not set")}
+          ${isAdmin ? renderMeta("Member", formatMemberLabel(getRecordUserId(record))) : ""}
           ${renderMeta("Accuracy", record.accuracy_meters ? `${Number(record.accuracy_meters).toFixed(1)} m` : "n/a")}
           ${renderMeta("Privacy", record.privacy_level ?? "private")}
         </div>
@@ -752,7 +1059,8 @@ function renderDetailModal() {
         <div class="actions">
           <a href="${mapsUrl}" target="_blank" rel="noreferrer">Open in Google Maps</a>
           <button class="link-button" type="button" id="share-detail-card">Share Plant Card</button>
-          <button class="link-button danger-link" type="button" id="delete-detail">Delete Plant</button>
+          ${canDelete ? `<button class="link-button danger-link" type="button" id="delete-detail">Delete Plant</button>` : ""}
+          ${isAdmin && !canDelete ? `<span class="read-only-note">Read-only member record</span>` : ""}
         </div>
       </article>
     </div>
@@ -768,9 +1076,12 @@ function renderDetailModal() {
       renderDetailModal();
     }
   });
-  document.querySelector("#delete-detail").addEventListener("click", () => {
-    deleteCloudObservation(record.id);
-  });
+  const deleteButton = document.querySelector("#delete-detail");
+  if (deleteButton) {
+    deleteButton.addEventListener("click", () => {
+      deleteCloudObservation(record.id);
+    });
+  }
   document.querySelector("#share-detail-card").addEventListener("click", () => {
     sharePlantCard(record.id);
   });
@@ -1054,6 +1365,10 @@ async function deleteCloudObservation(recordId) {
 
   const record = observations.find((item) => item.id === recordId);
   if (!record) return;
+  if (!canManageRecord(record)) {
+    window.alert("Admin view is read-only for other members' records. This plant was not deleted.");
+    return;
+  }
 
   const confirmed = window.confirm(
     `Delete ${record.common_name} from the cloud dashboard? This hides it from synced records and removes it from phones the next time they download cloud records.`
@@ -1103,8 +1418,8 @@ function renderMap(filtered) {
   map.invalidateSize();
   markerLayer.clearLayers();
   const points = filtered
-    .filter((record) => Number.isFinite(record.latitude) && Number.isFinite(record.longitude))
-    .map((record) => [record.latitude, record.longitude, record]);
+    .filter(hasCoordinates)
+    .map((record) => [Number(record.latitude), Number(record.longitude), record]);
 
   points.forEach(([lat, lon, record]) => {
     const color = statusColor(record.collection_status);
@@ -1139,6 +1454,125 @@ function resetMap() {
   }
   map = null;
   markerLayer = null;
+}
+
+function renderUserOptions() {
+  const userIds = uniqueValues(observations.map(getRecordUserId));
+  return [
+    `<option value="all" ${activeFilters.user === "all" ? "selected" : ""}>all members</option>`,
+    ...userIds.map(
+      (userId) =>
+        `<option value="${escapeHtml(userId)}" ${userId === activeFilters.user ? "selected" : ""}>${escapeHtml(formatMemberLabel(userId))}</option>`
+    )
+  ].join("");
+}
+
+function renderAdminList(items, emptyText, renderItem) {
+  if (items.length === 0) {
+    return `<p class="muted">${escapeHtml(emptyText)}</p>`;
+  }
+
+  return `<ul class="admin-list">${items.map(renderItem).join("")}</ul>`;
+}
+
+function getMemberSummaries(records) {
+  const summaries = new Map();
+
+  records.forEach((record) => {
+    const userId = getRecordUserId(record);
+    const current = summaries.get(userId) ?? {
+      userId,
+      count: 0,
+      photos: 0,
+      readyNow: 0,
+      failedSyncs: 0,
+      latestAt: 0
+    };
+
+    current.count += 1;
+    current.photos += photosByObservation.get(record.id)?.length ?? 0;
+    current.readyNow += record.collection_status === "ready now" ? 1 : 0;
+    current.failedSyncs += record.sync_status === "sync failed" ? 1 : 0;
+    current.latestAt = Math.max(current.latestAt, getRecordTime(record));
+    summaries.set(userId, current);
+  });
+
+  return [...summaries.values()].sort((a, b) => {
+    if (b.count !== a.count) return b.count - a.count;
+    return b.latestAt - a.latestAt;
+  });
+}
+
+function getTopCounts(values, limit) {
+  const counts = new Map();
+  values.filter(Boolean).forEach((value) => {
+    const label = String(value).trim() || "Unknown plant";
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  });
+
+  return [...counts.entries()]
+    .map(([label, count]) => ({ label, count }))
+    .sort((a, b) => {
+      if (b.count !== a.count) return b.count - a.count;
+      return a.label.localeCompare(b.label);
+    })
+    .slice(0, limit);
+}
+
+function countPhotosForRecords(records) {
+  return records.reduce((sum, record) => sum + (photosByObservation.get(record.id)?.length ?? 0), 0);
+}
+
+function isAdminMode() {
+  return Boolean(isAdmin && dashboardMode === "admin");
+}
+
+function getDashboardRecords() {
+  if (isAdminMode()) {
+    return observations;
+  }
+
+  return observations.filter((record) => canManageRecord(record));
+}
+
+function getRecordUserId(record) {
+  return record.user_id ?? record.owner_id ?? "unknown";
+}
+
+function formatMemberLabel(userId) {
+  if (!userId || userId === "unknown") return "unknown member";
+  const text = String(userId);
+  return text.length > 12 ? `${text.slice(0, 8)}...${text.slice(-4)}` : text;
+}
+
+function canManageRecord(record) {
+  return Boolean(session?.user?.id && getRecordUserId(record) === session.user.id);
+}
+
+function hasCoordinates(record) {
+  return Number.isFinite(Number(record.latitude)) && Number.isFinite(Number(record.longitude));
+}
+
+function getRecordTime(record, preferredField) {
+  const fields = preferredField
+    ? [preferredField, "observed_at", "created_at", "updated_at"]
+    : ["observed_at", "created_at", "updated_at"];
+
+  for (const field of fields) {
+    const value = record[field];
+    if (!value) continue;
+    const timestamp = new Date(value).getTime();
+    if (Number.isFinite(timestamp)) {
+      return timestamp;
+    }
+  }
+
+  return 0;
+}
+
+function formatDateFromTime(timestamp) {
+  if (!timestamp) return "n/a";
+  return formatDate(new Date(timestamp).toISOString());
 }
 
 function renderMeta(label, value) {
