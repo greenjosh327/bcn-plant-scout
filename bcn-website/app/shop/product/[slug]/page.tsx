@@ -122,15 +122,17 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
         </section>
       ) : null}
 
-      <section className="mt-16">
-        <div className="mb-6 flex items-end justify-between gap-4">
-          <h2 className="text-3xl font-black text-pine">Related products</h2>
-          <Link href="/shop" className="font-black text-rust">Back to shop</Link>
-        </div>
-        <div className="grid gap-6 md:grid-cols-3">
-          {related.map((item) => <ProductCard key={item.id} product={item} />)}
-        </div>
-      </section>
+      {related.length > 0 ? (
+        <section className="mt-16">
+          <div className="mb-6 flex items-end justify-between gap-4">
+            <h2 className="text-3xl font-black text-pine">Related products</h2>
+            <Link href="/shop" className="font-black text-rust">Back to shop</Link>
+          </div>
+          <div className="grid gap-6 md:grid-cols-3">
+            {related.map((item) => <ProductCard key={item.id} product={item} />)}
+          </div>
+        </section>
+      ) : null}
     </main>
   );
 }

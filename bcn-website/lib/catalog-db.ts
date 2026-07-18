@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import { products as fallbackProducts, getRelatedProducts as getFallbackRelatedProducts } from "./products";
+import { products as fallbackProducts } from "./products";
 import { isShippingClass } from "./shipping/types";
 import type { Product, ProductCategory, ProductVariation } from "./types";
 
@@ -131,12 +131,10 @@ export async function getCatalogProductBySlug(slug: string) {
 
 export async function getRelatedCatalogProducts(product: Product) {
   const products = await getCatalogProducts();
-  const related = products
+  return products
     .filter((candidate) => candidate.active && candidate.slug !== product.slug)
     .filter((candidate) => candidate.category === product.category || candidate.tags.some((tag) => product.tags.includes(tag)))
     .slice(0, 3);
-
-  return related.length > 0 ? related : getFallbackRelatedProducts(product);
 }
 
 function mapDbProducts(
