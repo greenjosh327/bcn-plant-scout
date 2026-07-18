@@ -188,6 +188,7 @@ type ShopOrder = {
 type AdminState = "checking" | "signed-out" | "not-admin" | "ready" | "missing-config";
 type AdminTab = "orders" | "catalog" | "analytics";
 type CatalogFilter = "all" | "needsPhotos" | "lowStock" | "soldOut" | "hidden";
+type CatalogSort = "name" | "active";
 const PRODUCT_IMAGE_BUCKET = "product-images";
 const LOW_STOCK_THRESHOLD = 5;
 const CUSTOM_GROWING_VALUE = "__custom_growing_value__";
@@ -417,6 +418,7 @@ export function AdminCatalogEditor() {
   const [uploadingImage, setUploadingImage] = useState(false);
   const [activeTab, setActiveTab] = useState<AdminTab>("orders");
   const [catalogFilter, setCatalogFilter] = useState<CatalogFilter>("all");
+  const [catalogSort, setCatalogSort] = useState<CatalogSort>("name");
 
   const selected = products.find((product) => product.id === selectedId) ?? null;
   const selectedVariants = variants.filter((variant) => variant.product_id === selectedId);
@@ -514,7 +516,7 @@ export function AdminCatalogEditor() {
 
   const filteredProducts = useMemo(() => {
     const term = search.trim().toLowerCase();
-    return products.filter((product) => {
+    const nextProducts = products.filter((product) => {
       const matchesSearch =
         !term ||
         [product.name, product.scientific_name, product.common_name, product.category, product.slug]
@@ -531,7 +533,13 @@ export function AdminCatalogEditor() {
       if (catalogFilter === "hidden") return !product.active;
       return true;
     });
-  }, [products, search, catalogFilter, productImageCounts, productVariantStats]);
+
+    return nextProducts.sort((a, b) => {
+      const nameSort = a.name.localeCompare(b.name);
+      if (catalogSort === "active") return Number(b.active) - Number(a.active) || nameSort;
+      return nameSort;
+    });
+  }, [products, search, catalogFilter, catalogSort, productImageCounts, productVariantStats]);
 
   useEffect(() => {
     if (!hasSupabaseBrowserConfig() || !supabase) {
@@ -1187,6 +1195,12 @@ export function AdminCatalogEditor() {
           <input className="admin-input" placeholder="Search catalog..." value={search} onChange={(event) => setSearch(event.target.value)} />
           <button className="button button-secondary mt-3 w-full" onClick={loadCatalog}>Refresh</button>
           <button className="button button-primary mt-3 w-full" onClick={createProduct}>Add Product</button>
+          <button
+            className={`button mt-3 w-full ${catalogSort === "active" ? "button-primary" : "button-secondary"}`}
+            onClick={() => setCatalogSort((current) => (current === "active" ? "name" : "active"))}
+          >
+            {catalogSort === "active" ? "Sorted Active First" : "Sort Active First"}
+          </button>
 
           <div className="mt-4 grid grid-cols-2 gap-2">
             <CatalogMetric label="products" value={catalogStats.totalProducts} />
