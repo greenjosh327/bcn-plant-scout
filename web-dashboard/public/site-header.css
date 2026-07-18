@@ -1,0 +1,99 @@
+.site-header {
+  background: rgba(248, 250, 243, 0.92);
+  border-bottom: 1px solid rgba(30, 58, 46, 0.1);
+  backdrop-filter: blur(10px);
+}
+
+.site-header-inner {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  margin: 0 auto;
+  min-height: 80px;
+  width: min(1180px, calc(100% - 32px));
+}
+
+.site-brand {
+  align-items: center;
+  color: #1e3a2e;
+  display: flex;
+  gap: 12px;
+  text-decoration: none;
+}
+
+.site-brand-icon {
+  background: #ffffff;
+  border: 1px solid rgba(30, 58, 46, 0.15);
+  border-radius: 6px;
+  display: block;
+  flex: 0 0 48px;
+  height: 48px;
+  overflow: hidden;
+  width: 48px;
+}
+
+.site-brand-icon img {
+  display: block;
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}
+
+.site-brand-title {
+  display: block;
+  font-size: 1.125rem;
+  font-weight: 950;
+  line-height: 1.1;
+}
+
+.site-brand-kicker {
+  color: #5c725e;
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 850;
+  letter-spacing: 0.18em;
+  margin-top: 2px;
+  text-transform: uppercase;
+}
+
+.site-nav {
+  align-items: center;
+  display: flex;
+  gap: 24px;
+}
+
+.site-nav a {
+  color: #1e3a2e;
+  font-size: 0.875rem;
+  font-weight: 850;
+  text-decoration: none;
+}
+
+.site-nav a:hover,
+.site-nav a[aria-current="page"] {
+  color: #bb6a2e;
+}
+
+.site-cart-link {
+  align-items: center;
+  background: #e7ecde;
+  border-radius: 6px;
+  color: #1e3a2e;
+  display: inline-flex;
+  font-weight: 850;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 18px;
+  text-decoration: none;
+}
+
+@media (max-width: 900px) {
+  .site-header-inner {
+    width: min(100% - 24px, 1180px);
+  }
+
+  .site-nav {
+    display: none;
+  }
+}
