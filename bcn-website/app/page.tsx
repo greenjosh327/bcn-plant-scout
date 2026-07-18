@@ -13,6 +13,13 @@ const reasons = [
   ["Small family business", "Grown with field notes, muddy boots, and direct accountability."]
 ];
 
+const jumpLinks = [
+  ["Shop Native Plants", "/shop", "Plants, seeds, cuttings, and seasonal nursery inventory."],
+  ["GIS Services", "/gis", "Maps, field workflows, and planning support for restoration work."],
+  ["Plant Scout App", "https://scout.basecampnorthpa.com", "The field companion for saving plant finds and return visits."],
+  ["Field Notes", "/articles", "Propagation notes, species writeups, and practical restoration lessons."]
+];
+
 export default async function HomePage() {
   const featured = await getFeaturedCatalogProducts();
 
@@ -51,6 +58,20 @@ export default async function HomePage() {
               />
             </div>
           </div>
+        </div>
+      </section>
+
+      <section className="container py-12">
+        <SectionHeading eyebrow="Start here" title="Base Camp North jump-off points">
+          One front door for the nursery, field mapping work, Plant Scout app, and field notes.
+        </SectionHeading>
+        <div className="grid gap-4 md:grid-cols-4">
+          {jumpLinks.map(([title, href, text]) => (
+            <Link key={title} href={href} className="field-card block p-6 transition hover:border-rust/50 hover:bg-white">
+              <h2 className="text-xl font-black text-pine">{title}</h2>
+              <p className="mt-3 text-sm leading-6 text-ink/70">{text}</p>
+            </Link>
+          ))}
         </div>
       </section>
 

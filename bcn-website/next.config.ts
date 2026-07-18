@@ -12,6 +12,16 @@ const supabaseImageHost = (() => {
 })();
 
 const nextConfig: NextConfig = {
+  async redirects() {
+    return [
+      {
+        source: "/:path*",
+        has: [{ type: "host", value: "www.basecampnorthpa.com" }],
+        destination: "https://basecampnorthpa.com/:path*",
+        permanent: true
+      }
+    ];
+  },
   outputFileTracingRoot: path.join(__dirname),
   images: {
     remotePatterns: [

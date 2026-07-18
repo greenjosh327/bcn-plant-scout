@@ -5,6 +5,7 @@ import { CartLink } from "@/components/cart-link";
 const navItems = [
   ["Shop", "/shop"],
   ["GIS", "/gis"],
+  ["Scout App", "https://scout.basecampnorthpa.com"],
   ["Articles", "/articles"],
   ["About", "/about"],
   ["Contact", "/contact"]

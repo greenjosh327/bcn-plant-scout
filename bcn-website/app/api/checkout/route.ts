@@ -28,7 +28,7 @@ type RuntimeConfig = {
 };
 
 function getBaseUrl(request: Request) {
-  const configured = process.env.NEXT_PUBLIC_SITE_URL;
+  const configured = process.env.CHECKOUT_SITE_URL;
   if (configured) return configured.replace(/\/$/, "");
   return new URL(request.url).origin;
 }

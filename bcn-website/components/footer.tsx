@@ -31,6 +31,7 @@ export function Footer() {
         <div className="grid gap-2 text-sm">
           <p className="font-black uppercase tracking-[0.18em] text-sage">Work</p>
           <Link href="/gis">GIS Services</Link>
+          <Link href="https://scout.basecampnorthpa.com">Plant Scout App</Link>
           <Link href="/about">About BCN</Link>
           <Link href="/contact">Contact</Link>
         </div>
