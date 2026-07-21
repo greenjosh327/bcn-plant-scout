@@ -2,9 +2,11 @@ import Image from "next/image";
 import Link from "next/link";
 import { AddToCartButton } from "@/components/add-to-cart-button";
 import { productToGoogleAnalyticsItem } from "@/lib/marketing/google-analytics";
+import { getPrimaryProductImage } from "@/lib/product-images";
 import type { Product } from "@/lib/types";
 
 export function ProductCard({ product }: { product: Product }) {
+  const primaryImage = getPrimaryProductImage(product);
   const variationLabel =
     product.variations && product.variations.length > 1
       ? `${product.variations.length} options`
@@ -15,8 +17,8 @@ export function ProductCard({ product }: { product: Product }) {
       <Link href={`/shop/product/${product.slug}`}>
         <div className="relative aspect-[4/3] bg-sage">
           <Image
-            src={product.images[0]}
-            alt={product.name}
+            src={primaryImage.url}
+            alt={primaryImage.altText}
             fill
             className="object-cover"
             sizes="(min-width: 900px) 33vw, 100vw"

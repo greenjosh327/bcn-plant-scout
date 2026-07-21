@@ -1,11 +1,16 @@
 import type { Metadata } from "next";
+import Link from "next/link";
+import { JsonLd } from "@/components/json-ld";
 import { contactEmails, mailto } from "@/lib/contact";
+import { buildPageMetadata } from "@/lib/seo";
+import { buildBreadcrumbList } from "@/lib/structured-data";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = buildPageMetadata({
   title: "Contact Base Camp North",
   description:
-    "Contact Base Camp North for native plant sales, orders, BCN Plant Scout support, and GIS questions."
-};
+    "Contact Base Camp North about nursery products, tree seeds, orders, shipping, GIS services, or BCN Plant Scout app support.",
+  path: "/contact"
+});
 
 type ContactOption = {
   eyebrow: string;
@@ -58,6 +63,12 @@ const contactOptions: ContactOption[] = [
 export default function ContactPage() {
   return (
     <main className="container py-12">
+      <JsonLd
+        data={buildBreadcrumbList([
+          { name: "Home", path: "/" },
+          { name: "Contact", path: "/contact" }
+        ])}
+      />
       <section className="grid gap-8 lg:grid-cols-[0.9fr_1.1fr]">
         <div>
           <p className="text-xs font-black uppercase tracking-[0.22em] text-stone">Contact</p>
@@ -66,6 +77,17 @@ export default function ContactPage() {
             Pick the closest fit below and your message will open in email. A direct email is the most reliable
             option right now while the shop, shipping, and Plant Scout pieces are being tightened up.
           </p>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <Link className="button button-secondary" href="/shop">
+              Browse Shop
+            </Link>
+            <Link className="button button-secondary" href="/gis">
+              GIS Services
+            </Link>
+            <Link className="button button-secondary" href="https://scout.basecampnorthpa.com/support">
+              Plant Scout Support
+            </Link>
+          </div>
 
           <div className="mt-8 field-card p-5">
             <p className="text-xs font-black uppercase tracking-[0.18em] text-stone">Pickup and visits</p>

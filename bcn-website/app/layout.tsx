@@ -5,39 +5,9 @@ import "./globals.css";
 import { Footer } from "@/components/footer";
 import { ShopAnalyticsPageView } from "@/components/shop-analytics-page-view";
 import { SiteHeader } from "@/components/site-header";
+import { buildRootMetadata } from "@/lib/seo";
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://basecampnorthpa.com";
-
-export const metadata: Metadata = {
-  metadataBase: new URL(siteUrl),
-  title: "Base Camp North | Native Plants and GIS Services",
-  description:
-    "Base Camp North is a Pennsylvania nursery focused on native trees, seed collection, pollinator plants, and practical GIS services.",
-  icons: {
-    icon: [{ url: "/bcn-icon.png", sizes: "1024x1024", type: "image/png" }],
-    apple: [{ url: "/bcn-icon.png", sizes: "1024x1024", type: "image/png" }]
-  },
-  openGraph: {
-    title: "Base Camp North | Native Plants and GIS Services",
-    description:
-      "Native trees, seed collection, pollinator plants, and GIS-backed field work from Base Camp North.",
-    images: [
-      {
-        url: "/images/bcn-logo.png",
-        width: 1536,
-        height: 561,
-        alt: "Base Camp North logo"
-      }
-    ]
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "Base Camp North | Native Plants and GIS Services",
-    description:
-      "Native trees, seed collection, pollinator plants, and GIS-backed field work from Base Camp North.",
-    images: ["/images/bcn-logo.png"]
-  }
-};
+export const metadata: Metadata = buildRootMetadata();
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const googleTagId = process.env.NEXT_PUBLIC_GOOGLE_TAG_ID || "G-KHYPDHB4W4";

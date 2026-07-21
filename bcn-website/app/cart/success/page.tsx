@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { GoogleEcommerceTracker } from "@/components/google-ecommerce-tracker";
 import { getSupabaseServiceClient } from "@/lib/supabase-service";
@@ -11,6 +12,13 @@ type SuccessPageProps = {
   searchParams?: Promise<{
     session_id?: string;
   }>;
+};
+
+export const metadata: Metadata = {
+  robots: {
+    index: false,
+    follow: false
+  }
 };
 
 type OrderItem = {

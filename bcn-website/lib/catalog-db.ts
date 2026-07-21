@@ -1,7 +1,8 @@
 import { createClient } from "@supabase/supabase-js";
+import { getFallbackProductImage, getProductImageAltText } from "./product-images";
 import { products as fallbackProducts } from "./products";
 import { isShippingClass } from "./shipping/types";
-import type { Product, ProductCategory, ProductVariation } from "./types";
+import type { Product, ProductCategory, ProductImage, ProductVariation } from "./types";
 
 const PRODUCT_IMAGE_BUCKET = "product-images";
 
@@ -157,8 +158,11 @@ function mapDbProducts(
     const productImages = images
       .filter((image) => image.product_id === product.id)
       .sort((a, b) => Number(Boolean(b.is_primary)) - Number(Boolean(a.is_primary)) || Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0))
-      .map((image) => resolveProductImageUrl(image, supabase))
-      .filter(Boolean);
+      .map((image) => resolveProductImage(image, supabase, product))
+      .filter((image): image is ProductImage => Boolean(image));
+
+    const productImageDetails =
+      productImages.length > 0 ? productImages : [getFallbackProductImage({ name: product.name, category: product.category })];
 
     return {
       id: product.id,
@@ -172,7 +176,8 @@ function mapDbProducts(
       inventory: Number(product.inventory) || 0,
       featured: Boolean(product.featured),
       active: product.active !== false,
-      images: productImages.length > 0 ? productImages : ["/images/scout-seedling-tray.webp"],
+      images: productImageDetails.map((image) => image.url),
+      imageDetails: productImageDetails,
       plantType: product.plant_type ?? "Nursery item",
       nativeStatus: cleanCatalogText(product.native_status),
       hardinessZones: cleanCatalogText(product.hardiness_zones),
@@ -248,4 +253,20 @@ function resolveProductImageUrl(image: DbImage, supabase: ReturnType<typeof getS
   if (/^https?:\/\//i.test(image.storage_path) || image.storage_path.startsWith("/")) return image.storage_path;
 
   return supabase?.storage.from(PRODUCT_IMAGE_BUCKET).getPublicUrl(image.storage_path).data.publicUrl ?? "";
+}
+
+function resolveProductImage(
+  image: DbImage,
+  supabase: ReturnType<typeof getSupabaseServerClient>,
+  product: Pick<Product, "name" | "category">
+): ProductImage | null {
+  const url = resolveProductImageUrl(image, supabase).trim();
+  if (!url) return null;
+
+  return {
+    url,
+    altText: getProductImageAltText(product, image.alt_text),
+    isPrimary: Boolean(image.is_primary),
+    sortOrder: image.sort_order
+  };
 }

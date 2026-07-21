@@ -16,6 +16,7 @@ export type CartProduct = Pick<
   | "price"
   | "inventory"
   | "images"
+  | "imageDetails"
   | "shippingClass"
   | "shippingEnabled"
   | "localPickupEnabled"

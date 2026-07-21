@@ -1,15 +1,35 @@
+import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { GoogleEcommerceTracker } from "@/components/google-ecommerce-tracker";
+import { JsonLd } from "@/components/json-ld";
 import { ProductCard } from "@/components/product-card";
 import { ProductPurchasePanel } from "@/components/product-purchase-panel";
 import { getCatalogProductBySlug, getRelatedCatalogProducts } from "@/lib/catalog-db";
 import { productToGoogleAnalyticsItem } from "@/lib/marketing/google-analytics";
+import { getProductImages } from "@/lib/product-images";
+import { buildNoindexMetadata, buildProductMetadata } from "@/lib/seo";
+import { buildProductPageStructuredData } from "@/lib/structured-data";
 
 export const dynamic = "force-dynamic";
 
-export default async function ProductPage({ params }: { params: Promise<{ slug: string }> }) {
+type ProductPageProps = {
+  params: Promise<{ slug: string }>;
+};
+
+export async function generateMetadata({ params }: ProductPageProps): Promise<Metadata> {
+  const resolvedParams = await params;
+  const product = await getCatalogProductBySlug(resolvedParams.slug);
+
+  if (!product) {
+    return buildNoindexMetadata();
+  }
+
+  return buildProductMetadata(product);
+}
+
+export default async function ProductPage({ params }: ProductPageProps) {
   const resolvedParams = await params;
   const product = await getCatalogProductBySlug(resolvedParams.slug);
   if (!product) notFound();
@@ -42,9 +62,11 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
     growingFacts.length > 0 && growingDetailBlocks.length > 0
       ? "mt-16 grid gap-6 lg:grid-cols-[0.8fr_1.2fr]"
       : "mt-16 grid gap-6";
+  const productImages = getProductImages(product);
 
   return (
     <main className="container py-12">
+      <JsonLd data={buildProductPageStructuredData(product)} />
       <GoogleEcommerceTracker
         eventName="view_item"
         params={{
@@ -55,9 +77,9 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
       />
       <div className="grid gap-10 lg:grid-cols-[1.05fr_0.95fr]">
         <div className="grid gap-4">
-          {product.images.map((image) => (
-            <div key={image} className="relative aspect-[4/3] overflow-hidden rounded-lg bg-sage">
-              <Image src={image} alt={product.name} fill className="object-cover" />
+          {productImages.map((image, index) => (
+            <div key={`${image.url}-${index}`} className="relative aspect-[4/3] overflow-hidden rounded-lg bg-sage">
+              <Image src={image.url} alt={image.altText} fill className="object-cover" />
             </div>
           ))}
         </div>

@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { trackShopAnalyticsEvent } from "@/lib/analytics/shop-analytics";
 import { CART_STORAGE_KEY, type CartLine, type CartProduct, formatMoney, getVariationKey, normalizeCartLines, pruneCartLinesForProducts } from "@/lib/cart";
 import { productToGoogleAnalyticsItem, trackGoogleEvent } from "@/lib/marketing/google-analytics";
+import { getPrimaryProductImage } from "@/lib/product-images";
 
 type CartClientProps = {
   products: CartProduct[];
@@ -310,34 +311,43 @@ export function CartClient({ products }: CartClientProps) {
         <p className="text-xs font-black uppercase tracking-[0.22em] text-stone">Cart</p>
         <h1 className="mt-3 text-5xl font-black text-pine">Shopping cart</h1>
         <div className="mt-8 grid gap-5">
-          {enriched.map((line) => (
-            <article key={getLineKey(line)} className="grid gap-4 rounded-md bg-sage/45 p-4 md:grid-cols-[120px_1fr_auto]">
-              <div className="relative aspect-[4/3] overflow-hidden rounded-md bg-sage">
-                <Image src={line.product.images[0]} alt={line.product.name} fill className="object-cover" sizes="120px" />
-              </div>
-              <div>
-                <h2 className="text-2xl font-black text-pine">{line.product.name}</h2>
-                {line.variant ? (
-                  <p className="mt-1 text-sm font-black text-rust">{line.variant.name}</p>
-                ) : null}
-                <p className="mt-1 text-sm font-bold text-stone">{fulfillmentLabel(line.product)}</p>
-                <p className="mt-3 font-black text-pine">{formatMoney(line.unitPrice)}</p>
-              </div>
-              <div className="flex items-center gap-3 md:flex-col md:items-end">
-                <input
-                  className="admin-input w-24"
-                  min={1}
-                  max={line.maxInventory}
-                  type="number"
-                  value={line.quantity}
-                  onChange={(event) => updateQuantity(line, Number(event.target.value))}
-                />
-                <button className="font-black text-rust" type="button" onClick={() => removeLine(line)}>
-                  Remove
-                </button>
-              </div>
-            </article>
-          ))}
+          {enriched.map((line) => {
+            const primaryImage = getPrimaryProductImage(line.product);
+            return (
+              <article key={getLineKey(line)} className="grid gap-4 rounded-md bg-sage/45 p-4 md:grid-cols-[120px_1fr_auto]">
+                <div className="relative aspect-[4/3] overflow-hidden rounded-md bg-sage">
+                  <Image
+                    src={primaryImage.url}
+                    alt={primaryImage.altText}
+                    fill
+                    className="object-cover"
+                    sizes="120px"
+                  />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-black text-pine">{line.product.name}</h2>
+                  {line.variant ? (
+                    <p className="mt-1 text-sm font-black text-rust">{line.variant.name}</p>
+                  ) : null}
+                  <p className="mt-1 text-sm font-bold text-stone">{fulfillmentLabel(line.product)}</p>
+                  <p className="mt-3 font-black text-pine">{formatMoney(line.unitPrice)}</p>
+                </div>
+                <div className="flex items-center gap-3 md:flex-col md:items-end">
+                  <input
+                    className="admin-input w-24"
+                    min={1}
+                    max={line.maxInventory}
+                    type="number"
+                    value={line.quantity}
+                    onChange={(event) => updateQuantity(line, Number(event.target.value))}
+                  />
+                  <button className="font-black text-rust" type="button" onClick={() => removeLine(line)}>
+                    Remove
+                  </button>
+                </div>
+              </article>
+            );
+          })}
         </div>
       </div>
 

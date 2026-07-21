@@ -1,5 +1,16 @@
+import type { Metadata } from "next";
 import Link from "next/link";
+import { JsonLd } from "@/components/json-ld";
 import { SectionHeading } from "@/components/section-heading";
+import { buildPageMetadata } from "@/lib/seo";
+import { buildBreadcrumbList } from "@/lib/structured-data";
+
+export const metadata: Metadata = buildPageMetadata({
+  title: "GIS Mapping and Habitat Services in Pennsylvania",
+  description:
+    "Base Camp North provides property mapping, habitat restoration planning, invasive species survey maps, and practical GIS support for field projects.",
+  path: "/gis"
+});
 
 const services = [
   ["Habitat Restoration Mapping", "Plan plantings, monitor progress, and keep restoration work tied to real places."],
@@ -13,7 +24,13 @@ const services = [
 export default function GisPage() {
   return (
     <main className="container py-12">
-      <SectionHeading eyebrow="GIS Services" title="Field maps for land work">
+      <JsonLd
+        data={buildBreadcrumbList([
+          { name: "Home", path: "/" },
+          { name: "GIS", path: "/gis" }
+        ])}
+      />
+      <SectionHeading as="h1" eyebrow="GIS Services" title="GIS mapping and habitat services">
         Base Camp North GIS services are being shaped around habitat restoration,
         nursery operations, property mapping, and practical field workflows.
       </SectionHeading>

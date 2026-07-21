@@ -1,3 +1,18 @@
+import type { Metadata } from "next";
+import { buildPageMetadata } from "@/lib/seo";
+
+// Re-enable indexing after real article routes replace the placeholder cards below.
+export const metadata: Metadata = buildPageMetadata({
+  title: "Field Notes Coming Soon",
+  description:
+    "Base Camp North field notes are not published yet. Future articles will cover nursery work, propagation notes, seed timing, and habitat planting.",
+  path: "/articles",
+  robots: {
+    index: false,
+    follow: false
+  }
+});
+
 const articlePlaceholders = [
   "When to collect acorns in Pennsylvania",
   "How to think about return-later field notes",

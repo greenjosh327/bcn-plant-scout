@@ -1,10 +1,21 @@
+import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
+import { JsonLd } from "@/components/json-ld";
 import { ProductCard } from "@/components/product-card";
 import { SectionHeading } from "@/components/section-heading";
 import { getFeaturedCatalogProducts } from "@/lib/catalog-db";
+import { buildPageMetadata } from "@/lib/seo";
+import { buildHomepageStructuredData } from "@/lib/structured-data";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = buildPageMetadata({
+  title: "Base Camp North Native Tree Seeds and Plants in Pennsylvania",
+  description:
+    "Base Camp North offers native tree seeds, nursery plants, wildlife and habitat planting supplies, and practical GIS services from Pennsylvania.",
+  path: "/"
+});
 
 const reasons = [
   ["Native plants", "Species chosen for local habitat value, not just shelf appeal."],
@@ -25,6 +36,7 @@ export default async function HomePage() {
 
   return (
     <main>
+      <JsonLd data={buildHomepageStructuredData()} />
       <section className="bg-parchment">
         <div className="container grid gap-10 py-12 md:grid-cols-[1.05fr_0.95fr] md:py-20">
           <div className="flex flex-col justify-center">

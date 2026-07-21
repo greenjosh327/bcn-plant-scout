@@ -1,8 +1,19 @@
+import type { Metadata } from "next";
+import { JsonLd } from "@/components/json-ld";
 import { ProductCard } from "@/components/product-card";
 import { SectionHeading } from "@/components/section-heading";
 import { getCatalogProducts } from "@/lib/catalog-db";
+import { buildPageMetadata } from "@/lib/seo";
+import { buildBreadcrumbList } from "@/lib/structured-data";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = buildPageMetadata({
+  title: "Native Tree Seeds and Nursery Plants for Sale",
+  description:
+    "Shop available tree seeds, nursery plants, and wildlife-focused growing products from Base Camp North in Pennsylvania.",
+  path: "/shop"
+});
 
 export default async function ShopPage({
   searchParams
@@ -34,7 +45,13 @@ export default async function ShopPage({
 
   return (
     <main className="container py-12">
-      <SectionHeading eyebrow="Shop" title="Plants, cuttings, and seeds">
+      <JsonLd
+        data={buildBreadcrumbList([
+          { name: "Home", path: "/" },
+          { name: "Shop", path: "/shop" }
+        ])}
+      />
+      <SectionHeading as="h1" eyebrow="Shop" title="Native plants, tree seeds, and nursery products">
         Browse available Base Camp North nursery inventory. Secure checkout is live for pickup and shipping orders.
       </SectionHeading>
 

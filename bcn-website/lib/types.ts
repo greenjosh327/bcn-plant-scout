@@ -10,6 +10,14 @@ export type ProductVariation = {
   inventory: number;
 };
 
+export type ProductImage = {
+  url: string;
+  altText: string;
+  isPrimary?: boolean;
+  sortOrder?: number | null;
+  isFallback?: boolean;
+};
+
 export type Product = {
   id: string;
   slug: string;
@@ -23,6 +31,7 @@ export type Product = {
   featured: boolean;
   active: boolean;
   images: string[];
+  imageDetails?: ProductImage[];
   plantType: string;
   nativeStatus: string;
   hardinessZones: string;
