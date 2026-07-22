@@ -13,55 +13,62 @@ export async function GET(request: Request) {
   }
 
   const url = new URL(request.url);
-  const days = clampDays(Number(url.searchParams.get("days") || 30));
-  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+  const range = parseAnalyticsRange(url.searchParams);
+  const since = range.since.toISOString();
+  const until = range.until.toISOString();
 
-  const [{ data: events, error: eventsError }, { data: orders, error: ordersError }] = await Promise.all([
-    supabase
-      .from("shop_analytics_events")
-      .select(`
-        id,
-        created_at,
-        event_name,
-        visitor_id,
-        session_id,
-        path,
-        page_title,
-        referrer,
-        utm_source,
-        utm_medium,
-        utm_campaign,
+  const eventsQuery = supabase
+    .from("shop_analytics_events")
+    .select(`
+      id,
+      created_at,
+      event_name,
+      visitor_id,
+      session_id,
+      path,
+      page_title,
+      referrer,
+      utm_source,
+      utm_medium,
+      utm_campaign,
+      product_id,
+      product_slug,
+      product_name,
+      variant_id,
+      variant_name,
+      quantity,
+      value_cents,
+      currency,
+      order_id
+    `)
+    .gte("created_at", since)
+    .lt("created_at", until)
+    .order("created_at", { ascending: false })
+    .limit(10_000);
+
+  const ordersQuery = supabase
+    .from("orders")
+    .select(`
+      id,
+      created_at,
+      total,
+      currency,
+      order_items (
         product_id,
-        product_slug,
         product_name,
-        variant_id,
         variant_name,
         quantity,
-        value_cents,
-        currency,
-        order_id
-      `)
-      .gte("created_at", since)
-      .order("created_at", { ascending: false })
-      .limit(10_000),
-    supabase
-      .from("orders")
-      .select(`
-        id,
-        created_at,
-        total,
-        currency,
-        order_items (
-          product_id,
-          product_name,
-          variant_name,
-          quantity,
-          line_total
-        )
-      `)
-      .gte("created_at", since)
-      .eq("payment_status", "paid")
-      .order("created_at", { ascending: false })
+        line_total
+      )
+    `)
+    .gte("created_at", since)
+    .lt("created_at", until)
+    .eq("payment_status", "paid")
+    .order("created_at", { ascending: false });
+
+  const [{ data: events, error: eventsError }, { data: orders, error: ordersError }] = await Promise.all([
+    eventsQuery,
+    ordersQuery
   ]);
 
   if (eventsError || ordersError) {
@@ -73,7 +80,11 @@ export async function GET(request: Request) {
   const summary = buildAnalyticsSummary({
     events: (events ?? []) as ShopAnalyticsEventRow[],
     orders: (orders ?? []) as AnalyticsOrderRow[],
-    days
+    days: range.days,
+    since: range.since,
+    until: range.until,
+    rangeLabel: range.label,
+    timeZone: range.timeZone
   });
 
   return NextResponse.json({ summary });
@@ -84,4 +95,52 @@ function clampDays(value: number) {
   if (value <= 7) return 7;
   if (value <= 30) return 30;
   return 90;
+}
+
+function parseAnalyticsRange(searchParams: URLSearchParams) {
+  const timeZone = getSafeTimeZone(searchParams.get("timeZone"));
+  const from = parseDateParam(searchParams.get("from"));
+  const to = parseDateParam(searchParams.get("to"));
+  const maxRangeMs = 90 * 24 * 60 * 60 * 1000;
+
+  if (from && to && to.getTime() > from.getTime()) {
+    const cappedTo = new Date(Math.min(to.getTime(), from.getTime() + maxRangeMs));
+    return {
+      days: Math.max(1, Math.ceil((cappedTo.getTime() - from.getTime()) / (24 * 60 * 60 * 1000))),
+      since: from,
+      until: cappedTo,
+      label: cleanRangeLabel(searchParams.get("label")) || "Selected day",
+      timeZone
+    };
+  }
+
+  const days = clampDays(Number(searchParams.get("days") || 30));
+  const now = new Date();
+  return {
+    days,
+    since: new Date(now.getTime() - days * 24 * 60 * 60 * 1000),
+    until: now,
+    label: `${days} days`,
+    timeZone
+  };
+}
+
+function parseDateParam(value: string | null) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? date : null;
+}
+
+function getSafeTimeZone(value: string | null) {
+  const timeZone = value || "America/New_York";
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone }).format(new Date());
+    return timeZone;
+  } catch {
+    return "America/New_York";
+  }
+}
+
+function cleanRangeLabel(value: string | null) {
+  return (value ?? "").replace(/[^\w\s/-]/g, "").trim().slice(0, 40);
 }

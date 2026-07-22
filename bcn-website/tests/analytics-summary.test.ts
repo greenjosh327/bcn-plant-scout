@@ -42,6 +42,48 @@ test("shop analytics summary combines events and paid order data", () => {
   assert.equal(summary.sources[0].source, "google");
 });
 
+test("shop analytics summary supports exact local-day ranges", () => {
+  const summary = buildAnalyticsSummary({
+    events: [
+      event("before", "page_view", "2026-07-22T03:59:59Z", { visitor_id: "v-before", session_id: "s-before" }),
+      event("start", "page_view", "2026-07-22T04:00:00Z", { visitor_id: "v1", session_id: "s1" }),
+      event("middle", "view_item", "2026-07-22T18:00:00Z", { visitor_id: "v1", session_id: "s1", product_name: "Prairifire Crabapple Seeds" }),
+      event("end", "add_to_cart", "2026-07-23T03:59:59Z", { visitor_id: "v2", session_id: "s2", product_name: "Prairifire Crabapple Seeds" }),
+      event("after", "page_view", "2026-07-23T04:00:00Z", { visitor_id: "v-after", session_id: "s-after" })
+    ],
+    orders: [{
+      id: "order-1",
+      created_at: "2026-07-22T20:00:00Z",
+      total: 5,
+      currency: "usd",
+      order_items: [{
+        product_id: "prod_crabapple",
+        product_name: "Prairifire Crabapple Seeds",
+        variant_name: "25 Seeds",
+        quantity: 1,
+        line_total: 5
+      }]
+    }],
+    since: new Date("2026-07-22T04:00:00Z"),
+    until: new Date("2026-07-23T04:00:00Z"),
+    rangeLabel: "Today",
+    timeZone: "America/New_York",
+    now: new Date("2026-07-23T12:00:00Z")
+  });
+
+  assert.equal(summary.rangeLabel, "Today");
+  assert.equal(summary.totals.visitors, 2);
+  assert.equal(summary.totals.pageViews, 1);
+  assert.equal(summary.totals.productViews, 1);
+  assert.equal(summary.totals.addToCarts, 1);
+  assert.equal(summary.totals.orders, 1);
+  assert.deepEqual(summary.byDay.map((day) => day.date), ["2026-07-22"]);
+  assert.equal(summary.byDay[0].pageViews, 1);
+  assert.equal(summary.byDay[0].productViews, 1);
+  assert.equal(summary.byDay[0].addToCarts, 1);
+  assert.equal(summary.byDay[0].orders, 1);
+});
+
 function event(
   id: string,
   event_name: ShopAnalyticsEventRow["event_name"],

@@ -65,14 +65,21 @@ type SourceSummary = {
 export function buildAnalyticsSummary(input: {
   events: ShopAnalyticsEventRow[];
   orders: AnalyticsOrderRow[];
-  days: number;
+  days?: number;
+  since?: Date;
+  until?: Date;
+  rangeLabel?: string;
+  timeZone?: string;
   now?: Date;
 }) {
   const now = input.now ?? new Date();
-  const since = new Date(now.getTime() - input.days * 24 * 60 * 60 * 1000);
-  const events = input.events.filter((event) => new Date(event.created_at).getTime() >= since.getTime());
-  const orders = input.orders.filter((order) => new Date(order.created_at).getTime() >= since.getTime());
-  const dayMap = buildEmptyDayMap(since, now);
+  const days = input.days ?? 30;
+  const since = input.since ?? new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+  const until = input.until ?? now;
+  const timeZone = input.timeZone ?? "UTC";
+  const events = input.events.filter((event) => isWithinRange(event.created_at, since, until));
+  const orders = input.orders.filter((order) => isWithinRange(order.created_at, since, until));
+  const dayMap = buildEmptyDayMap(since, until, timeZone);
   const productMap = new Map<string, ProductSummary>();
   const sourceMap = new Map<string, SourceSummary>();
   const visitors = new Set<string>();
@@ -99,7 +106,7 @@ export function buildAnalyticsSummary(input: {
     if (event.event_name === "add_to_cart") totals.addToCarts += 1;
     if (event.event_name === "begin_checkout") totals.checkouts += 1;
 
-    const day = dayKey(event.created_at);
+    const day = dayKey(event.created_at, timeZone);
     const daySummary = dayMap.get(day);
     if (daySummary) {
       if (event.event_name === "page_view") daySummary.pageViews += 1;
@@ -128,7 +135,7 @@ export function buildAnalyticsSummary(input: {
     const revenueCents = dollarsToCents(order.total);
     totals.revenueCents += revenueCents;
 
-    const day = dayKey(order.created_at);
+    const day = dayKey(order.created_at, timeZone);
     const daySummary = dayMap.get(day);
     if (daySummary) {
       daySummary.orders += 1;
@@ -164,8 +171,11 @@ export function buildAnalyticsSummary(input: {
     .slice(0, 10);
 
   return {
-    days: input.days,
+    days,
+    rangeLabel: input.rangeLabel ?? `${days} days`,
+    timeZone,
     since: since.toISOString(),
+    until: until.toISOString(),
     generatedAt: now.toISOString(),
     totals,
     funnel: [
@@ -193,7 +203,7 @@ export function buildAnalyticsSummary(input: {
   };
 }
 
-function buildEmptyDayMap(since: Date, now: Date) {
+function buildEmptyDayMap(since: Date, until: Date, timeZone: string) {
   const map = new Map<string, {
     date: string;
     pageViews: number;
@@ -203,20 +213,49 @@ function buildEmptyDayMap(since: Date, now: Date) {
     orders: number;
     revenueCents: number;
   }>();
-  const cursor = new Date(Date.UTC(since.getUTCFullYear(), since.getUTCMonth(), since.getUTCDate()));
-  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const endDate = new Date(Math.max(since.getTime(), until.getTime() - 1));
+  let cursor = dayKey(since.toISOString(), timeZone);
+  const end = dayKey(endDate.toISOString(), timeZone);
 
-  while (cursor.getTime() <= end.getTime()) {
-    const date = cursor.toISOString().slice(0, 10);
-    map.set(date, { date, pageViews: 0, productViews: 0, addToCarts: 0, checkouts: 0, orders: 0, revenueCents: 0 });
-    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  while (cursor <= end) {
+    map.set(cursor, { date: cursor, pageViews: 0, productViews: 0, addToCarts: 0, checkouts: 0, orders: 0, revenueCents: 0 });
+    cursor = addDays(cursor, 1);
   }
 
   return map;
 }
 
-function dayKey(value: string) {
-  return new Date(value).toISOString().slice(0, 10);
+function isWithinRange(value: string, since: Date, until: Date) {
+  const time = new Date(value).getTime();
+  return time >= since.getTime() && time < until.getTime();
+}
+
+function dayKey(value: string, timeZone: string) {
+  const date = new Date(value);
+  if (timeZone === "UTC") return date.toISOString().slice(0, 10);
+
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }).formatToParts(date);
+    const year = parts.find((part) => part.type === "year")?.value;
+    const month = parts.find((part) => part.type === "month")?.value;
+    const day = parts.find((part) => part.type === "day")?.value;
+    if (year && month && day) return `${year}-${month}-${day}`;
+  } catch {
+    return date.toISOString().slice(0, 10);
+  }
+
+  return date.toISOString().slice(0, 10);
+}
+
+function addDays(dateKeyValue: string, days: number) {
+  const [year, month, day] = dateKeyValue.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day + days));
+  return date.toISOString().slice(0, 10);
 }
 
 function getProductSummary(map: Map<string, ProductSummary>, input: {

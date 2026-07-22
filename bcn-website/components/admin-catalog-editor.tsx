@@ -1419,15 +1419,19 @@ export function AdminCatalogEditor() {
   );
 }
 
+type AnalyticsRangeSelection =
+  | { kind: "day"; offset: 0 | 1 | 2; label: string }
+  | { kind: "days"; days: 7 | 30 | 90; label: string };
+
 function AdminAnalyticsDashboard({ session }: { session: Session | null }) {
   const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
-  const [days, setDays] = useState(30);
+  const [range, setRange] = useState<AnalyticsRangeSelection>({ kind: "days", days: 30, label: "30 days" });
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
 
   useEffect(() => {
     void loadAnalytics();
-  }, [days]);
+  }, [range]);
 
   async function loadAnalytics() {
     if (!session?.access_token) {
@@ -1438,7 +1442,8 @@ function AdminAnalyticsDashboard({ session }: { session: Session | null }) {
     setLoading(true);
     setMessage("Loading analytics...");
     try {
-      const response = await fetch(`/api/admin/analytics?days=${days}`, {
+      const params = buildAnalyticsRangeParams(range);
+      const response = await fetch(`/api/admin/analytics?${params.toString()}`, {
         headers: {
           Authorization: `Bearer ${session.access_token}`
         }
@@ -1451,7 +1456,7 @@ function AdminAnalyticsDashboard({ session }: { session: Session | null }) {
       }
 
       setSummary(payload.summary as AnalyticsSummary);
-      setMessage(`Loaded ${days} day analytics.`);
+      setMessage(`Loaded ${(payload.summary as AnalyticsSummary | undefined)?.rangeLabel ?? range.label} analytics.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Analytics could not be loaded.");
     } finally {
@@ -1473,11 +1478,24 @@ function AdminAnalyticsDashboard({ session }: { session: Session | null }) {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            {[
+              { offset: 0 as const, label: "Today" },
+              { offset: 1 as const, label: "Yesterday" },
+              { offset: 2 as const, label: "Day before" }
+            ].map((option) => (
+              <button
+                key={option.label}
+                className={analyticsRangeButtonClass(range.kind === "day" && range.offset === option.offset)}
+                onClick={() => setRange({ kind: "day", offset: option.offset, label: option.label })}
+              >
+                {option.label}
+              </button>
+            ))}
             {[7, 30, 90].map((option) => (
               <button
                 key={option}
-                className={`rounded-full border px-4 py-2 text-sm font-black ${days === option ? "border-pine bg-pine text-white" : "border-pine/20 bg-sage text-pine"}`}
-                onClick={() => setDays(option)}
+                className={analyticsRangeButtonClass(range.kind === "days" && range.days === option)}
+                onClick={() => setRange({ kind: "days", days: option as 7 | 30 | 90, label: `${option} days` })}
               >
                 {option} days
               </button>
@@ -1607,6 +1625,46 @@ function AdminAnalyticsDashboard({ session }: { session: Session | null }) {
       ) : null}
     </div>
   );
+}
+
+function analyticsRangeButtonClass(active: boolean) {
+  return `rounded-full border px-4 py-2 text-sm font-black ${
+    active ? "border-pine bg-pine text-white" : "border-pine/20 bg-sage text-pine"
+  }`;
+}
+
+function buildAnalyticsRangeParams(range: AnalyticsRangeSelection) {
+  const params = new URLSearchParams();
+  params.set("timeZone", getAdminTimeZone());
+
+  if (range.kind === "days") {
+    params.set("days", String(range.days));
+    return params;
+  }
+
+  const dayRange = getLocalDayRange(range.offset);
+  params.set("from", dayRange.from);
+  params.set("to", dayRange.to);
+  params.set("label", range.label);
+  return params;
+}
+
+function getLocalDayRange(offset: 0 | 1 | 2) {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  start.setDate(start.getDate() - offset);
+
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+
+  return {
+    from: start.toISOString(),
+    to: end.toISOString()
+  };
+}
+
+function getAdminTimeZone() {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || "America/New_York";
 }
 
 function AdminOrdersDashboard({ session }: { session: Session | null }) {
