@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import type { Session } from "@supabase/supabase-js";
 import type { AnalyticsSummary } from "@/lib/analytics/admin-summary";
+import { normalizeProductSlug } from "@/lib/product-slug";
 import { hasSupabaseBrowserConfig, supabase } from "@/lib/supabase-browser";
 import {
   formatAddressValidationStatus,
@@ -702,6 +703,12 @@ export function AdminCatalogEditor() {
 
   async function saveProduct() {
     if (!supabase || !selected) return;
+    const normalizedSlug = normalizeProductSlug(form.slug || form.name);
+    if (!normalizedSlug) {
+      setMessage("Add a product name or slug before saving.");
+      return;
+    }
+
     const nextShippingValidation = validateProductShipping(form);
     if (nextShippingValidation.errors.length > 0) {
       setMessage(nextShippingValidation.errors[0]);
@@ -720,7 +727,7 @@ export function AdminCatalogEditor() {
       .from("products")
       .update({
         name: form.name,
-        slug: form.slug,
+        slug: normalizedSlug,
         scientific_name: form.scientific_name || null,
         common_name: form.common_name || null,
         category: form.category,
@@ -784,7 +791,7 @@ export function AdminCatalogEditor() {
           ? {
               ...product,
               name: form.name,
-              slug: form.slug,
+              slug: normalizedSlug,
               scientific_name: form.scientific_name || null,
               common_name: form.common_name || null,
               category: form.category,
@@ -838,6 +845,7 @@ export function AdminCatalogEditor() {
           : product
       )
     );
+    setForm((current) => ({ ...current, slug: normalizedSlug }));
     setMessage("Product saved.");
   }
 
@@ -846,7 +854,7 @@ export function AdminCatalogEditor() {
     const id = makeId("prod");
     const newProduct: CatalogProduct = {
       id,
-      slug: `${slugify("new-product")}-${id.slice(-6)}`,
+      slug: `${normalizeProductSlug("new-product")}-${id.slice(-6)}`,
       name: "New product",
       scientific_name: null,
       common_name: null,
@@ -1274,7 +1282,7 @@ export function AdminCatalogEditor() {
             <div className="grid gap-6">
               <div className="grid gap-4 md:grid-cols-2">
                 <Field label="Product name"><input className="admin-input" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></Field>
-                <Field label="Slug"><input className="admin-input" value={form.slug} onChange={(event) => setForm({ ...form, slug: event.target.value })} /></Field>
+                <Field label="Slug"><input className="admin-input" value={form.slug} onBlur={() => setForm((current) => ({ ...current, slug: normalizeProductSlug(current.slug || current.name) }))} onChange={(event) => setForm({ ...form, slug: event.target.value })} /></Field>
                 <Field label="Common name"><input className="admin-input" value={form.common_name} onChange={(event) => setForm({ ...form, common_name: event.target.value })} /></Field>
                 <Field label="Scientific name"><input className="admin-input" value={form.scientific_name} onChange={(event) => setForm({ ...form, scientific_name: event.target.value })} /></Field>
                 <Field label="Category">
@@ -2823,14 +2831,6 @@ function makeId(prefix: string) {
     globalThis.crypto?.randomUUID?.() ??
     `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
   return `${prefix}_${randomId}`;
-}
-
-function slugify(value: string) {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
 }
 
 function safeFileName(value: string) {

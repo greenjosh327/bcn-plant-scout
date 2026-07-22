@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { getFallbackProductImage, getProductImageAltText } from "./product-images";
+import { decodeProductSlug, normalizeProductSlug } from "./product-slug";
 import { products as fallbackProducts } from "./products";
 import { isShippingClass } from "./shipping/types";
 import type { Product, ProductCategory, ProductImage, ProductVariation } from "./types";
@@ -127,7 +128,13 @@ export async function getFeaturedCatalogProducts() {
 
 export async function getCatalogProductBySlug(slug: string) {
   const products = await getCatalogProducts();
-  return products.find((product) => product.slug === slug);
+  const decodedSlug = decodeProductSlug(slug);
+  const normalizedSlug = normalizeProductSlug(decodedSlug);
+
+  return (
+    products.find((product) => product.slug === slug || product.slug === decodedSlug) ??
+    products.find((product) => normalizeProductSlug(product.slug) === normalizedSlug)
+  );
 }
 
 export async function getRelatedCatalogProducts(product: Product) {
