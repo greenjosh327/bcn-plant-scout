@@ -1521,6 +1521,41 @@ function AdminAnalyticsDashboard({ session }: { session: Session | null }) {
             <OrderMetric label="Revenue" value={formatMoney(totals.revenueCents / 100)} />
           </section>
 
+          <section className="grid gap-6 lg:grid-cols-[0.75fr_1.25fr]">
+            <div className="field-card p-5">
+              <h2 className="text-2xl font-black text-pine">Visitor mix</h2>
+              <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                <OrderMetric label="New" value={summary.visitorMix.newVisitors} />
+                <OrderMetric label="Returning" value={summary.visitorMix.returningVisitors} />
+              </div>
+              <p className="mt-4 text-sm font-bold text-stone">
+                Returning rate: {summary.visitorMix.returningRate}% / known previous visitors: {summary.visitorMix.knownReturningVisitors}
+              </p>
+            </div>
+
+            <div className="field-card p-5">
+              <h2 className="text-2xl font-black text-pine">Top landing pages</h2>
+              <div className="mt-5 grid gap-3">
+                {summary.landingPages.length > 0 ? summary.landingPages.map((page) => (
+                  <div key={page.path} className="rounded-md border border-pine/15 bg-white/70 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-black text-pine">{formatPathLabel(page.path)}</p>
+                        {page.title ? <p className="mt-1 text-xs font-bold text-stone">{page.title}</p> : null}
+                      </div>
+                      <p className="font-black text-pine">{page.entries}</p>
+                    </div>
+                    <p className="mt-2 text-sm font-bold text-stone">
+                      {page.productViews} product views / {page.addToCarts} carts / {page.checkouts} checkouts
+                    </p>
+                  </div>
+                )) : (
+                  <p className="rounded-md bg-sage/60 p-4 text-sm font-bold text-stone">No landing page data yet.</p>
+                )}
+              </div>
+            </div>
+          </section>
+
           <section className="grid gap-6 lg:grid-cols-[0.85fr_1.15fr]">
             <div className="field-card p-5">
               <h2 className="text-2xl font-black text-pine">Funnel</h2>
@@ -1565,6 +1600,52 @@ function AdminAnalyticsDashboard({ session }: { session: Session | null }) {
 
           <section className="grid gap-6 lg:grid-cols-2">
             <div className="field-card p-5">
+              <h2 className="text-2xl font-black text-pine">Product drop-off</h2>
+              <div className="mt-5 grid gap-3">
+                {summary.productDropOff.length > 0 ? summary.productDropOff.map((product) => (
+                  <div key={product.productId || product.productSlug || product.productName} className="rounded-md border border-pine/15 bg-white/70 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="font-black text-pine">{product.productName}</p>
+                      <p className="font-black text-pine">{product.dropOffCount}</p>
+                    </div>
+                    <p className="mt-2 text-sm font-bold text-stone">
+                      {product.views} views / {product.addToCarts} carts
+                    </p>
+                    <p className="mt-1 text-xs font-black uppercase tracking-[0.14em] text-stone">
+                      {product.dropOffRate}% viewed without cart / {product.viewToCartRate}% view to cart
+                    </p>
+                  </div>
+                )) : (
+                  <p className="rounded-md bg-sage/60 p-4 text-sm font-bold text-stone">No product view data yet.</p>
+                )}
+              </div>
+            </div>
+
+            <div className="field-card p-5">
+              <h2 className="text-2xl font-black text-pine">Cart abandonment products</h2>
+              <div className="mt-5 grid gap-3">
+                {summary.cartAbandonment.length > 0 ? summary.cartAbandonment.map((product) => (
+                  <div key={product.productId || product.productSlug || product.productName} className="rounded-md border border-pine/15 bg-white/70 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="font-black text-pine">{product.productName}</p>
+                      <p className="font-black text-pine">{product.abandonedCarts}</p>
+                    </div>
+                    <p className="mt-2 text-sm font-bold text-stone">
+                      {product.addToCarts} carts / {product.purchases} purchased
+                    </p>
+                    <p className="mt-1 text-xs font-black uppercase tracking-[0.14em] text-stone">
+                      {product.cartToPurchaseRate}% cart to purchase
+                    </p>
+                  </div>
+                )) : (
+                  <p className="rounded-md bg-sage/60 p-4 text-sm font-bold text-stone">No cart abandonment data yet.</p>
+                )}
+              </div>
+            </div>
+          </section>
+
+          <section className="grid gap-6 lg:grid-cols-2">
+            <div className="field-card p-5">
               <h2 className="text-2xl font-black text-pine">Product performance</h2>
               <div className="mt-5 grid gap-3">
                 {summary.products.length > 0 ? summary.products.map((product) => (
@@ -1603,6 +1684,39 @@ function AdminAnalyticsDashboard({ session }: { session: Session | null }) {
                   <p className="rounded-md bg-sage/60 p-4 text-sm font-bold text-stone">No source data yet.</p>
                 )}
               </div>
+            </div>
+          </section>
+
+          <section className="field-card p-5">
+            <h2 className="text-2xl font-black text-pine">Referrer and UTM detail</h2>
+            <div className="mt-5 grid gap-3">
+              {summary.sourceDetails.length > 0 ? summary.sourceDetails.map((source) => (
+                <div key={`${source.source}-${source.medium}-${source.campaign}-${source.referrer}`} className="rounded-md border border-pine/15 bg-white/70 p-4">
+                  <div className="grid gap-2 md:grid-cols-[1.1fr_0.8fr_0.9fr_0.8fr]">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.14em] text-stone">Source</p>
+                      <p className="mt-1 font-black text-pine">{source.source}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.14em] text-stone">Medium</p>
+                      <p className="mt-1 font-bold text-pine">{source.medium}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.14em] text-stone">Campaign</p>
+                      <p className="mt-1 font-bold text-pine">{source.campaign || "None"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.14em] text-stone">Visits</p>
+                      <p className="mt-1 font-black text-pine">{source.visits}</p>
+                    </div>
+                  </div>
+                  <p className="mt-3 text-sm font-bold text-stone">
+                    {source.referrer || "No external referrer"} / {source.addToCarts} carts / {source.checkouts} checkouts / {source.purchases} purchases
+                  </p>
+                </div>
+              )) : (
+                <p className="rounded-md bg-sage/60 p-4 text-sm font-bold text-stone">No referrer or UTM detail yet.</p>
+              )}
             </div>
           </section>
 
@@ -2773,6 +2887,11 @@ function formatMoney(value: number, currency = "usd") {
 function formatPercent(numerator: number, denominator: number) {
   if (!denominator) return "0%";
   return `${Math.round((numerator / denominator) * 1000) / 10}%`;
+}
+
+function formatPathLabel(path: string) {
+  if (path === "/") return "Home";
+  return path;
 }
 
 function formatDateTime(value: string) {

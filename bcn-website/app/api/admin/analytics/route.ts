@@ -77,14 +77,18 @@ export async function GET(request: Request) {
     }, { status: 500 });
   }
 
+  const eventRows = (events ?? []) as ShopAnalyticsEventRow[];
+  const knownReturningVisitorIds = await loadKnownReturningVisitorIds(supabase, eventRows, since);
+
   const summary = buildAnalyticsSummary({
-    events: (events ?? []) as ShopAnalyticsEventRow[],
+    events: eventRows,
     orders: (orders ?? []) as AnalyticsOrderRow[],
     days: range.days,
     since: range.since,
     until: range.until,
     rangeLabel: range.label,
-    timeZone: range.timeZone
+    timeZone: range.timeZone,
+    knownReturningVisitorIds
   });
 
   return NextResponse.json({ summary });
@@ -143,4 +147,25 @@ function getSafeTimeZone(value: string | null) {
 
 function cleanRangeLabel(value: string | null) {
   return (value ?? "").replace(/[^\w\s/-]/g, "").trim().slice(0, 40);
+}
+
+async function loadKnownReturningVisitorIds(
+  supabase: ReturnType<typeof getSupabaseServiceClient>,
+  events: ShopAnalyticsEventRow[],
+  beforeIso: string
+) {
+  const visitorIds = Array.from(new Set(events.map((event) => event.visitor_id).filter((id): id is string => Boolean(id)))).slice(0, 5_000);
+  if (visitorIds.length === 0) return [];
+
+  const { data, error } = await supabase
+    .from("shop_analytics_events")
+    .select("visitor_id")
+    .in("visitor_id", visitorIds)
+    .lt("created_at", beforeIso)
+    .not("visitor_id", "is", null)
+    .limit(10_000);
+
+  if (error || !data) return [];
+
+  return Array.from(new Set(data.map((row) => row.visitor_id).filter((id): id is string => Boolean(id))));
 }
