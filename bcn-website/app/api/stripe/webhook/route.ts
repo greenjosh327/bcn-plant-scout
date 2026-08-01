@@ -51,6 +51,23 @@ function getCustomerId(session: Stripe.Checkout.Session) {
   return typeof customer === "string" ? customer : customer.id;
 }
 
+function getCouponCode(session: Stripe.Checkout.Session) {
+  const discounts = session.discounts ?? [];
+  for (const discount of discounts) {
+    const promotionCode = discount.promotion_code;
+    if (promotionCode && typeof promotionCode !== "string" && promotionCode.code) {
+      return promotionCode.code;
+    }
+
+    const coupon = discount.coupon;
+    if (coupon && typeof coupon !== "string") {
+      return coupon.name || coupon.id;
+    }
+  }
+
+  return null;
+}
+
 function getShippingAddress(session: Stripe.Checkout.Session) {
   const address = session.shipping_details?.address ?? session.customer_details?.address;
   if (!address) return {};
@@ -245,7 +262,8 @@ async function createOrCompleteOrder(session: Stripe.Checkout.Session, stripe: S
         shipping_cost: centsToDollars(session.total_details?.amount_shipping),
         tax: centsToDollars(session.total_details?.amount_tax),
         total: centsToDollars(session.amount_total),
-        currency: session.currency ?? "usd"
+        currency: session.currency ?? "usd",
+        coupon_code: getCouponCode(session)
       })
       .select("id")
       .single();
@@ -368,7 +386,10 @@ export async function POST(request: Request) {
   }
 
   try {
-    const session = event.data.object as Stripe.Checkout.Session;
+    const eventSession = event.data.object as Stripe.Checkout.Session;
+    const session = await stripe.checkout.sessions.retrieve(eventSession.id, {
+      expand: ["discounts.coupon", "discounts.promotion_code"]
+    });
     const result = await createOrCompleteOrder(session, stripe);
     return NextResponse.json({ received: true, ...result });
   } catch (error) {

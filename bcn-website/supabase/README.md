@@ -40,7 +40,11 @@ Run these files in the Supabase SQL Editor for the BCN project:
 10. `sql/20260713_bcn_tracking_voids_hardening.sql`
    - Adds Shippo tracking history, tracking detail, and label refund/void state.
 
-11. Add the owner/admin user.
+11. `sql/20260801_bcn_ga4_purchase_tracking.sql`
+   - Adds GA4 purchase tracking dedupe fields to paid Stripe orders.
+   - Stores Stripe coupon or promotion code text when available.
+
+12. Add the owner/admin user.
    - Find your user id in Supabase Authentication > Users.
    - Run:
 

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { GoogleEcommerceTracker } from "@/components/google-ecommerce-tracker";
+import { Ga4PurchaseTracker } from "@/components/ga4-purchase-tracker";
 import { getSupabaseServiceClient } from "@/lib/supabase-service";
 import {
   formatOrderShippingMethod,
@@ -114,33 +114,15 @@ async function getOrder(sessionId?: string) {
 
 export default async function CartSuccessPage({ searchParams }: SuccessPageProps) {
   const params = await searchParams;
-  const order = await getOrder(params?.session_id);
+  const sessionId = params?.session_id;
+  const order = await getOrder(sessionId);
   const shippingMethod = order ? formatOrderShippingMethod(order) : "";
   const carrierService = order ? formatShippingCarrierService(order) : "";
   const shippingAddress = order ? formatShippingAddress(order.shipping_address) : "";
 
   return (
     <main className="container py-12">
-      {order ? (
-        <GoogleEcommerceTracker
-          eventName="purchase"
-          params={{
-            transaction_id: order.id,
-            currency: order.currency.toUpperCase(),
-            value: Number(order.total) || 0,
-            tax: Number(order.tax) || 0,
-            shipping: Number(order.shipping_cost) || 0,
-            items: order.order_items.map((item) => ({
-              item_id: item.product_id || item.id,
-              item_name: item.product_name,
-              variant_id: item.variant_id ?? undefined,
-              item_variant: item.variant_name ?? undefined,
-              price: Number(item.unit_price) || Number(item.line_total) / Math.max(item.quantity, 1),
-              quantity: item.quantity
-            }))
-          }}
-        />
-      ) : null}
+      <Ga4PurchaseTracker sessionId={sessionId} />
       <section className="field-card max-w-3xl p-8">
         <p className="text-xs font-black uppercase tracking-[0.22em] text-stone">Order received</p>
         <h1 className="mt-3 text-5xl font-black text-pine">Thanks for your order.</h1>
