@@ -194,6 +194,15 @@ const PRODUCT_IMAGE_BUCKET = "product-images";
 const LOW_STOCK_THRESHOLD = 5;
 const CUSTOM_GROWING_VALUE = "__custom_growing_value__";
 
+async function getAdminAccessToken() {
+  if (!supabase) return null;
+
+  const { data, error } = await supabase.auth.getSession();
+  if (error || !data.session?.access_token) return null;
+
+  return data.session.access_token;
+}
+
 type GrowingTextKey =
   | "hardiness_zones"
   | "sunlight"
@@ -1194,9 +1203,9 @@ export function AdminCatalogEditor() {
       </div>
 
       {activeTab === "orders" ? (
-        <AdminOrdersDashboard session={session} />
+        <AdminOrdersDashboard />
       ) : activeTab === "analytics" ? (
-        <AdminAnalyticsDashboard session={session} />
+        <AdminAnalyticsDashboard />
       ) : (
       <div className="mt-8 grid gap-6 lg:grid-cols-[360px_1fr]">
         <aside className="field-card p-4">
@@ -1423,7 +1432,7 @@ type AnalyticsRangeSelection =
   | { kind: "day"; offset: 0 | 1 | 2; label: string }
   | { kind: "days"; days: 7 | 30 | 90; label: string };
 
-function AdminAnalyticsDashboard({ session }: { session: Session | null }) {
+function AdminAnalyticsDashboard() {
   const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
   const [range, setRange] = useState<AnalyticsRangeSelection>({ kind: "days", days: 30, label: "30 days" });
   const [loading, setLoading] = useState(false);
@@ -1434,7 +1443,8 @@ function AdminAnalyticsDashboard({ session }: { session: Session | null }) {
   }, [range]);
 
   async function loadAnalytics() {
-    if (!session?.access_token) {
+    const accessToken = await getAdminAccessToken();
+    if (!accessToken) {
       setMessage("Sign in again before loading analytics.");
       return;
     }
@@ -1445,7 +1455,7 @@ function AdminAnalyticsDashboard({ session }: { session: Session | null }) {
       const params = buildAnalyticsRangeParams(range);
       const response = await fetch(`/api/admin/analytics?${params.toString()}`, {
         headers: {
-          Authorization: `Bearer ${session.access_token}`
+          Authorization: `Bearer ${accessToken}`
         }
       });
       const payload = await response.json().catch(() => ({}));
@@ -1781,7 +1791,7 @@ function getAdminTimeZone() {
   return Intl.DateTimeFormat().resolvedOptions().timeZone || "America/New_York";
 }
 
-function AdminOrdersDashboard({ session }: { session: Session | null }) {
+function AdminOrdersDashboard() {
   const [orders, setOrders] = useState<ShopOrder[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filter, setFilter] = useState<"open" | "new" | "pickup" | "shipping" | "fulfilled" | "cancelled" | "all">("open");
@@ -1972,7 +1982,8 @@ function AdminOrdersDashboard({ session }: { session: Session | null }) {
   }
 
   async function buyShippingLabel(order: ShopOrder) {
-    if (!session?.access_token) {
+    const accessToken = await getAdminAccessToken();
+    if (!accessToken) {
       setMessage("Sign in again before buying a label.");
       return;
     }
@@ -1989,7 +2000,7 @@ function AdminOrdersDashboard({ session }: { session: Session | null }) {
       const response = await fetch(`/api/admin/orders/${order.id}/label`, {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${session.access_token}`
+          Authorization: `Bearer ${accessToken}`
         }
       });
       const payload = await response.json().catch(() => ({}));
@@ -2018,7 +2029,8 @@ function AdminOrdersDashboard({ session }: { session: Session | null }) {
   }
 
   async function voidShippingLabel(order: ShopOrder) {
-    if (!session?.access_token) {
+    const accessToken = await getAdminAccessToken();
+    if (!accessToken) {
       setMessage("Sign in again before voiding a label.");
       return;
     }
@@ -2039,7 +2051,7 @@ function AdminOrdersDashboard({ session }: { session: Session | null }) {
       const response = await fetch(`/api/admin/orders/${order.id}/label/void`, {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${session.access_token}`
+          Authorization: `Bearer ${accessToken}`
         }
       });
       const payload = await response.json().catch(() => ({}));
@@ -2058,7 +2070,8 @@ function AdminOrdersDashboard({ session }: { session: Session | null }) {
   }
 
   async function refreshTracking(order: ShopOrder) {
-    if (!session?.access_token) {
+    const accessToken = await getAdminAccessToken();
+    if (!accessToken) {
       setMessage("Sign in again before refreshing tracking.");
       return;
     }
@@ -2074,7 +2087,7 @@ function AdminOrdersDashboard({ session }: { session: Session | null }) {
       const response = await fetch(`/api/admin/orders/${order.id}/tracking`, {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${session.access_token}`
+          Authorization: `Bearer ${accessToken}`
         }
       });
       const payload = await response.json().catch(() => ({}));
