@@ -13,6 +13,7 @@
 
 body {
   margin: 0;
+  overflow-x: hidden;
 }
 
 body::before {
@@ -895,6 +896,21 @@ button.full {
   justify-content: center;
 }
 
+.photo-shell,
+.photo-link {
+  color: inherit;
+  display: block;
+  text-decoration: none;
+  width: 100%;
+}
+
+.load-more-panel {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+}
+
 .plant-card-body {
   padding: 20px;
 }
@@ -1064,5 +1080,477 @@ code {
 
   #map {
     height: 360px;
+  }
+}
+
+body::before {
+  display: none;
+}
+
+.marketing-page {
+  max-width: 1240px;
+  padding-top: 28px;
+}
+
+.hero {
+  align-items: center;
+  grid-template-columns: minmax(480px, 0.95fr) minmax(520px, 1.05fr);
+  margin-bottom: 34px;
+}
+
+.hero-copy {
+  background: #fbfdf8;
+  box-shadow: 0 18px 48px rgba(17, 61, 34, 0.08);
+  padding: clamp(28px, 3.8vw, 42px);
+}
+
+.hero-copy > * {
+  max-width: 100%;
+}
+
+.brand-mark {
+  margin: 0 0 24px;
+  max-width: min(330px, 100%);
+}
+
+.hero-copy h1 {
+  font-size: clamp(3rem, 4.9vw, 4.65rem);
+  letter-spacing: 0;
+}
+
+.hero-lede {
+  font-size: clamp(1.1rem, 1.55vw, 1.35rem);
+  line-height: 1.55;
+}
+
+.hero-preview {
+  background: #ffffff;
+  border: 1px solid #d8e3cf;
+  border-radius: 10px;
+  box-shadow: 0 18px 48px rgba(17, 61, 34, 0.1);
+  overflow: hidden;
+}
+
+.hero-preview img {
+  display: block;
+  height: auto;
+  width: 100%;
+}
+
+.availability-note {
+  color: #113d22;
+  font-size: 1.05rem;
+  font-weight: 950;
+  margin: 18px 0 0;
+}
+
+.store-badge-link {
+  align-items: center;
+  background: transparent;
+  display: inline-flex;
+  line-height: 0;
+}
+
+.store-badge-link img {
+  display: block;
+  height: 56px;
+  max-width: 190px;
+  object-fit: contain;
+  width: auto;
+}
+
+.secondary-cta {
+  align-items: center;
+  background: #e7ecde;
+  border: 1px solid #d8e3cf;
+  border-radius: 8px;
+  color: #113d22;
+  display: inline-flex;
+  font-weight: 950;
+  justify-content: center;
+  min-height: 56px;
+  padding: 0 22px;
+}
+
+.feature-section,
+.screenshots-section,
+.faq-section,
+.about-builder-section {
+  margin-top: 48px;
+}
+
+.feature-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.feature-card,
+.faq-card {
+  background: #ffffff;
+  border: 1px solid #dfe8d7;
+  border-radius: 8px;
+  padding: 24px;
+}
+
+.feature-card h3,
+.faq-card h3 {
+  color: #113d22;
+  font-size: 1.35rem;
+}
+
+.feature-card p,
+.faq-card p {
+  color: #344a34;
+  font-size: 1.02rem;
+  margin-bottom: 0;
+}
+
+.phone-grid {
+  display: grid;
+  gap: 24px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.phone-shot {
+  min-width: 0;
+  text-align: center;
+}
+
+.phone-shot h3 {
+  color: #113d22;
+  font-size: 1.05rem;
+  margin-top: 12px;
+}
+
+.phone-frame {
+  background: #111712;
+  border: 2px solid #26312a;
+  border-radius: 34px;
+  box-shadow: 0 18px 36px rgba(17, 61, 34, 0.16);
+  margin: 0 auto;
+  max-width: 280px;
+  overflow: hidden;
+  padding: 10px;
+  position: relative;
+}
+
+.phone-speaker {
+  background: #111712;
+  border-bottom-left-radius: 16px;
+  border-bottom-right-radius: 16px;
+  height: 18px;
+  left: 50%;
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  width: 92px;
+  z-index: 2;
+}
+
+.phone-frame img {
+  aspect-ratio: 955 / 1932;
+  border-radius: 24px;
+  display: block;
+  object-fit: cover;
+  object-position: top center;
+  width: 100%;
+}
+
+.download-section,
+.about-builder-section,
+.marketing-footer {
+  display: grid;
+  gap: 24px;
+  grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
+}
+
+.download-section {
+  align-items: center;
+  background: #113d22;
+  color: #ffffff;
+  margin-top: 54px;
+}
+
+.download-section .eyebrow,
+.download-section p {
+  color: #e8f2df;
+}
+
+.download-section h2 {
+  font-size: clamp(2rem, 4vw, 3.2rem);
+}
+
+.download-actions,
+.footer-badges {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.about-builder-copy {
+  background: #fbfdf8;
+}
+
+.about-builder-copy p {
+  color: #344a34;
+  font-size: 1.08rem;
+}
+
+.audience-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.audience-grid span {
+  background: #edf5e8;
+  border: 1px solid #d8e3cf;
+  border-radius: 999px;
+  color: #113d22;
+  font-weight: 900;
+  padding: 8px 12px;
+}
+
+.about-builder-image {
+  border: 1px solid #d8e3cf;
+  border-radius: 8px;
+  min-height: 100%;
+  overflow: hidden;
+}
+
+.about-builder-image img {
+  display: block;
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}
+
+.faq-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.text-store-button {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.marketing-footer {
+  align-items: center;
+  background: #0f2f1c;
+  border-radius: 8px;
+  color: #ffffff;
+  margin-top: 44px;
+  padding: 28px;
+}
+
+.marketing-footer .eyebrow,
+.marketing-footer a {
+  color: #e8f2df;
+}
+
+.marketing-footer nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 22px;
+  justify-content: flex-end;
+}
+
+.simple-marketing {
+  max-width: 1120px;
+}
+
+.simple-hero {
+  align-items: stretch;
+  display: grid;
+  gap: 24px;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 0.72fr);
+}
+
+.simple-hero-copy,
+.logo-detail-card {
+  background: #fbfdf8;
+  border: 1px solid #d8e3cf;
+  border-radius: 10px;
+  box-shadow: 0 14px 36px rgba(17, 61, 34, 0.08);
+}
+
+.simple-hero-copy {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: clamp(28px, 5vw, 52px);
+}
+
+.simple-hero-copy h1 {
+  font-size: clamp(3rem, 5vw, 4.75rem);
+  letter-spacing: 0;
+}
+
+.simple-hero-copy .hero-lede {
+  max-width: 680px;
+}
+
+.app-download-actions {
+  align-items: center;
+}
+
+.logo-detail-card {
+  align-content: center;
+  display: grid;
+  gap: 18px;
+  padding: 26px;
+}
+
+.logo-detail-brand {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #e1ead8;
+  border-radius: 8px;
+  display: flex;
+  justify-content: center;
+  padding: 18px;
+}
+
+.logo-detail-brand .brand-mark {
+  margin: 0;
+  max-width: min(330px, 100%);
+}
+
+.app-preview-frame {
+  background: #eef4e8;
+  border: 1px solid #d8e3cf;
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.app-preview-frame img {
+  border: 1px solid #d8e3cf;
+  border-radius: 6px;
+  display: block;
+  width: 100%;
+}
+
+.dashboard-simple-panel {
+  align-items: center;
+  background: #113d22;
+  color: #ffffff;
+  display: grid;
+  gap: 24px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  margin-top: 28px;
+}
+
+.dashboard-simple-panel .eyebrow,
+.dashboard-simple-panel p {
+  color: #e8f2df;
+}
+
+.dashboard-simple-panel h2 {
+  color: #ffffff;
+}
+
+.dashboard-simple-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.dashboard-simple-panel .secondary-cta {
+  background: #f5f8ef;
+}
+
+.simple-login {
+  margin-top: 28px;
+}
+
+.simple-public-links {
+  margin-top: 20px;
+}
+
+@media (max-width: 1000px) {
+  .hero,
+  .simple-hero,
+  .dashboard-simple-panel,
+  .download-section,
+  .about-builder-section,
+  .marketing-footer {
+    grid-template-columns: 1fr;
+  }
+
+  .feature-grid,
+  .phone-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-simple-actions {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 640px) {
+  .marketing-page {
+    max-width: 100%;
+    padding: 18px 14px 36px;
+    width: 100%;
+  }
+
+  .hero {
+    grid-template-columns: minmax(0, 1fr);
+    width: 100%;
+  }
+
+  .simple-hero {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .hero-copy,
+  .hero-preview,
+  .simple-hero-copy,
+  .logo-detail-card {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .hero-copy {
+    padding: 24px 28px;
+  }
+
+  .hero-copy h1 {
+    font-size: clamp(2.35rem, 12vw, 3.15rem);
+  }
+
+  .hero-lede {
+    font-size: 1.05rem;
+  }
+
+  .hero-actions,
+  .download-actions,
+  .footer-badges,
+  .marketing-footer nav {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .app-download-actions {
+    align-items: stretch;
+  }
+
+  .app-download-actions .secondary-cta {
+    width: 100%;
+  }
+
+  .feature-grid,
+  .phone-grid,
+  .faq-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .phone-frame {
+    max-width: 320px;
   }
 }

@@ -12,16 +12,187 @@ const ADMIN_PATH = "/admin";
 const SUPPORT_URL = `${DASHBOARD_URL}/support`;
 const DELETE_ACCOUNT_URL = `${DASHBOARD_URL}/delete-account`;
 const PRIVACY_POLICY_URL = `${DASHBOARD_URL}/privacy-policy`;
+const TERMS_URL = `${DASHBOARD_URL}/terms`;
 const ETSY_SHOP_URL = "https://basecampnorthpa.etsy.com";
-const APP_STORE_URL = "#";
+const BCN_SHOP_URL = "https://shop.basecampnorthpa.com";
 const BCN_FACEBOOK_URL = "https://www.facebook.com/profile.php?id=61581856435743";
-const IOS_TEST_DM_TEXT =
-  "Hi Base Camp North, I would like to join the BCN Plant Scout iOS closed test through TestFlight. My Apple ID email is:";
-const GOOGLE_GROUP_URL = "https://groups.google.com/g/bcn-plant-scout";
-const PLAY_TESTING_URL =
-  "https://play.google.com/apps/testing/com.basecampnorth.bcnplantscout";
+const APP_STORE_URL = "https://apps.apple.com/us/app/bcn-plant-scout/id6784878818";
 const PLAY_STORE_URL =
   "https://play.google.com/store/apps/details?id=com.basecampnorth.bcnplantscout";
+const BASE_CAMP_NORTH_URL = "https://basecampnorthpa.com";
+const OBSERVATION_SELECT_COLUMNS = [
+  "id",
+  "user_id",
+  "owner_id",
+  "privacy_level",
+  "sync_status",
+  "sync_error",
+  "last_synced_at",
+  "created_at",
+  "updated_at",
+  "deleted_at",
+  "common_name",
+  "scientific_name",
+  "other_names",
+  "confidence_score",
+  "identification_status",
+  "identification_error",
+  "identified_at",
+  "user_confirmed",
+  "latitude",
+  "longitude",
+  "accuracy_meters",
+  "observed_at",
+  "photo_file_name",
+  "photo_storage_path",
+  "notes",
+  "return_date",
+  "reminder_lead_days",
+  "reminder_scheduled_for",
+  "gather_notes",
+  "collection_interests",
+  "collection_status"
+].join(", ");
+const PHOTO_SELECT_COLUMNS = [
+  "id",
+  "observation_id",
+  "user_id",
+  "storage_path",
+  "file_name",
+  "photo_role",
+  "added_at",
+  "sync_status",
+  "sync_error"
+].join(", ");
+const DASHBOARD_CARD_PAGE_SIZE = 24;
+const DASHBOARD_REFRESH_DEBOUNCE_MS = 1500;
+const SIGNED_PHOTO_URL_EXPIRES_SECONDS = 60 * 60 * 24;
+const SIGNED_PHOTO_URL_RENEW_BUFFER_MS = 5 * 60 * 1000;
+const SIGNED_PHOTO_URL_SESSION_KEY = "bcnPlantScout.signedPhotoUrls.v1";
+const PHOTO_TRANSFORM_FAILURE_SESSION_KEY =
+  "bcnPlantScout.photoTransformsUnavailable.v1";
+const PHOTO_URL_VARIANTS = {
+  thumb: {
+    transform: {
+      width: 640,
+      height: 360,
+      resize: "cover",
+      quality: 70
+    }
+  },
+  detail: {
+    transform: {
+      width: 1400,
+      height: 1050,
+      resize: "contain",
+      quality: 82
+    }
+  },
+  card: {
+    transform: {
+      width: 1080,
+      height: 620,
+      resize: "cover",
+      quality: 82
+    }
+  }
+};
+
+const FEATURE_ITEMS = [
+  {
+    title: "Plant Identification",
+    body: "Identify plants from photos using AI."
+  },
+  {
+    title: "GPS Plant Mapping",
+    body: "Automatically save precise GPS locations. Never lose another great tree."
+  },
+  {
+    title: "Return Later",
+    body: "Set return dates for fruit, nuts, berries, seeds, or cuttings."
+  },
+  {
+    title: "Field Notes",
+    body: "Record habitat, ownership, collection notes, and observations."
+  },
+  {
+    title: "Build Your Plant Library",
+    body: "Organize thousands of plants by species, interest, and status."
+  },
+  {
+    title: "GIS Export",
+    body: "Export observations as CSV, GeoJSON, or ZIP. Perfect for GIS workflows."
+  }
+];
+
+const SCREENSHOTS = [
+  {
+    title: "Home Dashboard",
+    src: "/images/screenshots/home-dashboard.jpg",
+    alt: "BCN Plant Scout home dashboard showing saved plants and app stats"
+  },
+  {
+    title: "Plant Detail: Black Cherry",
+    src: "/images/screenshots/plant-detail-black-cherry.jpg",
+    alt: "Black cherry plant detail with photo, ID score, GPS accuracy, and actions"
+  },
+  {
+    title: "Plant Detail: Black Chokeberry",
+    src: "/images/screenshots/plant-detail-black-chokeberry.jpg",
+    alt: "Black chokeberry plant detail with alternate names and saved field metadata"
+  },
+  {
+    title: "Plant Map",
+    src: "/images/screenshots/plant-map.jpg",
+    alt: "Plant map showing saved locations and selected plant details"
+  },
+  {
+    title: "Plant Identification",
+    src: "/images/screenshots/plant-identification.jpg",
+    alt: "Plant identification screen with AI suggestion and alternate species choices"
+  },
+  {
+    title: "About BCN",
+    src: "/images/screenshots/about-bcn.jpg",
+    alt: "About BCN screen explaining the Base Camp North story"
+  }
+];
+
+const FAQ_ITEMS = [
+  {
+    question: "Does BCN Plant Scout work offline?",
+    answer: "Yes. Save plants in the field even without service. Sync later when connected."
+  },
+  {
+    question: "Does it identify plants?",
+    answer:
+      "Yes. Take or select a photo and receive AI-powered plant identification suggestions."
+  },
+  {
+    question: "Can I save GPS locations?",
+    answer: "Yes. Every plant can be saved with precise GPS coordinates."
+  },
+  {
+    question: "Can I export my data?",
+    answer: "Yes. Export your observations as CSV, GeoJSON, or ZIP."
+  },
+  {
+    question: "Is my data private?",
+    answer:
+      "You control your data. Choose whether observations remain private or are shared with Base Camp North."
+  }
+];
+
+const PERFECT_FOR = [
+  "Native plant enthusiasts",
+  "Foragers",
+  "Hunters",
+  "Tree nurseries",
+  "Forestry professionals",
+  "Land managers",
+  "GIS users",
+  "Restoration projects"
+];
 
 let supabase = null;
 let session = null;
@@ -30,6 +201,15 @@ let dashboardMode = getInitialDashboardMode();
 let observations = [];
 let photosByObservation = new Map();
 let signedPhotoUrls = new Map();
+let signedPhotoUrlCache = restoreSignedPhotoUrlCache();
+let signedPhotoUrlRequests = new Map();
+let photoTransformsUnavailable = restorePhotoTransformFailureFlag();
+let photoTransformsAvailable = photoTransformsUnavailable ? false : null;
+let photoTransformProbePromise = null;
+let dashboardLoadPromise = null;
+let lastDashboardLoadAt = 0;
+let visibleRecordLimit = DASHBOARD_CARD_PAGE_SIZE;
+let lazyImageObserver = null;
 let activeFilters = {
   search: "",
   status: "all",
@@ -105,207 +285,141 @@ function render() {
 
 function renderSignIn() {
   app.innerHTML = `
-    <main class="marketing-page">
-      <section class="hero">
-        <div class="hero-copy">
-          <img class="brand-mark" src="/images/bcn-logo-with-text.png" alt="Base Camp North" />
+    <main class="marketing-page simple-marketing">
+      <section id="download" class="simple-hero">
+        <div class="simple-hero-copy">
           <p class="eyebrow">Base Camp North</p>
           <h1>BCN Plant Scout</h1>
-          <p class="hero-lede">A rugged field notebook for tree nursery work: capture plant photos, GPS points, return notes, seed sources, and synced records you can review from the computer.</p>
-          <div class="hero-actions">
-            <a class="store-button" href="${APP_STORE_URL}" aria-disabled="true">App Store Coming Soon</a>
-            <a class="store-button secondary-store" href="${PLAY_TESTING_URL}" target="_blank" rel="noreferrer">Join Android Test</a>
-            <a class="store-button secondary-store" href="${BCN_FACEBOOK_URL}" target="_blank" rel="noreferrer">BCN on Facebook</a>
-          </div>
-          <p class="muted small-note">Already using the app? Sign in below to continue your field work.</p>
-        </div>
-        <div class="hero-card" aria-label="BCN Plant Scout feature preview">
-          <p class="eyebrow">Field Kit</p>
-          <img class="hero-kit-image" src="/images/scout-field-kit.webp" alt="Field notebook kit with scouting tools" />
-          <div class="notebook-lines">
-            <span>Photo records with GPS</span>
-            <span>Return and harvest notes</span>
-            <span>Desktop map and record review</span>
-          </div>
-          <div class="hero-stat-row">
-            <strong>Plants</strong>
-            <strong>Dirt</strong>
-            <strong>Trees</strong>
+          <p class="hero-lede">A simple field app for plant photos, GPS locations, AI plant ID, return dates, and notes you can find again later.</p>
+          <p class="availability-note">Available now for iPhone and Android.</p>
+          <div class="hero-actions app-download-actions">
+            ${renderStoreBadge(APP_STORE_URL, "/images/download-on-app-store.svg", "Download on the App Store")}
+            ${renderStoreBadge(PLAY_STORE_URL, "/images/get-it-on-google-play.png", "Get it on Google Play")}
+            <a class="secondary-cta" href="#sign-in">Sign In</a>
           </div>
         </div>
+        <aside class="logo-detail-card" aria-label="BCN Plant Scout app details">
+          <div class="logo-detail-brand">
+            <img class="brand-mark" src="/images/bcn-logo-with-text.png" alt="Base Camp North" />
+          </div>
+          <div class="app-preview-frame">
+            <img src="/images/plant-scout-hero.png" alt="BCN Plant Scout app preview showing a black cherry plant record" />
+          </div>
+        </aside>
       </section>
 
-      <section class="dashboard-link-panel panel">
-        <div class="dashboard-link-copy">
-          <p class="eyebrow">Web dashboard link</p>
-          <h2>Send this page to yourself before you head outside.</h2>
-          <p>BCN Plant Scout is two pieces: the phone app for field records, and this private web dashboard for reviewing synced photos, map points, return dates, and collection notes on a bigger screen. Send the link to your email, messages, Facebook, or wherever you keep links you need later.</p>
-          <p class="dashboard-link-url">${escapeHtml(DASHBOARD_URL)}</p>
-        </div>
-        <div class="dashboard-link-actions">
-          <button id="share-dashboard-link" class="share-action primary-share" type="button">Share Link</button>
-          <button id="email-dashboard-link" class="share-action" type="button">Email Link</button>
-          <button id="copy-dashboard-link" class="share-action secondary-share" type="button">Copy Link</button>
-          <p id="share-link-message" class="message share-link-message"></p>
-        </div>
-      </section>
-
-      <section class="public-info-panel panel">
+      <section class="dashboard-simple-panel panel">
         <div>
-          <p class="eyebrow">Support and account</p>
-          <h2>Need help with BCN Plant Scout?</h2>
-          <p>Use these links for app support, privacy details, account deletion help, and the Base Camp North Etsy shop.</p>
+          <p class="eyebrow">Web dashboard</p>
+          <h2>Sign in here after using the app.</h2>
+          <p>Use the phone app in the field. When your records sync, sign in here to review your saved plants, photos, map points, return dates, and notes on a bigger screen.</p>
         </div>
-        <div class="public-link-actions">
-          <a class="store-button" href="${SUPPORT_URL}">Support</a>
-          <a class="store-button secondary-store" href="${DELETE_ACCOUNT_URL}">Delete Account</a>
-          <a class="store-button secondary-store" href="${PRIVACY_POLICY_URL}">Privacy Policy</a>
-          <a class="store-button secondary-store" href="${ETSY_SHOP_URL}" target="_blank" rel="noreferrer">BCN Etsy</a>
+        <div class="dashboard-simple-actions">
+          <a class="secondary-cta" href="#sign-in">Sign In to Dashboard</a>
         </div>
       </section>
 
-      <section class="tester-section">
-        <div class="tester-grid">
-          <div class="panel tester-panel">
-            <p class="eyebrow">Help test BCN Plant Scout</p>
-            <h2>Android closed testing</h2>
-            <p>Testing is open to invited Google accounts. Join the tester group first, enroll in the closed test, then install the app from Google Play.</p>
-            <div class="tester-steps">
-              <a href="${GOOGLE_GROUP_URL}" target="_blank" rel="noreferrer">
-                <strong>1</strong>
-                <span>Join Google Group</span>
-              </a>
-              <a href="${PLAY_TESTING_URL}" target="_blank" rel="noreferrer">
-                <strong>2</strong>
-                <span>Enroll in Testing</span>
-              </a>
-              <a href="${PLAY_STORE_URL}" target="_blank" rel="noreferrer">
-                <strong>3</strong>
-                <span>Open App Listing</span>
-              </a>
-            </div>
-            <p class="muted small-note">If Google says the app is not available, make sure you joined the tester group with the same Google account used on your phone.</p>
-          </div>
-          <div class="panel tester-panel">
-            <p class="eyebrow">Apple TestFlight</p>
-            <h2>iPhone closed testing</h2>
-            <p>Want to test on iPhone? Message the Base Camp North Facebook page and include the Apple ID email address you use for TestFlight.</p>
-            <a class="store-button tester-mail-button" href="${BCN_FACEBOOK_URL}" target="_blank" rel="noreferrer">Message BCN on Facebook</a>
-            <div class="message-template">
-              <p class="eyebrow">Copy this message</p>
-              <p>${escapeHtml(IOS_TEST_DM_TEXT)}</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section class="about-grid">
-        <article class="panel about-panel">
-          <img class="about-image" src="/images/scout-seedling-tray.webp" alt="Seedling tray for nursery work" />
-          <p class="eyebrow">About the app</p>
-          <h2>Built for finding the plant again.</h2>
-          <p>BCN Plant Scout turns a field photo into a useful nursery record: what it is, where it is, why it matters, when to come back, and whether it is ready for seeds, cuttings, fruit, nuts, or scion wood.</p>
-        </article>
-        <article class="panel about-panel">
-          <img class="about-image" src="/images/scout-cuttings-bundle.webp" alt="Bundle of plant cuttings with field tag" />
-          <p class="eyebrow">Field workflow</p>
-          <h2>Take the photo. Keep the trail.</h2>
-          <p>Start with the plant in front of you, then build the record around it: GPS, photos, notes, return plans, harvest status, and the details that make the spot worth finding again.</p>
-        </article>
-        <article class="panel about-panel">
-          <img class="about-image" src="/images/scout-field-map.webp" alt="Field map with location pin" />
-          <p class="eyebrow">Desktop companion</p>
-          <h2>Scout in the field. Review at the desk.</h2>
-          <p>Use the mobile app outside, then open the web dashboard later to review photos, map points, return dates, and collection notes on a bigger screen.</p>
-        </article>
-        <article class="panel about-panel">
-          <img class="about-image" src="/images/scout-greenhouse-tools.webp" alt="Greenhouse and nursery tools" />
-          <p class="eyebrow">Base Camp North</p>
-          <h2>Nursery work, not just plant ID.</h2>
-          <p>This is for real scouting: native trees, seed collecting, berry checks, return trips, and building a better memory of the land one observation at a time.</p>
-        </article>
-      </section>
-
-      <section class="species-section panel">
-        <div class="section-heading marketing-heading">
-          <div>
-            <p class="eyebrow">Scout-worthy finds</p>
-            <h2>Track seed, cutting, fruit, and nut sources.</h2>
-          </div>
-        </div>
-        <div class="species-grid">
-          ${renderSpeciesTile("/images/scout-elderberry.webp", "Elderberry", "berries and cuttings")}
-          ${renderSpeciesTile("/images/scout-chestnut.webp", "Chestnut", "nuts and parent trees")}
-          ${renderSpeciesTile("/images/scout-crabapple.webp", "Crabapple", "fruit and scion wood")}
-          ${renderSpeciesTile("/images/scout-evergreen-cones.webp", "Evergreen", "cones and seed sources")}
-        </div>
-      </section>
-
-      <section class="reviews-section">
-        <div class="section-heading marketing-heading">
-          <div>
-            <p class="eyebrow">Field notes from very real imaginary reviewers</p>
-            <h2>Early praise</h2>
-          </div>
-        </div>
-        <div class="reviews-grid">
-          ${renderReview("Five stars for saving me from saying 'that tree by the rock' for the 400th time.", "Return Trip Professional")}
-          ${renderReview("Finally, a plant app that understands I came back for acorns and forgot where I parked.", "Slightly Lost Seed Collector")}
-          ${renderReview("My notes, photos, and map points are all in one place. My clipboard is jealous.", "Nursery Notebook Enthusiast")}
-        </div>
-      </section>
-
-      <section class="login-shell">
+      <section id="sign-in" class="login-shell simple-login">
         <div class="panel login-panel">
           <p class="eyebrow">Dashboard access</p>
           <h2>Sign In</h2>
           <p class="muted">Use the same account as the mobile app to open your synced field dashboard.</p>
           <button id="google-sign-in" class="google-button full">Sign In With Google</button>
           <div class="login-divider"><span>or use email</span></div>
-        <form id="email-form" class="form">
-          <label>
-            Email
-            <input id="email" type="email" autocomplete="email" required />
-          </label>
-          <label>
-            Password
-            <input id="password" type="password" autocomplete="current-password" required />
-          </label>
-          <button type="submit">Sign In</button>
-        </form>
-        <p id="auth-message" class="message"></p>
+          <form id="email-form" class="form">
+            <label>
+              Email
+              <input id="email" type="email" autocomplete="email" required />
+            </label>
+            <label>
+              Password
+              <input id="password" type="password" autocomplete="current-password" required />
+            </label>
+            <button type="submit">Sign In</button>
+          </form>
+          <p id="auth-message" class="message"></p>
         </div>
       </section>
+
+      <section class="public-info-panel simple-public-links panel">
+        <div>
+          <p class="eyebrow">Help</p>
+          <h2>Support and account links.</h2>
+          <p>Support, privacy details, terms, and account deletion stay here for app store review and user help.</p>
+        </div>
+        <div class="public-link-actions">
+          <a class="store-button text-store-button" href="${SUPPORT_URL}">Support</a>
+          <a class="store-button secondary-store text-store-button" href="${DELETE_ACCOUNT_URL}">Delete Account</a>
+          <a class="store-button secondary-store text-store-button" href="${PRIVACY_POLICY_URL}">Privacy Policy</a>
+          <a class="store-button secondary-store text-store-button" href="${TERMS_URL}">Terms</a>
+        </div>
+      </section>
+
+      <footer class="marketing-footer">
+        <div>
+          <p class="eyebrow">BCN Plant Scout</p>
+          <h2>Available now for field work.</h2>
+          <div class="footer-badges">
+            ${renderStoreBadge(APP_STORE_URL, "/images/download-on-app-store.svg", "Download on the App Store")}
+            ${renderStoreBadge(PLAY_STORE_URL, "/images/get-it-on-google-play.png", "Get it on Google Play")}
+          </div>
+        </div>
+        <nav aria-label="Footer">
+          <a href="${SUPPORT_URL}">Support</a>
+          <a href="${PRIVACY_POLICY_URL}">Privacy Policy</a>
+          <a href="${TERMS_URL}">Terms</a>
+          <a href="${BCN_SHOP_URL}">BCN Shop</a>
+          <a href="${BCN_FACEBOOK_URL}" target="_blank" rel="noreferrer">Facebook</a>
+          <a href="${BASE_CAMP_NORTH_URL}">Base Camp North</a>
+        </nav>
+      </footer>
     </main>
   `;
 
   document.querySelector("#email-form").addEventListener("submit", signInWithEmail);
   document.querySelector("#google-sign-in").addEventListener("click", signInWithGoogle);
-  document.querySelector("#share-dashboard-link").addEventListener("click", shareDashboardLink);
-  document.querySelector("#email-dashboard-link").addEventListener("click", emailDashboardLink);
-  document.querySelector("#copy-dashboard-link").addEventListener("click", copyDashboardLink);
 }
 
-function renderReview(text, author) {
+function renderStoreBadge(href, src, alt) {
   return `
-    <article class="review-card">
-      <p class="stars">★★★★★</p>
-      <p>"${escapeHtml(text)}"</p>
-      <strong>${escapeHtml(author)}</strong>
+    <a class="store-badge-link" href="${href}" target="_blank" rel="noreferrer" aria-label="${escapeHtml(alt)}">
+      <img src="${src}" alt="${escapeHtml(alt)}" />
+    </a>
+  `;
+}
+
+function renderFeatureCard(feature) {
+  return `
+    <article class="feature-card">
+      <h3>${escapeHtml(feature.title)}</h3>
+      <p>${escapeHtml(feature.body)}</p>
     </article>
   `;
 }
 
-function renderSpeciesTile(src, name, detail) {
+function renderScreenshot(item) {
   return `
-    <article class="species-tile">
-      <img src="${src}" alt="${escapeHtml(name)} field scouting illustration" />
-      <div>
-        <h3>${escapeHtml(name)}</h3>
-        <p>${escapeHtml(detail)}</p>
+    <article class="phone-shot">
+      <div class="phone-frame">
+        <span class="phone-speaker" aria-hidden="true"></span>
+        <img src="${item.src}" alt="${escapeHtml(item.alt)}" loading="lazy" />
       </div>
+      <h3>${escapeHtml(item.title)}</h3>
     </article>
   `;
+}
+
+function renderFaqItem(item) {
+  return `
+    <article class="faq-card">
+      <h3>${escapeHtml(item.question)}</h3>
+      <p>${escapeHtml(item.answer)}</p>
+    </article>
+  `;
+}
+
+function renderAudienceBadge(label) {
+  return `<span>${escapeHtml(label)}</span>`;
 }
 
 async function signInWithEmail(event) {
@@ -508,31 +622,39 @@ function hydrateDashboard() {
   if (adminModeButton) {
     adminModeButton.addEventListener("click", () => setDashboardMode("admin"));
   }
-  document.querySelector("#refresh").addEventListener("click", loadDashboard);
+  document
+    .querySelector("#refresh")
+    .addEventListener("click", () => loadDashboard({ force: true }));
   document.querySelector("#search").addEventListener("input", (event) => {
     activeFilters.search = event.target.value;
+    visibleRecordLimit = DASHBOARD_CARD_PAGE_SIZE;
     redrawDashboardData();
   });
   document.querySelector("#status-filter").addEventListener("change", (event) => {
     activeFilters.status = event.target.value;
+    visibleRecordLimit = DASHBOARD_CARD_PAGE_SIZE;
     redrawDashboardData();
   });
   document.querySelector("#interest-filter").addEventListener("change", (event) => {
     activeFilters.interest = event.target.value;
+    visibleRecordLimit = DASHBOARD_CARD_PAGE_SIZE;
     redrawDashboardData();
   });
   document.querySelector("#privacy-filter").addEventListener("change", (event) => {
     activeFilters.privacy = event.target.value;
+    visibleRecordLimit = DASHBOARD_CARD_PAGE_SIZE;
     redrawDashboardData();
   });
   document.querySelector("#return-filter").addEventListener("change", (event) => {
     activeFilters.returnWindow = event.target.value;
+    visibleRecordLimit = DASHBOARD_CARD_PAGE_SIZE;
     redrawDashboardData();
   });
   const userFilter = document.querySelector("#user-filter");
   if (userFilter) {
     userFilter.addEventListener("change", (event) => {
       activeFilters.user = event.target.value;
+      visibleRecordLimit = DASHBOARD_CARD_PAGE_SIZE;
       redrawDashboardData();
     });
   }
@@ -550,12 +672,35 @@ function setDashboardMode(nextMode) {
   dashboardMode = nextMode;
   activeFilters.user = "all";
   selectedRecordId = null;
+  visibleRecordLimit = DASHBOARD_CARD_PAGE_SIZE;
   renderDashboard();
   hydrateDashboard();
   redrawDashboardData();
 }
 
-async function loadDashboard() {
+async function loadDashboard(options = {}) {
+  if (dashboardLoadPromise) {
+    return dashboardLoadPromise;
+  }
+
+  const now = Date.now();
+  if (
+    !options.force &&
+    observations.length > 0 &&
+    now - lastDashboardLoadAt < DASHBOARD_REFRESH_DEBOUNCE_MS
+  ) {
+    redrawDashboardData();
+    return;
+  }
+
+  dashboardLoadPromise = loadDashboardData().finally(() => {
+    dashboardLoadPromise = null;
+  });
+
+  return dashboardLoadPromise;
+}
+
+async function loadDashboardData() {
   setRecordsLoading();
   await loadAdminStatus();
   if (!isAdmin) {
@@ -564,7 +709,7 @@ async function loadDashboard() {
 
   const { data: observationRows, error: observationError } = await supabase
     .from("observations")
-    .select("*")
+    .select(OBSERVATION_SELECT_COLUMNS)
     .is("deleted_at", null)
     .order("observed_at", { ascending: false });
 
@@ -573,10 +718,10 @@ async function loadDashboard() {
     return;
   }
 
-  const { data: photoRows, error: photoError } = await supabase
-    .from("observation_photos")
-    .select("*")
-    .order("added_at", { ascending: true });
+  const visibleObservationIds = new Set((observationRows ?? []).map((record) => record.id));
+  const { photoRows, error: photoError } = await loadPhotoRowsForObservations([
+    ...visibleObservationIds
+  ]);
 
   if (photoError) {
     renderError(photoError.message);
@@ -584,17 +729,21 @@ async function loadDashboard() {
   }
 
   observations = observationRows ?? [];
+  visibleRecordLimit = Math.max(
+    DASHBOARD_CARD_PAGE_SIZE,
+    Math.min(visibleRecordLimit, observations.length || DASHBOARD_CARD_PAGE_SIZE)
+  );
   const adminMode = isAdminMode();
   const dashboardRecords = getDashboardRecords();
   if (!adminMode || !dashboardRecords.some((record) => getRecordUserId(record) === activeFilters.user)) {
     activeFilters.user = "all";
   }
-  const visibleObservationIds = new Set(observations.map((record) => record.id));
   const visiblePhotoRows = (photoRows ?? []).filter((photo) =>
     visibleObservationIds.has(photo.observation_id)
   );
   photosByObservation = groupBy(visiblePhotoRows, "observation_id");
-  signedPhotoUrls = await createSignedPhotoUrlMap(visiblePhotoRows);
+  signedPhotoUrls = createCachedThumbnailUrlMap(visiblePhotoRows);
+  lastDashboardLoadAt = Date.now();
   renderDashboard();
   hydrateDashboard();
   redrawDashboardData();
@@ -625,23 +774,35 @@ function setRecordsLoading() {
   }
 }
 
-async function createSignedPhotoUrlMap(photoRows) {
-  const entries = await Promise.all(
+async function loadPhotoRowsForObservations(observationIds) {
+  if (observationIds.length === 0) {
+    return { photoRows: [], error: null };
+  }
+
+  const photoRows = [];
+  for (let index = 0; index < observationIds.length; index += 100) {
+    const idChunk = observationIds.slice(index, index + 100);
+    const { data, error } = await supabase
+      .from("observation_photos")
+      .select(PHOTO_SELECT_COLUMNS)
+      .in("observation_id", idChunk)
+      .order("added_at", { ascending: true });
+
+    if (error) {
+      return { photoRows: [], error };
+    }
+    photoRows.push(...(data ?? []));
+  }
+
+  return { photoRows, error: null };
+}
+
+function createCachedThumbnailUrlMap(photoRows) {
+  return new Map(
     photoRows
-      .filter((photo) => photo.storage_path)
-      .map(async (photo) => {
-        const { data, error } = await supabase.storage
-          .from(PLANT_PHOTOS_BUCKET)
-          .createSignedUrl(photo.storage_path, 60 * 60);
-
-        if (error || !data?.signedUrl) {
-          return [photo.id, null];
-        }
-        return [photo.id, data.signedUrl];
-      })
+      .map((photo) => [photo.id, getCachedSignedPhotoUrl(photo, "thumb")])
+      .filter((entry) => entry[1])
   );
-
-  return new Map(entries);
 }
 
 function redrawDashboardData() {
@@ -652,6 +813,285 @@ function redrawDashboardData() {
   renderRecords(filtered);
   renderMap(filtered);
   renderDetailModal();
+  hydratePhotoPlaceholders();
+}
+
+function renderPhotoShell(photo, alt, variant, options = {}) {
+  const cachedUrl = getCachedSignedPhotoUrl(photo, variant);
+  if (variant === "thumb" && cachedUrl) {
+    signedPhotoUrls.set(photo.id, cachedUrl);
+  }
+  const tag = options.link ? "a" : "div";
+  const href = options.link ? ` href="${cachedUrl ? escapeHtml(cachedUrl) : "#"}" target="_blank" rel="noreferrer"` : "";
+  const content = cachedUrl
+    ? `<img src="${escapeHtml(cachedUrl)}" alt="${escapeHtml(alt)}" loading="lazy" decoding="async" />`
+    : `<div class="photo-placeholder">Loading photo</div>`;
+
+  return `<${tag} class="photo-shell${options.link ? " photo-link" : ""}"${href} data-photo-id="${escapeHtml(photo.id)}" data-photo-variant="${escapeHtml(variant)}" data-photo-alt="${escapeHtml(alt)}">${content}</${tag}>`;
+}
+
+function hydratePhotoPlaceholders(root = document) {
+  const shells = [...root.querySelectorAll("[data-photo-id][data-photo-variant]")].filter(
+    (shell) => shell.dataset.photoHydrated !== "true"
+  );
+  if (shells.length === 0) return;
+
+  if ("IntersectionObserver" in window) {
+    if (!lazyImageObserver) {
+      lazyImageObserver = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) => {
+            if (!entry.isIntersecting) return;
+            lazyImageObserver.unobserve(entry.target);
+            hydrateOnePhotoShell(entry.target);
+          });
+        },
+        { rootMargin: "350px 0px" }
+      );
+    }
+    shells.forEach((shell) => lazyImageObserver.observe(shell));
+    return;
+  }
+
+  shells.forEach(hydrateOnePhotoShell);
+}
+
+async function hydrateOnePhotoShell(shell) {
+  if (shell.dataset.photoHydrated === "true") return;
+  shell.dataset.photoHydrated = "true";
+
+  const photo = findPhotoById(shell.dataset.photoId);
+  if (!photo) {
+    shell.innerHTML = `<div class="photo-placeholder">Photo unavailable</div>`;
+    return;
+  }
+
+  try {
+    const variant = shell.dataset.photoVariant || "thumb";
+    const signedUrl = await ensureSignedPhotoUrl(photo, variant);
+    if (!signedUrl || !shell.isConnected) return;
+
+    if (variant === "thumb") {
+      signedPhotoUrls.set(photo.id, signedUrl);
+    }
+    if (shell.tagName === "A") {
+      shell.setAttribute("href", signedUrl);
+    }
+    shell.innerHTML = `<img src="${escapeHtml(signedUrl)}" alt="${escapeHtml(
+      shell.dataset.photoAlt || "Plant photo"
+    )}" loading="lazy" decoding="async" />`;
+  } catch (error) {
+    console.warn("Photo URL load failed:", getErrorMessage(error));
+    shell.innerHTML = `<div class="photo-placeholder">Photo unavailable</div>`;
+  }
+}
+
+async function openPhoto(photoId) {
+  const photo = findPhotoById(photoId);
+  if (!photo) return;
+  const nextWindow = window.open("", "_blank", "noopener,noreferrer");
+
+  try {
+    const signedUrl = await ensureSignedPhotoUrl(photo, "detail");
+    if (signedUrl) {
+      if (nextWindow) {
+        nextWindow.location.href = signedUrl;
+      } else {
+        window.open(signedUrl, "_blank", "noopener,noreferrer");
+      }
+    } else {
+      nextWindow?.close();
+    }
+  } catch (error) {
+    nextWindow?.close();
+    window.alert(`Photo failed to open: ${getErrorMessage(error)}`);
+  }
+}
+
+function findPhotoById(photoId) {
+  if (!photoId) return null;
+  for (const photos of photosByObservation.values()) {
+    const match = photos.find((photo) => photo.id === photoId);
+    if (match) return match;
+  }
+  return null;
+}
+
+async function ensureSignedPhotoUrl(photo, variant = "thumb") {
+  if (!photo?.storage_path) return null;
+
+  const cachedUrl = getCachedSignedPhotoUrl(photo, variant);
+  if (cachedUrl) return cachedUrl;
+
+  const cacheKey = getSignedPhotoUrlCacheKey(photo, variant);
+  if (signedPhotoUrlRequests.has(cacheKey)) {
+    return signedPhotoUrlRequests.get(cacheKey);
+  }
+
+  const request = createSignedPhotoUrl(photo, variant).finally(() => {
+    signedPhotoUrlRequests.delete(cacheKey);
+  });
+  signedPhotoUrlRequests.set(cacheKey, request);
+  return request;
+}
+
+async function createSignedPhotoUrl(photo, variant) {
+  const cacheKey = getSignedPhotoUrlCacheKey(photo, variant);
+  const variantOptions = PHOTO_URL_VARIANTS[variant];
+  let transformOptions;
+
+  if (variantOptions?.transform && !photoTransformsUnavailable) {
+    if (photoTransformsAvailable === true) {
+      transformOptions = variantOptions;
+    } else if (photoTransformProbePromise) {
+      await photoTransformProbePromise;
+      transformOptions = photoTransformsAvailable === true ? variantOptions : undefined;
+    } else if (photoTransformsAvailable !== false) {
+      transformOptions = variantOptions;
+    }
+  }
+
+  const signedUrlRequest = supabase.storage
+    .from(PLANT_PHOTOS_BUCKET)
+    .createSignedUrl(
+      photo.storage_path,
+      SIGNED_PHOTO_URL_EXPIRES_SECONDS,
+      transformOptions
+    );
+
+  if (transformOptions?.transform && photoTransformsAvailable !== true) {
+    photoTransformProbePromise = signedUrlRequest
+      .then(({ error }) => {
+        if (error) {
+          markPhotoTransformsUnavailable();
+        } else {
+          photoTransformsAvailable = true;
+        }
+      })
+      .catch(() => {
+        markPhotoTransformsUnavailable();
+      })
+      .finally(() => {
+        photoTransformProbePromise = null;
+      });
+  }
+
+  const { data, error } = await signedUrlRequest;
+
+  let signedUrl = data?.signedUrl ?? null;
+  if (error && transformOptions?.transform) {
+    console.warn("Transformed photo URL failed, falling back to original:", error.message);
+    markPhotoTransformsUnavailable();
+    const fallback = await supabase.storage
+      .from(PLANT_PHOTOS_BUCKET)
+      .createSignedUrl(photo.storage_path, SIGNED_PHOTO_URL_EXPIRES_SECONDS);
+    if (fallback.error) {
+      throw fallback.error;
+    }
+    signedUrl = fallback.data?.signedUrl ?? null;
+  } else if (error) {
+    throw error;
+  }
+
+  if (!signedUrl) {
+    throw new Error("Signed photo URL was not returned.");
+  }
+
+  signedPhotoUrlCache.set(cacheKey, {
+    signedUrl,
+    expiresAt: Date.now() + SIGNED_PHOTO_URL_EXPIRES_SECONDS * 1000
+  });
+  if (variant === "thumb") {
+    signedPhotoUrls.set(photo.id, signedUrl);
+  }
+  persistSignedPhotoUrlCache();
+  return signedUrl;
+}
+
+function getCachedSignedPhotoUrl(photo, variant) {
+  if (!photo?.storage_path) return null;
+  const cacheKey = getSignedPhotoUrlCacheKey(photo, variant);
+  const cached = signedPhotoUrlCache.get(cacheKey);
+  if (!cached) return null;
+
+  if (cached.expiresAt <= Date.now() + SIGNED_PHOTO_URL_RENEW_BUFFER_MS) {
+    signedPhotoUrlCache.delete(cacheKey);
+    persistSignedPhotoUrlCache();
+    return null;
+  }
+
+  return cached.signedUrl;
+}
+
+function getSignedPhotoUrlCacheKey(photo, variant) {
+  return `${variant}:${photo.storage_path}`;
+}
+
+function clearSignedPhotoUrlCache(photo) {
+  signedPhotoUrls.delete(photo.id);
+  Object.keys(PHOTO_URL_VARIANTS).forEach((variant) => {
+    signedPhotoUrlCache.delete(getSignedPhotoUrlCacheKey(photo, variant));
+  });
+  persistSignedPhotoUrlCache();
+}
+
+function restoreSignedPhotoUrlCache() {
+  if (typeof sessionStorage === "undefined") {
+    return new Map();
+  }
+
+  try {
+    const stored = sessionStorage.getItem(SIGNED_PHOTO_URL_SESSION_KEY);
+    if (!stored) return new Map();
+    const now = Date.now() + SIGNED_PHOTO_URL_RENEW_BUFFER_MS;
+    return new Map(
+      JSON.parse(stored).filter((entry) => entry?.[1]?.signedUrl && entry[1].expiresAt > now)
+    );
+  } catch {
+    return new Map();
+  }
+}
+
+function restorePhotoTransformFailureFlag() {
+  if (typeof sessionStorage === "undefined") {
+    return false;
+  }
+
+  return sessionStorage.getItem(PHOTO_TRANSFORM_FAILURE_SESSION_KEY) === "true";
+}
+
+function persistPhotoTransformFailureFlag() {
+  if (typeof sessionStorage === "undefined") {
+    return;
+  }
+
+  try {
+    sessionStorage.setItem(PHOTO_TRANSFORM_FAILURE_SESSION_KEY, "true");
+  } catch {
+    // Best-effort browser session flag only.
+  }
+}
+
+function markPhotoTransformsUnavailable() {
+  photoTransformsUnavailable = true;
+  photoTransformsAvailable = false;
+  persistPhotoTransformFailureFlag();
+}
+
+function persistSignedPhotoUrlCache() {
+  if (typeof sessionStorage === "undefined") {
+    return;
+  }
+
+  try {
+    const now = Date.now() + SIGNED_PHOTO_URL_RENEW_BUFFER_MS;
+    const entries = [...signedPhotoUrlCache.entries()].filter(
+      (entry) => entry?.[1]?.signedUrl && entry[1].expiresAt > now
+    );
+    sessionStorage.setItem(SIGNED_PHOTO_URL_SESSION_KEY, JSON.stringify(entries));
+  } catch {
+    // Best-effort browser cache only.
+  }
 }
 
 function getFilteredObservations() {
@@ -865,7 +1305,8 @@ function renderAdminSnapshot(filtered) {
 
 function renderRecords(filtered) {
   const dashboardRecords = getDashboardRecords();
-  document.querySelector("#record-count").textContent = `${filtered.length} of ${dashboardRecords.length} synced records`;
+  const visibleRecords = filtered.slice(0, visibleRecordLimit);
+  document.querySelector("#record-count").textContent = `Showing ${visibleRecords.length} of ${filtered.length} matching synced records`;
 
   const records = document.querySelector("#records");
   if (filtered.length === 0) {
@@ -873,7 +1314,26 @@ function renderRecords(filtered) {
     return;
   }
 
-  records.innerHTML = filtered.map(renderRecordCard).join("");
+  records.innerHTML = `
+    ${visibleRecords.map(renderRecordCard).join("")}
+    ${
+      visibleRecords.length < filtered.length
+        ? `
+          <article class="panel compact-panel load-more-panel">
+            <p class="muted">${filtered.length - visibleRecords.length} more matching record(s) are held back until you ask for them.</p>
+            <button id="load-more-records" type="button">Load More Records</button>
+          </article>
+        `
+        : ""
+    }
+  `;
+  const loadMoreButton = document.querySelector("#load-more-records");
+  if (loadMoreButton) {
+    loadMoreButton.addEventListener("click", () => {
+      visibleRecordLimit += DASHBOARD_CARD_PAGE_SIZE;
+      redrawDashboardData();
+    });
+  }
   document.querySelectorAll("[data-detail-id]").forEach((button) => {
     button.addEventListener("click", () => {
       selectedRecordId = button.getAttribute("data-detail-id");
@@ -883,6 +1343,11 @@ function renderRecords(filtered) {
   document.querySelectorAll("[data-card-id]").forEach((button) => {
     button.addEventListener("click", () => {
       sharePlantCard(button.getAttribute("data-card-id"));
+    });
+  });
+  document.querySelectorAll("[data-open-photo-id]").forEach((button) => {
+    button.addEventListener("click", () => {
+      openPhoto(button.getAttribute("data-open-photo-id"));
     });
   });
   document.querySelectorAll("[data-delete-id]").forEach((button) => {
@@ -895,13 +1360,12 @@ function renderRecords(filtered) {
 function renderRecordCard(record) {
   const photos = photosByObservation.get(record.id) ?? [];
   const primaryPhoto = photos.find((photo) => photo.photo_role === "primary") ?? photos[0];
-  const photoUrl = primaryPhoto ? signedPhotoUrls.get(primaryPhoto.id) : null;
   const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${record.latitude},${record.longitude}`)}`;
   const canDelete = canManageRecord(record);
 
   return `
     <article class="plant-card">
-      ${photoUrl ? `<img src="${photoUrl}" alt="${escapeHtml(record.common_name)}" />` : `<div class="photo-placeholder">No photo</div>`}
+      ${primaryPhoto ? renderPhotoShell(primaryPhoto, record.common_name, "thumb") : `<div class="photo-placeholder">No photo</div>`}
       <div class="plant-card-body">
         <div class="plant-title-row">
           <div>
@@ -932,7 +1396,7 @@ function renderRecordCard(record) {
         <div class="actions">
           <button class="link-button" type="button" data-detail-id="${escapeHtml(record.id)}">View Details</button>
           <a href="${mapsUrl}" target="_blank" rel="noreferrer">Open Map</a>
-          ${photoUrl ? `<a href="${photoUrl}" target="_blank" rel="noreferrer">Open Photo</a>` : ""}
+          ${primaryPhoto ? `<button class="link-button" type="button" data-open-photo-id="${escapeHtml(primaryPhoto.id)}">Open Photo</button>` : ""}
           <button class="link-button" type="button" data-card-id="${escapeHtml(record.id)}">Share Plant Card</button>
           ${canDelete ? `<button class="link-button danger-link" type="button" data-delete-id="${escapeHtml(record.id)}">Delete</button>` : ""}
           ${isAdmin && !canDelete ? `<span class="read-only-note">Read-only member record</span>` : ""}
@@ -1029,10 +1493,9 @@ function renderDetailModal() {
   const canDelete = canManageRecord(record);
   const photoTiles = photos
     .map((photo) => {
-      const photoUrl = signedPhotoUrls.get(photo.id);
-      return photoUrl
-        ? `<a href="${photoUrl}" target="_blank" rel="noreferrer"><img src="${photoUrl}" alt="${escapeHtml(photo.file_name ?? record.common_name)}" /></a>`
-        : "";
+      return renderPhotoShell(photo, photo.file_name ?? record.common_name, "detail", {
+        link: true
+      });
     })
     .join("");
 
@@ -1085,6 +1548,7 @@ function renderDetailModal() {
   document.querySelector("#share-detail-card").addEventListener("click", () => {
     sharePlantCard(record.id);
   });
+  hydratePhotoPlaceholders(modal);
 }
 
 async function sharePlantCard(recordId) {
@@ -1132,7 +1596,7 @@ async function createPlantCardBlob(record) {
 
   const photos = photosByObservation.get(record.id) ?? [];
   const primaryPhoto = photos.find((photo) => photo.photo_role === "primary") ?? photos[0];
-  const photoUrl = primaryPhoto ? signedPhotoUrls.get(primaryPhoto.id) : null;
+  const photoUrl = primaryPhoto ? await ensureSignedPhotoUrl(primaryPhoto, "card") : null;
 
   if (photoUrl) {
     try {
@@ -1393,7 +1857,7 @@ async function deleteCloudObservation(recordId) {
     selectedRecordId = null;
     observations = observations.filter((item) => item.id !== recordId);
     photosByObservation.delete(recordId);
-    photos.forEach((photo) => signedPhotoUrls.delete(photo.id));
+    photos.forEach(clearSignedPhotoUrlCache);
     redrawDashboardData();
   } catch (error) {
     window.alert(`Delete failed: ${getErrorMessage(error)}`);
