@@ -4,7 +4,6 @@ import { CartLink } from "@/components/cart-link";
 
 const navItems = [
   ["Shop", "/shop"],
-  ["GIS", "/gis"],
   ["Scout App", "https://scout.basecampnorthpa.com"],
   ["Articles", "/articles"],
   ["About", "/about"],
@@ -29,7 +28,7 @@ export function SiteHeader() {
           <span>
             <span className="block text-lg font-black leading-tight text-pine">Base Camp North</span>
             <span className="block text-xs font-bold uppercase tracking-[0.18em] text-stone">
-              Native nursery and GIS
+              Native nursery and seeds
             </span>
           </span>
         </Link>

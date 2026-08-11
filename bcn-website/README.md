@@ -109,7 +109,6 @@ https://shop.basecampnorthpa.com/**
 - `/` Home
 - `/shop` Product grid with search, category filter, and sorting
 - `/shop/product/[slug]` Product detail page
-- `/gis` GIS services placeholder
 - `/about` Base Camp North story
 - `/contact` Purpose-based contact links for general, sales, orders, and Plant Scout support
 - `/articles` Article placeholders

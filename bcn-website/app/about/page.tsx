@@ -71,7 +71,7 @@ export default function AboutPage() {
           <div className="mt-8 space-y-5 text-lg leading-8 text-ink/75">
             <p>
               Base Camp North also develops technology for the conservation community, including the
-              BCN Plant Scout app, which helps users identify, map, and revisit important plants in the field.
+              BCN Plant Scout app, which helps users identify, record, and revisit important plants in the field.
             </p>
             <p>
               Whether you are planting a single tree or restoring hundreds of acres, we are here to help.
@@ -84,8 +84,8 @@ export default function AboutPage() {
             <Link className="button button-primary" href="/shop">
               Shop Nursery Inventory
             </Link>
-            <Link className="button button-secondary" href="/gis">
-              Explore GIS Services
+            <Link className="button button-secondary" href="/contact">
+              Contact BCN
             </Link>
           </div>
         </section>

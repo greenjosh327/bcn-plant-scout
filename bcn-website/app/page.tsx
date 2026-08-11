@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = buildPageMetadata({
   title: "Base Camp North Native Tree Seeds and Plants in Pennsylvania",
   description:
-    "Base Camp North offers native tree seeds, nursery plants, wildlife and habitat planting supplies, and practical GIS services from Pennsylvania.",
+    "Base Camp North offers native tree seeds, nursery plants, wildlife food trees, and habitat planting supplies from Pennsylvania.",
   path: "/"
 });
 
@@ -26,7 +26,6 @@ const reasons = [
 
 const jumpLinks = [
   ["Shop Native Plants", "/shop", "Plants, seeds, cuttings, and seasonal nursery inventory."],
-  ["GIS Services", "/gis", "Maps, field workflows, and planning support for restoration work."],
   ["Plant Scout App", "https://scout.basecampnorthpa.com", "The field companion for saving plant finds and return visits."],
   ["Field Notes", "/articles", "Propagation notes, species writeups, and practical restoration lessons."]
 ];
@@ -48,14 +47,14 @@ export default async function HomePage() {
             </h1>
             <p className="mt-6 max-w-2xl text-xl leading-9 text-ink/75">
               A Pennsylvania nursery focused on native trees, nut species, pollinator
-              plants, seed collection, and GIS-backed field work.
+              plants, seed collection, and practical habitat work.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Link className="button button-primary" href="/shop">
                 Shop Plants
               </Link>
-              <Link className="button button-secondary" href="/gis">
-                GIS Services
+              <Link className="button button-secondary" href="/contact">
+                Contact BCN
               </Link>
             </div>
           </div>
@@ -75,9 +74,9 @@ export default async function HomePage() {
 
       <section className="container py-12">
         <SectionHeading eyebrow="Start here" title="Base Camp North jump-off points">
-          One front door for the nursery, field mapping work, Plant Scout app, and field notes.
+          One front door for the nursery, Plant Scout app, and field notes.
         </SectionHeading>
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-3">
           {jumpLinks.map(([title, href, text]) => (
             <Link key={title} href={href} className="field-card block p-6 transition hover:border-rust/50 hover:bg-white">
               <h2 className="text-xl font-black text-pine">{title}</h2>
@@ -107,27 +106,6 @@ export default async function HomePage() {
               <p className="mt-3 text-sm leading-6 text-ink/70">{text}</p>
             </article>
           ))}
-        </div>
-      </section>
-
-      <section className="container py-16">
-        <div className="grid gap-8 rounded-lg bg-pine p-8 text-white md:grid-cols-[1fr_0.8fr] md:p-12">
-          <div>
-            <p className="text-xs font-black uppercase tracking-[0.22em] text-sage">
-              GIS Services
-            </p>
-            <h2 className="mt-3 text-4xl font-black">Maps for the work after planting.</h2>
-            <p className="mt-5 max-w-2xl text-lg leading-8 text-sage">
-              Property maps, habitat planning, invasive species surveys, and field
-              data workflows for restoration projects and land stewardship.
-            </p>
-            <Link className="button mt-7 bg-white text-pine" href="/gis">
-              Explore GIS Services
-            </Link>
-          </div>
-          <div className="relative min-h-64 overflow-hidden rounded-md">
-            <Image src="/images/scout-field-map.webp" alt="Field map and scouting tools" fill className="object-cover" />
-          </div>
         </div>
       </section>
 

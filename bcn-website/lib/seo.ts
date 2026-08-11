@@ -5,10 +5,10 @@ import type { Product } from "./types";
 export const siteConfig = {
   name: "Base Camp North",
   url: "https://basecampnorthpa.com",
-  defaultTitle: "Base Camp North | Native Trees, Seeds and GIS Services",
+  defaultTitle: "Base Camp North | Native Trees, Seeds and Habitat Plants",
   titleTemplate: "%s | Base Camp North",
   defaultDescription:
-    "Base Camp North offers native tree seeds, nursery plants, growing information, and GIS mapping services from Pennsylvania.",
+    "Base Camp North offers native tree seeds, nursery plants, growing information, and habitat planting supplies from Pennsylvania.",
   locale: "en_US",
   twitterCard: "summary_large_image",
   defaultSocialImage: {

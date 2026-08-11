@@ -30,7 +30,7 @@ export const SHIPPING_CLASS_DESCRIPTIONS: Record<ShippingClass, string> = {
   live_plant: "Smaller live plants that are not trees.",
   tree: "Bare-root or potted trees that require Priority Mail or faster.",
   oversized_pickup_only: "Items BCN will not normally ship.",
-  digital: "Digital or GIS products with no physical fulfillment."
+  digital: "Digital products with no physical fulfillment."
 };
 
 export const SHIPPING_METHOD_CODES = [

@@ -8,7 +8,7 @@ import { buildBreadcrumbList } from "@/lib/structured-data";
 export const metadata: Metadata = buildPageMetadata({
   title: "Contact Base Camp North",
   description:
-    "Contact Base Camp North about nursery products, tree seeds, orders, shipping, GIS services, or BCN Plant Scout app support.",
+    "Contact Base Camp North about nursery products, tree seeds, orders, shipping, or BCN Plant Scout app support.",
   path: "/contact"
 });
 
@@ -80,9 +80,6 @@ export default function ContactPage() {
           <div className="mt-6 flex flex-wrap gap-3">
             <Link className="button button-secondary" href="/shop">
               Browse Shop
-            </Link>
-            <Link className="button button-secondary" href="/gis">
-              GIS Services
             </Link>
             <Link className="button button-secondary" href="https://scout.basecampnorthpa.com/support">
               Plant Scout Support

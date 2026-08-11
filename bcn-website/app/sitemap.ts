@@ -18,11 +18,6 @@ const staticEntries: SitemapEntry[] = [
     priority: 0.9
   },
   {
-    url: buildCanonicalUrl("/gis"),
-    changeFrequency: "monthly",
-    priority: 0.7
-  },
-  {
     url: buildCanonicalUrl("/about"),
     changeFrequency: "monthly",
     priority: 0.6
