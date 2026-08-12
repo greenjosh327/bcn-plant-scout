@@ -1,40 +1,57 @@
 import type { Metadata } from "next";
+import Image from "next/image";
+import Link from "next/link";
+import { JsonLd } from "@/components/json-ld";
+import { SectionHeading } from "@/components/section-heading";
+import { articles } from "@/lib/articles";
 import { buildPageMetadata } from "@/lib/seo";
+import { buildBreadcrumbList } from "@/lib/structured-data";
 
-// Re-enable indexing after real article routes replace the placeholder cards below.
 export const metadata: Metadata = buildPageMetadata({
-  title: "Field Notes Coming Soon",
+  title: "Base Camp North Articles and Field Notes",
   description:
-    "Base Camp North field notes are not published yet. Future articles will cover nursery work, propagation notes, seed timing, and habitat planting.",
-  path: "/articles",
-  robots: {
-    index: false,
-    follow: false
-  }
+    "Field notes from Base Camp North covering native plants, seed collection, Plant Scout records, propagation, and habitat planting.",
+  path: "/articles"
 });
-
-const articlePlaceholders = [
-  "When to collect acorns in Pennsylvania",
-  "How to think about return-later field notes",
-  "Native shrubs for wet edges and pollinator rows"
-];
 
 export default function ArticlesPage() {
   return (
     <main className="container py-12">
-      <p className="text-xs font-black uppercase tracking-[0.22em] text-stone">Articles</p>
-      <h1 className="mt-3 text-5xl font-black text-pine">Field notes coming soon</h1>
-      <div className="mt-8 grid gap-4 md:grid-cols-3">
-        {articlePlaceholders.map((title) => (
-          <article key={title} className="field-card p-6">
-            <p className="text-xs font-black uppercase tracking-[0.16em] text-stone">Draft</p>
-            <h2 className="mt-3 text-2xl font-black text-pine">{title}</h2>
-            <p className="mt-4 text-sm leading-6 text-ink/70">
-              Placeholder for future educational articles and nursery updates.
-            </p>
-          </article>
+      <JsonLd
+        data={buildBreadcrumbList([
+          { name: "Home", path: "/" },
+          { name: "Articles", path: "/articles" }
+        ])}
+      />
+      <SectionHeading as="h1" eyebrow="Articles" title="Field notes and growing guides">
+        Practical notes from Base Camp North on native plants, seed timing, field records, propagation, and habitat work.
+      </SectionHeading>
+
+      <div className="grid gap-6 md:grid-cols-3">
+        {articles.map((article) => (
+          <Link key={article.slug} href={`/articles/${article.slug}`} className="field-card block overflow-hidden transition hover:border-rust/50 hover:bg-white">
+            <div className="relative aspect-[4/3] bg-sage">
+              <Image src={article.heroImage} alt={article.heroAlt} fill sizes="(min-width: 768px) 33vw, 100vw" className="object-cover" />
+            </div>
+            <div className="p-6">
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-stone">
+                {formatArticleDate(article.publishedAt)} / {article.readingMinutes} min read
+              </p>
+              <h2 className="mt-3 text-2xl font-black text-pine">{article.title}</h2>
+              <p className="mt-4 text-sm leading-6 text-ink/70">{article.excerpt}</p>
+            </div>
+          </Link>
         ))}
       </div>
     </main>
   );
+}
+
+function formatArticleDate(value: string) {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC"
+  }).format(new Date(`${value}T00:00:00.000Z`));
 }

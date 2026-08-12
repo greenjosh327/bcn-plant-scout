@@ -1,4 +1,5 @@
 import { contactEmails } from "./contact";
+import type { FieldArticle } from "./articles";
 import { getProductImages } from "./product-images";
 import {
   buildAbsoluteImageUrl,
@@ -92,6 +93,41 @@ export function buildWebsiteEntity() {
     publisher: {
       "@id": organizationId
     }
+  });
+}
+
+export function buildArticlePageStructuredData(article: FieldArticle) {
+  return buildStructuredDataGraph([
+    buildArticleEntity(article),
+    buildBreadcrumbList([
+      { name: "Home", path: "/" },
+      { name: "Articles", path: "/articles" },
+      { name: article.title, path: `/articles/${article.slug}` }
+    ])
+  ]);
+}
+
+export function buildArticleEntity(article: FieldArticle) {
+  const canonical = buildCanonicalUrl(`/articles/${article.slug}`);
+  const image = buildAbsoluteImageUrl(article.heroImage);
+
+  return compactJsonLd({
+    "@type": "Article",
+    "@id": `${canonical}#article`,
+    headline: cleanStructuredText(article.title, 110),
+    description: cleanMetaDescription(article.description, 220),
+    url: canonical,
+    image: image ? [image] : undefined,
+    datePublished: article.publishedAt,
+    dateModified: article.updatedAt || article.publishedAt,
+    author: {
+      "@type": "Person",
+      name: "Josh Green"
+    },
+    publisher: {
+      "@id": organizationId
+    },
+    mainEntityOfPage: canonical
   });
 }
 

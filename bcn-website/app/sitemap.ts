@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 import { getCatalogProducts } from "@/lib/catalog-db";
+import { articles } from "@/lib/articles";
 import { buildCanonicalUrl } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
@@ -18,6 +19,11 @@ const staticEntries: SitemapEntry[] = [
     priority: 0.9
   },
   {
+    url: buildCanonicalUrl("/articles"),
+    changeFrequency: "weekly",
+    priority: 0.7
+  },
+  {
     url: buildCanonicalUrl("/about"),
     changeFrequency: "monthly",
     priority: 0.6
@@ -31,8 +37,18 @@ const staticEntries: SitemapEntry[] = [
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const productEntries = await getProductEntries();
+  const articleEntries = getArticleEntries();
 
-  return uniqueEntries([...staticEntries, ...productEntries]);
+  return uniqueEntries([...staticEntries, ...productEntries, ...articleEntries]);
+}
+
+function getArticleEntries(): SitemapEntry[] {
+  return articles.map((article) => ({
+    url: buildCanonicalUrl(`/articles/${article.slug}`),
+    lastModified: validDateOrUndefined(article.updatedAt),
+    changeFrequency: "monthly" as const,
+    priority: 0.7
+  }));
 }
 
 async function getProductEntries(): Promise<SitemapEntry[]> {

@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  buildArticleEntity,
+  buildArticlePageStructuredData,
   buildBreadcrumbList,
   buildBusinessEntity,
   buildContactPoints,
@@ -12,6 +14,7 @@ import {
   serializeJsonLd,
   websiteId
 } from "@/lib/structured-data";
+import { articles } from "@/lib/articles";
 import type { Product } from "@/lib/types";
 
 function product(overrides: Partial<Product> = {}): Product {
@@ -86,6 +89,27 @@ test("business and website entities use stable IDs and verified public values", 
   assert.equal(business.logo, "https://basecampnorthpa.com/images/bcn-logo.png");
   assert.equal((website.publisher as Record<string, string>)["@id"], organizationId);
   assert.equal(website["@id"], websiteId);
+});
+
+test("article entity uses canonical URL and public article metadata", () => {
+  const article = articles[0];
+  const entity = buildArticleEntity(article) as Record<string, unknown>;
+
+  assert.equal(entity["@id"], `https://basecampnorthpa.com/articles/${article.slug}#article`);
+  assert.equal(entity.url, `https://basecampnorthpa.com/articles/${article.slug}`);
+  assert.equal(entity.headline, article.title);
+  assert.equal((entity.author as Record<string, string>).name, "Josh Green");
+  assert.equal((entity.publisher as Record<string, string>)["@id"], organizationId);
+  assert.deepEqual(entity.image, ["https://basecampnorthpa.com/images/scout-field-kit.webp"]);
+});
+
+test("article page schema includes article and breadcrumb entities", () => {
+  const serialized = serializeJsonLd(buildArticlePageStructuredData(articles[0]));
+
+  assert.doesNotMatch(serialized, /undefined/);
+  assert.match(serialized, /How to Use BCN Plant Scout in the Field/);
+  assert.match(serialized, /BreadcrumbList/);
+  JSON.parse(serialized);
 });
 
 test("contact points expose only public customer-facing email addresses", () => {

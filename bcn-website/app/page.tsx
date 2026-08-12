@@ -4,6 +4,7 @@ import Link from "next/link";
 import { JsonLd } from "@/components/json-ld";
 import { ProductCard } from "@/components/product-card";
 import { SectionHeading } from "@/components/section-heading";
+import { getFeaturedArticles } from "@/lib/articles";
 import { getFeaturedCatalogProducts } from "@/lib/catalog-db";
 import { buildPageMetadata } from "@/lib/seo";
 import { buildHomepageStructuredData } from "@/lib/structured-data";
@@ -32,6 +33,7 @@ const jumpLinks = [
 
 export default async function HomePage() {
   const featured = await getFeaturedCatalogProducts();
+  const featuredArticles = getFeaturedArticles(1);
 
   return (
     <main>
@@ -110,10 +112,18 @@ export default async function HomePage() {
       </section>
 
       <section className="container py-12">
-        <SectionHeading eyebrow="Latest articles" title="Field notes coming soon">
-          Propagation notes, seed timing, native plant profiles, and restoration lessons
-          will live here as the nursery grows.
+        <SectionHeading eyebrow="Latest articles" title="Field notes and growing guides">
+          Propagation notes, seed timing, native plant profiles, and practical restoration lessons from Base Camp North.
         </SectionHeading>
+        <div className="grid gap-4 md:grid-cols-3">
+          {featuredArticles.map((article) => (
+            <Link key={article.slug} href={`/articles/${article.slug}`} className="field-card block p-6 transition hover:border-rust/50 hover:bg-white">
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-stone">{article.readingMinutes} min read</p>
+              <h2 className="mt-3 text-2xl font-black text-pine">{article.title}</h2>
+              <p className="mt-4 text-sm leading-6 text-ink/70">{article.excerpt}</p>
+            </Link>
+          ))}
+        </div>
       </section>
     </main>
   );
