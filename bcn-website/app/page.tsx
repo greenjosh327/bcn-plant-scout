@@ -33,7 +33,7 @@ const jumpLinks = [
 
 export default async function HomePage() {
   const featured = await getFeaturedCatalogProducts();
-  const featuredArticles = getFeaturedArticles(1);
+  const featuredArticles = getFeaturedArticles(3);
 
   return (
     <main>

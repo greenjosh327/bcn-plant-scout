@@ -105,6 +105,17 @@ function ArticleSection({ section }: { section: FieldArticleSection }) {
           ))}
         </dl>
       ) : null}
+      {section.links ? (
+        <div className="mt-5 grid gap-3">
+          {section.links.map((link) => (
+            <Link key={link.href} href={link.href} className="rounded-md border border-pine/15 bg-sage/45 px-4 py-3 transition hover:border-rust/50 hover:bg-white">
+              <span className="block font-black text-pine">{link.label}</span>
+              <span className="mt-1 block text-sm leading-6 text-ink/70">{link.description}</span>
+              <span className="mt-2 block break-words text-sm font-bold text-rust">{link.href}</span>
+            </Link>
+          ))}
+        </div>
+      ) : null}
     </section>
   );
 }
