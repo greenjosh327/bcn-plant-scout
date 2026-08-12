@@ -38,8 +38,8 @@ export const articles: FieldArticle[] = [
     publishedAt: "2026-08-11",
     updatedAt: "2026-08-11",
     readingMinutes: 6,
-    heroImage: "/images/scout-field-kit.webp",
-    heroAlt: "Base Camp North field notebook and seed collection tools",
+    heroImage: "/images/articles/plant-scout-field-records.png",
+    heroAlt: "Phone, field notebook, and native seed pods at a woodland edge",
     tags: ["Plant Scout", "Field notes", "Seed collection", "Habitat restoration"],
     sections: [
       {
@@ -145,8 +145,8 @@ export const articles: FieldArticle[] = [
     publishedAt: "2026-08-11",
     updatedAt: "2026-08-11",
     readingMinutes: 7,
-    heroImage: "/images/scout-nut-pile.webp",
-    heroAlt: "Collected nuts and seeds on a field surface",
+    heroImage: "/images/articles/just-ask-permission-seed-collection.png",
+    heroAlt: "Permission-first seed collection at a rural Pennsylvania property",
     tags: ["Seed collection", "Permission", "Native plants", "Field notes"],
     sections: [
       {
@@ -260,8 +260,8 @@ export const articles: FieldArticle[] = [
     publishedAt: "2026-08-11",
     updatedAt: "2026-08-11",
     readingMinutes: 8,
-    heroImage: "/images/scout-field-map.webp",
-    heroAlt: "Field map and scouting tools",
+    heroImage: "/images/articles/landowner-seed-collection-research.png",
+    heroAlt: "Parcel map, field notebook, and native nuts for landowner research",
     tags: ["Seed collection", "Permission", "Property research", "Pennsylvania"],
     sections: [
       {

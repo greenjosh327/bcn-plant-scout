@@ -53,7 +53,10 @@ const VERIFIED_LOCAL_SOCIAL_IMAGES = new Set([
   "/images/scout-field-map.webp",
   "/images/scout-greenhouse-tools.webp",
   "/images/scout-nut-pile.webp",
-  "/images/scout-seedling-tray.webp"
+  "/images/scout-seedling-tray.webp",
+  "/images/articles/plant-scout-field-records.png",
+  "/images/articles/just-ask-permission-seed-collection.png",
+  "/images/articles/landowner-seed-collection-research.png"
 ]);
 
 export function buildCanonicalUrl(path = "/") {

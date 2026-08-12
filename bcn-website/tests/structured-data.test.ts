@@ -100,7 +100,7 @@ test("article entity uses canonical URL and public article metadata", () => {
   assert.equal(entity.headline, article.title);
   assert.equal((entity.author as Record<string, string>).name, "Josh Green");
   assert.equal((entity.publisher as Record<string, string>)["@id"], organizationId);
-  assert.deepEqual(entity.image, ["https://basecampnorthpa.com/images/scout-field-kit.webp"]);
+  assert.deepEqual(entity.image, ["https://basecampnorthpa.com/images/articles/plant-scout-field-records.png"]);
 });
 
 test("article page schema includes article and breadcrumb entities", () => {
