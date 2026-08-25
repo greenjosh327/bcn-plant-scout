@@ -100,7 +100,7 @@ test("product metadata falls back safely when product descriptions or images are
 
   assert.equal(
     buildProductMetaDescription(item),
-    "Test Product Seeds is a Base Camp North seed listing with notes for Testus plantus, Test Product, Full Sun."
+    "Small-batch seeds gathered, cleaned, processed, and packed by Base Camp North in Pennsylvania; Test Product Seeds is a Base Camp North seed listing with notes."
   );
   assert.equal(images[0].url, "https://basecampnorthpa.com/images/bcn-logo.png");
 });

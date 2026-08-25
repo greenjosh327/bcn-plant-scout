@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { decodeProductSlug, normalizeProductSlug } from "@/lib/product-slug";
+import { decodeProductSlug, normalizeProductSlug, resolveProductSlugAlias } from "@/lib/product-slug";
 
 test("product slugs are normalized for shop URLs", () => {
   assert.equal(normalizeProductSlug("Korean XL-chestnut-bareroot"), "korean-xl-chestnut-bareroot");
@@ -11,4 +11,9 @@ test("product slugs are normalized for shop URLs", () => {
 test("encoded product slugs can be decoded before lookup", () => {
   assert.equal(decodeProductSlug("Korean%20XL-chestnut-bareroot"), "Korean XL-chestnut-bareroot");
   assert.equal(decodeProductSlug("%"), "%");
+});
+
+test("legacy placeholder product slugs resolve to canonical product slugs", () => {
+  assert.equal(resolveProductSlugAlias("new-product-584560"), "black-chokeberry-aronia-melanocarpa-seeds");
+  assert.equal(resolveProductSlugAlias("Prairifire Crabapple Seeds"), "prairifire-crabapple-seeds");
 });

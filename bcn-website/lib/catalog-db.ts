@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { getFallbackProductImage, getProductImageAltText } from "./product-images";
-import { decodeProductSlug, normalizeProductSlug } from "./product-slug";
+import { decodeProductSlug, normalizeProductSlug, resolveProductSlugAlias } from "./product-slug";
 import { products as fallbackProducts } from "./products";
 import { isShippingClass } from "./shipping/types";
 import type { Product, ProductCategory, ProductImage, ProductVariation } from "./types";
@@ -130,10 +130,11 @@ export async function getCatalogProductBySlug(slug: string) {
   const products = await getCatalogProducts();
   const decodedSlug = decodeProductSlug(slug);
   const normalizedSlug = normalizeProductSlug(decodedSlug);
+  const canonicalSlug = resolveProductSlugAlias(normalizedSlug);
 
   return (
-    products.find((product) => product.slug === slug || product.slug === decodedSlug) ??
-    products.find((product) => normalizeProductSlug(product.slug) === normalizedSlug)
+    products.find((product) => product.slug === slug || product.slug === decodedSlug || product.slug === canonicalSlug) ??
+    products.find((product) => normalizeProductSlug(product.slug) === canonicalSlug)
   );
 }
 

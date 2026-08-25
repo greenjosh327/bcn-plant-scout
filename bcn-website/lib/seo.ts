@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { getPrimaryProductImage } from "./product-images";
+import { prependProductProvenance } from "./product-provenance";
 import type { Product } from "./types";
 
 export const siteConfig = {
@@ -175,10 +176,12 @@ export function buildNoindexMetadata(): Metadata {
 
 export function buildProductMetaDescription(product: Product) {
   const publicDescription = cleanMetaDescription(product.description);
-  if (publicDescription && publicDescription.length >= 35) return publicDescription;
+  if (publicDescription && publicDescription.length >= 35) {
+    return cleanMetaDescription(prependProductProvenance(product, publicDescription));
+  }
 
   const generated = buildGeneratedProductDescription(product);
-  return cleanMetaDescription(generated) || siteConfig.defaultDescription;
+  return cleanMetaDescription(prependProductProvenance(product, generated)) || siteConfig.defaultDescription;
 }
 
 export function cleanMetaDescription(value: string | null | undefined, maxLength = DESCRIPTION_LENGTH) {

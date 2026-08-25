@@ -1,14 +1,10 @@
 import type { Product } from "@/lib/types";
-
-const FEED_SLUGS = [
-  "honey-locust-seeds-fast-growing-tree-deer-food-wildlife-permaculture",
-  "prairifire-crabapple-seeds"
-];
+import { prependProductProvenance } from "@/lib/product-provenance";
 
 export function getGoogleMerchantFeedProducts(products: Product[]) {
   return products
-    .filter((product) => product.active && FEED_SLUGS.includes(product.slug))
-    .sort((a, b) => FEED_SLUGS.indexOf(a.slug) - FEED_SLUGS.indexOf(b.slug));
+    .filter((product) => product.active && product.category === "Seeds" && getTotalInventory(product) > 0)
+    .sort((a, b) => Number(b.featured) - Number(a.featured) || a.name.localeCompare(b.name));
 }
 
 export function buildGoogleMerchantFeed(products: Product[], siteUrl: string) {
@@ -32,7 +28,7 @@ function buildFeedItem(product: Product, siteUrl: string) {
   const availability = totalInventory > 0 ? "in_stock" : "out_of_stock";
   const productUrl = `${siteUrl}/shop/product/${product.slug}`;
   const imageUrl = absolutizeUrl(product.images[0], siteUrl);
-  const description = cleanDescription(product.description || product.growingNotes || product.name);
+  const description = cleanDescription(prependProductProvenance(product, product.description || product.growingNotes || product.name));
 
   return `    <item>
       <g:id>${escapeXml(product.id)}</g:id>

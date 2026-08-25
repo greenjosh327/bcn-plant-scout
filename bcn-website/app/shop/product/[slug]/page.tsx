@@ -9,6 +9,7 @@ import { ProductPurchasePanel } from "@/components/product-purchase-panel";
 import { getCatalogProductBySlug, getRelatedCatalogProducts } from "@/lib/catalog-db";
 import { productToGoogleAnalyticsItem } from "@/lib/marketing/google-analytics";
 import { getProductImages } from "@/lib/product-images";
+import { getProductProvenanceNote } from "@/lib/product-provenance";
 import { buildNoindexMetadata, buildProductMetadata } from "@/lib/seo";
 import { buildProductPageStructuredData } from "@/lib/structured-data";
 
@@ -58,6 +59,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
 
   const hasGrowingInformation = growingFacts.length > 0 || growingDetailBlocks.length > 0;
   const showSeedShippingNote = product.shippingClass === "seed_envelope";
+  const provenanceNote = getProductProvenanceNote(product);
   const growingSectionClass =
     growingFacts.length > 0 && growingDetailBlocks.length > 0
       ? "mt-16 grid gap-6 lg:grid-cols-[0.8fr_1.2fr]"
@@ -88,6 +90,11 @@ export default async function ProductPage({ params }: ProductPageProps) {
           <h1 className="mt-3 text-5xl font-black tracking-tight text-pine">{product.name}</h1>
           <p className="mt-2 text-xl italic text-stone">{product.scientificName}</p>
           <p className="mt-6 text-lg leading-8 text-ink/75">{product.description}</p>
+          {provenanceNote ? (
+            <p className="mt-5 rounded-md border border-rust/25 bg-sage/60 p-4 text-sm font-bold leading-6 text-pine">
+              {provenanceNote}
+            </p>
+          ) : null}
           {product.variations && product.variations.length > 0 ? (
             <div className="mt-8 field-card p-4">
               <h2 className="text-lg font-black text-pine">Available options</h2>

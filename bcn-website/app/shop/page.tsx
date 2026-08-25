@@ -52,7 +52,7 @@ export default async function ShopPage({
         ])}
       />
       <SectionHeading as="h1" eyebrow="Shop" title="Native plants, tree seeds, and nursery products">
-        Browse available Base Camp North nursery inventory. Secure checkout is live for pickup and shipping orders.
+        Browse available Base Camp North nursery inventory. Seed packets are small-batch lots gathered, processed, and packed by Josh with help from a few friends in Pennsylvania.
       </SectionHeading>
 
       <form className="field-card mb-8 grid gap-4 p-4 md:grid-cols-[1fr_180px_180px_auto]">

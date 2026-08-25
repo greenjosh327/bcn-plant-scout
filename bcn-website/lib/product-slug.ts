@@ -1,3 +1,7 @@
+const PRODUCT_SLUG_ALIASES: Record<string, string> = {
+  "new-product-584560": "black-chokeberry-aronia-melanocarpa-seeds"
+};
+
 export function normalizeProductSlug(value: string | null | undefined) {
   return (value ?? "")
     .normalize("NFKD")
@@ -17,4 +21,9 @@ export function decodeProductSlug(value: string) {
   } catch {
     return value;
   }
+}
+
+export function resolveProductSlugAlias(value: string | null | undefined) {
+  const normalized = normalizeProductSlug(value);
+  return PRODUCT_SLUG_ALIASES[normalized] ?? normalized;
 }
