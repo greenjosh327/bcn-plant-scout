@@ -1,0 +1,13 @@
+# Copy this file to google-ads.yaml in this same folder and fill in values locally.
+# google-ads.yaml is ignored by Git in this folder.
+# Never commit or paste real OAuth secrets, refresh tokens, or developer tokens.
+developer_token: INSERT_DEVELOPER_TOKEN
+client_id: INSERT_OAUTH_CLIENT_ID
+client_secret: INSERT_OAUTH_CLIENT_SECRET
+refresh_token: INSERT_REFRESH_TOKEN
+
+# Optional but recommended if you access the client account through a manager.
+# Use digits only, no hyphens.
+login_customer_id: INSERT_MANAGER_CUSTOMER_ID
+
+use_proto_plus: true
