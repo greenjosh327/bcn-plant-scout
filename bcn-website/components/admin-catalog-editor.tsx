@@ -432,6 +432,7 @@ export function AdminCatalogEditor() {
 
   const selected = products.find((product) => product.id === selectedId) ?? null;
   const selectedVariants = variants.filter((variant) => variant.product_id === selectedId);
+  const selectedSingleUnitPrice = getSingleUnitVariantPrice(selectedVariants);
   const selectedImages = images
     .filter((image) => image.product_id === selectedId)
     .sort((a, b) => Number(b.is_primary) - Number(a.is_primary) || a.sort_order - b.sort_order);
@@ -1402,7 +1403,13 @@ export function AdminCatalogEditor() {
                 </div>
                 <div className="mt-4 grid gap-3">
                   {selectedVariants.map((variant) => (
-                    <VariantEditor key={variant.id} variant={variant} onDelete={deleteVariant} onSave={updateVariant} />
+                    <VariantEditor
+                      key={variant.id}
+                      variant={variant}
+                      singleUnitPrice={selectedSingleUnitPrice}
+                      onDelete={deleteVariant}
+                      onSave={updateVariant}
+                    />
                   ))}
                   {selectedVariants.length === 0 ? (
                     <p className="rounded-md border border-dashed border-pine/20 bg-sage/35 p-4 text-sm font-bold text-stone">
@@ -2902,6 +2909,53 @@ function formatPercent(numerator: number, denominator: number) {
   return `${Math.round((numerator / denominator) * 1000) / 10}%`;
 }
 
+function getVariantUnitCount(name: string) {
+  const parenthetical = name.match(/\((\d+)\)/);
+  if (parenthetical?.[1]) return Number(parenthetical[1]);
+
+  const normalized = name.toLowerCase();
+  const wordCounts: Array<[string, number]> = [
+    ["one", 1],
+    ["two", 2],
+    ["three", 3],
+    ["four", 4],
+    ["five", 5],
+    ["six", 6],
+    ["tray", 18]
+  ];
+  const found = wordCounts.find(([word]) => new RegExp(`\\b${word}\\b`).test(normalized));
+  return found?.[1] ?? null;
+}
+
+function getSingleUnitVariantPrice(variants: CatalogVariant[]) {
+  const single = variants.find((variant) => getVariantUnitCount(variant.name) === 1 && Number(variant.price) > 0);
+  return single ? Number(single.price) : null;
+}
+
+function getVariantPriceCheck(variant: CatalogVariant, singleUnitPrice: number | null) {
+  const quantity = getVariantUnitCount(variant.name);
+  const price = Number(variant.price);
+  const basePrice = quantity === 1 && price > 0 ? price : singleUnitPrice;
+
+  if (!quantity || !basePrice || !Number.isFinite(price) || price <= 0) return "";
+  if (quantity === 1) return `Base single price: ${formatMoney(basePrice)} each.`;
+
+  const singlePriceTotal = basePrice * quantity;
+  const priceDifference = singlePriceTotal - price;
+  const eachPrice = price / quantity;
+  const roundedDifference = Math.round(priceDifference * 100) / 100;
+
+  if (Math.abs(roundedDifference) < 0.01) {
+    return `${quantity} at ${formatMoney(basePrice)} each = ${formatMoney(singlePriceTotal)}. Current price matches (${formatMoney(eachPrice)} each).`;
+  }
+
+  const comparison = roundedDifference > 0
+    ? `${formatMoney(roundedDifference)} discount`
+    : `${formatMoney(Math.abs(roundedDifference))} higher`;
+
+  return `${quantity} at ${formatMoney(basePrice)} each = ${formatMoney(singlePriceTotal)}. Current ${formatMoney(price)} is ${comparison} (${formatMoney(eachPrice)} each).`;
+}
+
 function formatPathLabel(path: string) {
   if (path === "/") return "Home";
   return path;
@@ -2955,14 +3009,17 @@ function escapeHtml(value: string) {
 
 function VariantEditor({
   variant,
+  singleUnitPrice,
   onDelete,
   onSave
 }: {
   variant: CatalogVariant;
+  singleUnitPrice: number | null;
   onDelete: (variant: CatalogVariant) => void;
   onSave: (variant: CatalogVariant, patch: Partial<CatalogVariant>) => void;
 }) {
   const [draft, setDraft] = useState(variant);
+  const priceCheck = getVariantPriceCheck(draft, singleUnitPrice);
 
   useEffect(() => setDraft(variant), [variant]);
 
@@ -2987,6 +3044,11 @@ function VariantEditor({
         </label>
         <button className="button button-secondary" onClick={() => onSave(variant, draft)}>Save</button>
       </div>
+      {priceCheck ? (
+        <p className="mt-3 rounded-md bg-white/70 p-3 text-sm font-bold leading-6 text-stone">
+          Price check: {priceCheck}
+        </p>
+      ) : null}
       <div className="mt-3 flex flex-wrap gap-2">
         <button
           className={`rounded-full px-3 py-1 text-xs font-black ${draft.active ? "bg-pine text-white" : "bg-white text-stone"}`}
