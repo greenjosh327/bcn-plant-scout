@@ -129,18 +129,23 @@ export default async function ProductPage({ params }: ProductPageProps) {
                   if (!componentProduct) return null;
                   const componentImage = getProductImages(componentProduct)[0];
                   return (
-                    <div key={component.id} className="grid grid-cols-[64px_1fr] gap-3 rounded-md bg-sage/55 p-3">
+                    <Link
+                      key={component.id}
+                      href={`/shop/product/${componentProduct.slug}`}
+                      className="group grid grid-cols-[64px_1fr] gap-3 rounded-md bg-sage/55 p-3 transition hover:bg-sage focus:outline-none focus:ring-2 focus:ring-rust/45"
+                      aria-label={`View ${componentProduct.name}`}
+                    >
                       <div className="relative aspect-square overflow-hidden rounded-md bg-sage">
                         {componentImage ? (
                           <Image src={componentImage.url} alt={componentImage.altText} fill className="object-cover" sizes="64px" />
                         ) : null}
                       </div>
                       <div>
-                        <p className="font-black text-pine">{componentProduct.name}</p>
+                        <p className="font-black text-pine group-hover:text-rust">{componentProduct.name}</p>
                         {componentProduct.scientificName ? <p className="text-sm italic text-stone">{componentProduct.scientificName}</p> : null}
                         <p className="mt-1 text-xs font-bold uppercase tracking-[0.14em] text-stone">Approx. 25 seeds</p>
                       </div>
-                    </div>
+                    </Link>
                   );
                 })}
               </div>
