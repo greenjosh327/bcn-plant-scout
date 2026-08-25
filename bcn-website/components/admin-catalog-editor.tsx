@@ -2968,11 +2968,23 @@ function VariantEditor({
 
   return (
     <article className="rounded-md border border-pine/15 bg-sage/45 p-4">
-      <div className="grid gap-3 md:grid-cols-[1fr_120px_100px_100px_auto]">
-        <input className="admin-input" value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
-        <input className="admin-input" value={draft.sku ?? ""} placeholder="SKU" onChange={(event) => setDraft({ ...draft, sku: event.target.value })} />
-        <input className="admin-input" type="number" step="0.01" value={draft.price} onChange={(event) => setDraft({ ...draft, price: Number(event.target.value) })} />
-        <input className="admin-input" type="number" value={draft.inventory} onChange={(event) => setDraft({ ...draft, inventory: Number(event.target.value) })} />
+      <div className="grid gap-3 md:grid-cols-[minmax(180px,1fr)_120px_100px_120px_auto] md:items-end">
+        <label className="block">
+          <span className="text-[0.65rem] font-black uppercase tracking-[0.12em] text-stone">Option name</span>
+          <input className="admin-input mt-1" value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
+        </label>
+        <label className="block">
+          <span className="text-[0.65rem] font-black uppercase tracking-[0.12em] text-stone">SKU</span>
+          <input className="admin-input mt-1" value={draft.sku ?? ""} onChange={(event) => setDraft({ ...draft, sku: event.target.value })} />
+        </label>
+        <label className="block">
+          <span className="text-[0.65rem] font-black uppercase tracking-[0.12em] text-stone">Price ($)</span>
+          <input className="admin-input mt-1" type="number" step="0.01" value={draft.price} onChange={(event) => setDraft({ ...draft, price: Number(event.target.value) })} />
+        </label>
+        <label className="block">
+          <span className="text-[0.65rem] font-black uppercase tracking-[0.12em] text-stone">Quantity available</span>
+          <input className="admin-input mt-1" type="number" value={draft.inventory} onChange={(event) => setDraft({ ...draft, inventory: Number(event.target.value) })} />
+        </label>
         <button className="button button-secondary" onClick={() => onSave(variant, draft)}>Save</button>
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
