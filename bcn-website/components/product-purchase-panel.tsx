@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { AddToCartButton } from "@/components/add-to-cart-button";
 import { formatMoney, getVariationKey } from "@/lib/cart";
+import { getProductAvailableInventory } from "@/lib/inventory";
 import { productToGoogleAnalyticsItem } from "@/lib/marketing/google-analytics";
 import type { Product } from "@/lib/types";
 
@@ -17,7 +18,7 @@ export function ProductPurchasePanel({ product }: { product: Product }) {
   );
 
   const price = selectedVariation?.price ?? product.price;
-  const inventory = selectedVariation?.inventory ?? product.inventory;
+  const inventory = getProductAvailableInventory(product, selectedVariation);
   const hasOptions = options.length > 0;
 
   return (

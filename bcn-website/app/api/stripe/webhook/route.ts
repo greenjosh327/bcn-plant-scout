@@ -176,6 +176,32 @@ async function fetchProductsAndVariants(
   };
 }
 
+async function deductInventoryForOrder(
+  supabase: ReturnType<typeof getSupabaseServiceClient>,
+  orderId: string
+) {
+  const { data, error } = await supabase.rpc("deduct_order_inventory", {
+    target_order_id: orderId
+  });
+
+  if (error) {
+    const message = error.message || "Inventory deduction failed.";
+    await supabase
+      .from("orders")
+      .update({
+        inventory_deduction_error: message
+      })
+      .eq("id", orderId);
+    console.error("Order saved, but inventory deduction failed.", { orderId, error });
+    return { status: "inventory_failed", error: message };
+  }
+
+  return {
+    status: typeof data === "object" && data && "status" in data ? String(data.status) : "deducted",
+    result: data
+  };
+}
+
 async function createOrCompleteOrder(session: Stripe.Checkout.Session, stripe: Stripe) {
   const supabase = getSupabaseServiceClient();
 
@@ -206,7 +232,8 @@ async function createOrCompleteOrder(session: Stripe.Checkout.Session, stripe: S
         quoteId: session.metadata?.shipping_quote_id,
         orderId: existingOrder.id
       });
-      return { status: "duplicate", orderId: existingOrder.id };
+      const inventory = await deductInventoryForOrder(supabase, existingOrder.id);
+      return { status: "duplicate", orderId: existingOrder.id, inventory };
     }
   }
 
@@ -317,30 +344,7 @@ async function createOrCompleteOrder(session: Stripe.Checkout.Session, stripe: S
     }
   }
 
-  for (const item of orderItems) {
-    try {
-      if (item.variant_id) {
-        const { error } = await supabase.rpc("decrement_product_variant_inventory", {
-          target_variant_id: item.variant_id,
-          purchased_quantity: item.quantity
-        });
-        if (error) throw error;
-      } else if (item.product_id) {
-        const { error } = await supabase.rpc("decrement_product_inventory", {
-          target_product_id: item.product_id,
-          purchased_quantity: item.quantity
-        });
-        if (error) throw error;
-      }
-    } catch (error) {
-      console.error("Order saved, but inventory update failed.", {
-        orderId,
-        productId: item.product_id,
-        variantId: item.variant_id,
-        error
-      });
-    }
-  }
+  const inventory = await deductInventoryForOrder(supabase, orderId);
 
   if (shippingQuote?.id) {
     await markShippingQuoteConverted({
@@ -351,7 +355,7 @@ async function createOrCompleteOrder(session: Stripe.Checkout.Session, stripe: S
     });
   }
 
-  return { status: "created", orderId };
+  return { status: "created", orderId, inventory };
 }
 
 export async function POST(request: Request) {

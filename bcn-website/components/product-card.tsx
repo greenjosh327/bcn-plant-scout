@@ -46,6 +46,11 @@ export function ProductCard({ product }: { product: Product }) {
           <p className="mt-5 text-sm font-black text-rust">
             {product.inventory > 0 ? `${product.inventory} available` : "Sold out"}
           </p>
+          {product.productType === "bundle" ? (
+            <p className="mt-2 text-xs font-black uppercase tracking-[0.14em] text-stone">
+              Bundle
+            </p>
+          ) : null}
           {variationLabel ? (
             <p className="mt-2 text-xs font-black uppercase tracking-[0.14em] text-stone">
               {variationLabel}

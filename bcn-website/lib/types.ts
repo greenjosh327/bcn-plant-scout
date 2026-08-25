@@ -1,6 +1,7 @@
 import type { ShippingClass } from "./shipping/types";
 
 export type ProductCategory = "Plants" | "Cuttings" | "Seeds";
+export type ProductType = "standard" | "bundle";
 
 export type ProductVariation = {
   id?: string;
@@ -8,6 +9,7 @@ export type ProductVariation = {
   sku: string;
   price: number;
   inventory: number;
+  packsConsumed?: number;
 };
 
 export type ProductImage = {
@@ -16,6 +18,40 @@ export type ProductImage = {
   isPrimary?: boolean;
   sortOrder?: number | null;
   isFallback?: boolean;
+};
+
+export type BundleComponentProduct = {
+  id: string;
+  slug: string;
+  name: string;
+  scientificName: string;
+  commonName: string;
+  category: ProductCategory;
+  inventory: number;
+  images: string[];
+  imageDetails?: ProductImage[];
+  variations?: ProductVariation[];
+};
+
+export type BundleComponent = {
+  id: string;
+  bundleProductId: string;
+  componentProductId: string;
+  componentVariantId?: string | null;
+  packsConsumed: number;
+  sortOrder: number;
+  componentProduct?: BundleComponentProduct;
+  componentVariant?: ProductVariation;
+};
+
+export type BundleAvailability = {
+  available: number;
+  limitingComponents: Array<{
+    productId: string;
+    name: string;
+    available: number;
+    packsConsumed: number;
+  }>;
 };
 
 export type Product = {
@@ -28,6 +64,9 @@ export type Product = {
   description: string;
   price: number;
   inventory: number;
+  productType?: ProductType;
+  bundleComponents?: BundleComponent[];
+  bundleAvailability?: BundleAvailability;
   featured: boolean;
   active: boolean;
   images: string[];

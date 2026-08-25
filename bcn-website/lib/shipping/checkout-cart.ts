@@ -1,5 +1,6 @@
 import { getCatalogProducts } from "../catalog-db";
 import { getVariationKey, normalizeCartLines, type CartLine } from "../cart";
+import { getProductAvailableInventory, validateCartInventory } from "../inventory";
 import type { Product, ProductVariation } from "../types";
 import { productToShippingCartItem } from "./cart-items";
 import type { ShippingCartItem } from "./types";
@@ -42,9 +43,9 @@ export async function buildCheckoutCart(rawLines: CartLine[]): Promise<CheckoutC
     if (!product) return null;
     const variant = product.variations?.find((option) => getVariationKey(option) === line.variantKey);
     if (product.variations && product.variations.length > 0 && !variant) return null;
-    const inventory = variant?.inventory ?? product.inventory;
+    const inventory = getProductAvailableInventory(product, variant);
     const price = variant?.price ?? product.price;
-    const quantity = Math.min(line.quantity, inventory);
+    const quantity = Math.max(1, Number(line.quantity) || 1);
     return {
       product,
       variant,
@@ -60,6 +61,10 @@ export async function buildCheckoutCart(rawLines: CartLine[]): Promise<CheckoutC
   }
 
   const checkoutItems = items as CheckoutCartItem[];
+  const inventoryValidation = validateCartInventory(checkoutItems);
+  if (!inventoryValidation.valid) {
+    throw new CheckoutCartError(inventoryValidation.errors[0] ?? "One or more cart items are no longer available.");
+  }
 
   return {
     lines,

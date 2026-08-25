@@ -41,6 +41,7 @@ type CatalogProduct = {
   description: string;
   price: number;
   inventory: number;
+  product_type: "standard" | "bundle";
   featured: boolean;
   active: boolean;
   ships: boolean;
@@ -93,7 +94,27 @@ type CatalogVariant = {
   sku: string | null;
   price: number;
   inventory: number;
+  packs_consumed: number;
   active: boolean;
+};
+
+type CatalogBundleComponent = {
+  id: string;
+  bundle_product_id: string;
+  component_product_id: string;
+  component_variant_id: string | null;
+  packs_consumed: number;
+  sort_order: number;
+};
+
+type AdminBundleAvailability = {
+  available: number;
+  limitingComponents: Array<{
+    productId: string;
+    name: string;
+    available: number;
+    packsConsumed: number;
+  }>;
 };
 
 type CatalogImage = {
@@ -165,6 +186,9 @@ type ShopOrder = {
   label_refund_updated_at: string | null;
   label_refund_error: string | null;
   label_refund_metadata: Record<string, unknown> | null;
+  inventory_deducted_at: string | null;
+  inventory_returned_at: string | null;
+  inventory_deduction_error: string | null;
   tracking_carrier: string | null;
   tracking_numbers: string[] | null;
   tracking_urls: string[] | null;
@@ -236,6 +260,7 @@ type CatalogForm = {
   description: string;
   price: string;
   inventory: string;
+  product_type: "standard" | "bundle";
   featured: boolean;
   active: boolean;
   ships: boolean;
@@ -366,6 +391,7 @@ const emptyForm: CatalogForm = {
   description: "",
   price: "0",
   inventory: "0",
+  product_type: "standard",
   featured: false,
   active: true,
   ships: true,
@@ -419,6 +445,7 @@ export function AdminCatalogEditor() {
   const [message, setMessage] = useState("");
   const [products, setProducts] = useState<CatalogProduct[]>([]);
   const [variants, setVariants] = useState<CatalogVariant[]>([]);
+  const [bundleComponents, setBundleComponents] = useState<CatalogBundleComponent[]>([]);
   const [images, setImages] = useState<CatalogImage[]>([]);
   const [packagePresets, setPackagePresets] = useState<ShippingPackagePreset[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -432,6 +459,10 @@ export function AdminCatalogEditor() {
 
   const selected = products.find((product) => product.id === selectedId) ?? null;
   const selectedVariants = variants.filter((variant) => variant.product_id === selectedId);
+  const selectedBundleComponents = bundleComponents
+    .filter((component) => component.bundle_product_id === selectedId)
+    .sort((a, b) => Number(a.sort_order) - Number(b.sort_order));
+  const selectedBundleAvailability = selected ? getAdminBundleAvailability(selected.id, bundleComponents, products, variants) : null;
   const selectedSingleUnitPrice = getSingleUnitVariantPrice(selectedVariants);
   const selectedImages = images
     .filter((image) => image.product_id === selectedId)
@@ -470,6 +501,12 @@ export function AdminCatalogEditor() {
   }, [products, variants]);
 
   function getInventoryForProduct(product: CatalogProduct) {
+    if (product.product_type === "bundle") {
+      return getAdminBundleAvailability(product.id, bundleComponents, products, variants).available;
+    }
+    if (product.category === "Seeds") {
+      return Math.max(0, Number(product.inventory) || 0);
+    }
     const stats = productVariantStats.get(product.id);
     if (stats && stats.active > 0) return stats.inventory;
     return Math.max(0, Number(product.inventory) || 0);
@@ -523,7 +560,7 @@ export function AdminCatalogEditor() {
       lowStockVariants,
       soldOutVariants
     };
-  }, [products, variants, productImageCounts, productVariantStats]);
+  }, [products, variants, productImageCounts, productVariantStats, bundleComponents]);
 
   const filteredProducts = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -550,7 +587,7 @@ export function AdminCatalogEditor() {
       if (catalogSort === "active") return Number(b.active) - Number(a.active) || nameSort;
       return nameSort;
     });
-  }, [products, search, catalogFilter, catalogSort, productImageCounts, productVariantStats]);
+  }, [products, search, catalogFilter, catalogSort, productImageCounts, productVariantStats, bundleComponents, variants]);
 
   useEffect(() => {
     if (!hasSupabaseBrowserConfig() || !supabase) {
@@ -573,6 +610,7 @@ export function AdminCatalogEditor() {
         setState("signed-out");
         setProducts([]);
         setVariants([]);
+        setBundleComponents([]);
         setImages([]);
         setPackagePresets([]);
         return;
@@ -594,6 +632,7 @@ export function AdminCatalogEditor() {
       description: selected.description ?? "",
       price: String(selected.price ?? 0),
       inventory: String(selected.inventory ?? 0),
+      product_type: selected.product_type === "bundle" ? "bundle" : "standard",
       featured: selected.featured,
       active: selected.active,
       ships: selected.ships,
@@ -665,22 +704,25 @@ export function AdminCatalogEditor() {
     const [
       { data: productRows, error: productError },
       { data: variantRows, error: variantError },
+      { data: bundleComponentRows, error: bundleComponentError },
       { data: imageRows, error: imageError },
       { data: packagePresetRows, error: packagePresetError }
     ] = await Promise.all([
       supabase.from("products").select("*").order("name", { ascending: true }),
       supabase.from("product_variants").select("*").order("name", { ascending: true }),
+      supabase.from("bundle_components").select("*").order("sort_order", { ascending: true }),
       supabase.from("product_images").select("*").order("sort_order", { ascending: true }),
       supabase.from("shipping_package_presets").select("*").order("sort_order", { ascending: true })
     ]);
 
-    if (productError || variantError || imageError || packagePresetError) {
-      setMessage(productError?.message ?? variantError?.message ?? imageError?.message ?? packagePresetError?.message ?? "Could not load catalog.");
+    if (productError || variantError || bundleComponentError || imageError || packagePresetError) {
+      setMessage(productError?.message ?? variantError?.message ?? bundleComponentError?.message ?? imageError?.message ?? packagePresetError?.message ?? "Could not load catalog.");
       return;
     }
 
     setProducts((productRows ?? []) as CatalogProduct[]);
     setVariants((variantRows ?? []) as CatalogVariant[]);
+    setBundleComponents((bundleComponentRows ?? []) as CatalogBundleComponent[]);
     setImages((imageRows ?? []) as CatalogImage[]);
     setPackagePresets((packagePresetRows ?? []) as ShippingPackagePreset[]);
     setSelectedId((current) => current ?? productRows?.[0]?.id ?? null);
@@ -743,7 +785,8 @@ export function AdminCatalogEditor() {
         category: form.category,
         description: form.description,
         price: Number(form.price) || 0,
-        inventory: Number(form.inventory) || 0,
+        inventory: form.product_type === "bundle" ? 0 : Number(form.inventory) || 0,
+        product_type: form.product_type,
         featured: form.featured,
         active: form.active,
         ships: form.shipping_enabled,
@@ -807,7 +850,8 @@ export function AdminCatalogEditor() {
               category: form.category,
               description: form.description,
               price: Number(form.price) || 0,
-              inventory: Number(form.inventory) || 0,
+              inventory: form.product_type === "bundle" ? 0 : Number(form.inventory) || 0,
+              product_type: form.product_type,
               featured: form.featured,
               active: form.active,
               ships: form.shipping_enabled,
@@ -872,6 +916,7 @@ export function AdminCatalogEditor() {
       description: "",
       price: 0,
       inventory: 0,
+      product_type: "standard",
       featured: false,
       active: false,
       ships: true,
@@ -948,6 +993,7 @@ export function AdminCatalogEditor() {
 
     setProducts((current) => current.filter((product) => product.id !== selected.id));
     setVariants((current) => current.filter((variant) => variant.product_id !== selected.id));
+    setBundleComponents((current) => current.filter((component) => component.bundle_product_id !== selected.id && component.component_product_id !== selected.id));
     setImages((current) => current.filter((image) => image.product_id !== selected.id));
     setSelectedId((current) => {
       const remaining = products.filter((product) => product.id !== current);
@@ -968,6 +1014,7 @@ export function AdminCatalogEditor() {
         sku: next.sku,
         price: Number(next.price) || 0,
         inventory: Number(next.inventory) || 0,
+        packs_consumed: Math.max(1, Number(next.packs_consumed) || 1),
         active: next.active
       })
       .eq("id", variant.id);
@@ -989,6 +1036,7 @@ export function AdminCatalogEditor() {
       sku: "",
       price: Number(form.price) || 0,
       inventory: 0,
+      packs_consumed: 1,
       active: true
     };
     setMessage("Adding inventory option...");
@@ -1017,6 +1065,82 @@ export function AdminCatalogEditor() {
     setVariants(nextVariants);
     await refreshProductInventory(variant.product_id, nextVariants);
     setMessage("Inventory option deleted.");
+  }
+
+  async function addBundleComponent() {
+    if (!supabase || !selected) return;
+    const componentProduct = products.find((product) => product.id !== selected.id && product.product_type !== "bundle");
+    if (!componentProduct) {
+      setMessage("Add a standard product before adding bundle components.");
+      return;
+    }
+
+    const componentVariants = variants.filter((variant) => variant.product_id === componentProduct.id && variant.active);
+    const newComponent: CatalogBundleComponent = {
+      id: makeId("bc"),
+      bundle_product_id: selected.id,
+      component_product_id: componentProduct.id,
+      component_variant_id: componentVariants[0]?.id ?? null,
+      packs_consumed: 1,
+      sort_order: selectedBundleComponents.length > 0 ? Math.max(...selectedBundleComponents.map((component) => component.sort_order)) + 10 : 10
+    };
+
+    const { error } = await supabase.from("bundle_components").insert(newComponent);
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+
+    setBundleComponents((current) => [...current, newComponent]);
+    setMessage("Bundle component added.");
+  }
+
+  async function updateBundleComponent(component: CatalogBundleComponent, patch: Partial<CatalogBundleComponent>) {
+    if (!supabase) return;
+    const next = {
+      ...component,
+      ...patch,
+      packs_consumed: Math.max(1, Number(patch.packs_consumed ?? component.packs_consumed) || 1)
+    };
+
+    setBundleComponents((current) => current.map((item) => (item.id === component.id ? next : item)));
+    const { error } = await supabase
+      .from("bundle_components")
+      .update({
+        component_product_id: next.component_product_id,
+        component_variant_id: next.component_variant_id || null,
+        packs_consumed: next.packs_consumed,
+        sort_order: next.sort_order
+      })
+      .eq("id", component.id);
+
+    if (error) {
+      setMessage(error.message);
+      await loadCatalog();
+      return;
+    }
+
+    setMessage("Bundle component saved.");
+  }
+
+  async function deleteBundleComponent(component: CatalogBundleComponent) {
+    if (!supabase) return;
+    const { error } = await supabase.from("bundle_components").delete().eq("id", component.id);
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+    setBundleComponents((current) => current.filter((item) => item.id !== component.id));
+    setMessage("Bundle component removed.");
+  }
+
+  async function moveBundleComponent(component: CatalogBundleComponent, direction: -1 | 1) {
+    const currentIndex = selectedBundleComponents.findIndex((item) => item.id === component.id);
+    const target = selectedBundleComponents[currentIndex + direction];
+    if (!target) return;
+
+    await updateBundleComponent(component, { sort_order: target.sort_order });
+    await updateBundleComponent(target, { sort_order: component.sort_order });
   }
 
   async function uploadProductImage(event: React.ChangeEvent<HTMLInputElement>) {
@@ -1130,6 +1254,10 @@ export function AdminCatalogEditor() {
 
   async function refreshProductInventory(productId: string, variantRows = variants) {
     if (!supabase) return;
+    const product = products.find((item) => item.id === productId);
+    if (product?.product_type === "bundle" || product?.category === "Seeds") {
+      return;
+    }
     const currentVariants = variantRows.filter((variant) => variant.product_id === productId);
     const inventory = currentVariants.reduce((sum, variant) => sum + Math.max(0, Number(variant.inventory) || 0), 0);
     await supabase.from("products").update({ inventory }).eq("id", productId);
@@ -1255,6 +1383,7 @@ export function AdminCatalogEditor() {
           <div className="mt-4 max-h-[720px] overflow-y-auto pr-1">
             {filteredProducts.map((product) => {
               const inventory = getInventoryForProduct(product);
+              const bundleAvailability = product.product_type === "bundle" ? getAdminBundleAvailability(product.id, bundleComponents, products, variants) : null;
               const needsPhoto = productNeedsPhoto(product);
               const isLowStock = productIsLowStock(product);
               const isSoldOut = productIsSoldOut(product);
@@ -1267,9 +1396,15 @@ export function AdminCatalogEditor() {
                 >
                   <p className="font-black text-pine">{product.name}</p>
                   <p className="mt-1 text-xs font-bold uppercase tracking-[0.12em] text-stone">
-                    {product.category} / {inventory} available / {product.active ? "active" : "hidden"}
+                    {product.category} / {product.product_type === "bundle" ? "Bundle / " : ""}{inventory} available / {product.active ? "active" : "hidden"}
                   </p>
+                  {bundleAvailability?.limitingComponents.length ? (
+                    <p className="mt-1 text-xs font-bold text-stone">
+                      Limited by {bundleAvailability.limitingComponents.map((component) => component.name).join(", ")}
+                    </p>
+                  ) : null}
                   <div className="mt-2 flex flex-wrap gap-1">
+                    {product.product_type === "bundle" ? <AttentionBadge>Bundle</AttentionBadge> : null}
                     {needsPhoto ? <AttentionBadge tone="rust">Needs photo</AttentionBadge> : null}
                     {!product.shipping_configuration_complete ? <AttentionBadge tone="rust">Shipping setup</AttentionBadge> : null}
                     {isLowStock ? <AttentionBadge tone="rust">Low stock</AttentionBadge> : null}
@@ -1302,7 +1437,27 @@ export function AdminCatalogEditor() {
                     <option>Cuttings</option>
                   </select>
                 </Field>
+                <Field label="Product Type">
+                  <select className="admin-input" value={form.product_type} onChange={(event) => setForm({ ...form, product_type: event.target.value as CatalogProduct["product_type"] })}>
+                    <option value="standard">Standard Product</option>
+                    <option value="bundle">Bundle / Collection</option>
+                  </select>
+                </Field>
                 <Field label="Base price"><input className="admin-input" type="number" step="0.01" value={form.price} onChange={(event) => setForm({ ...form, price: event.target.value })} /></Field>
+                <Field label={form.category === "Seeds" ? "25-seed packs on hand" : "Inventory"}>
+                  <input
+                    className="admin-input"
+                    disabled={form.product_type === "bundle"}
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={form.product_type === "bundle" ? String(selectedBundleAvailability?.available ?? 0) : form.inventory}
+                    onChange={(event) => setForm({ ...form, inventory: event.target.value })}
+                  />
+                  {form.product_type === "bundle" ? (
+                    <p className="mt-2 text-xs font-bold text-stone">Bundle inventory is calculated from components.</p>
+                  ) : null}
+                </Field>
               </div>
 
               <Field label="Description">
@@ -1343,6 +1498,20 @@ export function AdminCatalogEditor() {
                 validation={shippingValidation}
                 setForm={setForm}
               />
+
+              {form.product_type === "bundle" && selected ? (
+                <BundleComponentsEditor
+                  bundleProduct={selected}
+                  components={selectedBundleComponents}
+                  products={products}
+                  variants={variants}
+                  availability={selectedBundleAvailability}
+                  onAdd={addBundleComponent}
+                  onDelete={deleteBundleComponent}
+                  onSave={updateBundleComponent}
+                  onMove={moveBundleComponent}
+                />
+              ) : null}
 
               <div className="flex flex-wrap gap-3">
                 <Toggle label="Active" checked={form.active} onChange={(checked) => setForm({ ...form, active: checked })} />
@@ -1406,6 +1575,8 @@ export function AdminCatalogEditor() {
                     <VariantEditor
                       key={variant.id}
                       variant={variant}
+                      productCategory={selected.category}
+                      productInventory={Number(form.inventory) || 0}
                       singleUnitPrice={selectedSingleUnitPrice}
                       onDelete={deleteVariant}
                       onSave={updateVariant}
@@ -1808,6 +1979,7 @@ function AdminOrdersDashboard() {
   const [labelPurchasingOrderId, setLabelPurchasingOrderId] = useState<string | null>(null);
   const [labelVoidingOrderId, setLabelVoidingOrderId] = useState<string | null>(null);
   const [trackingRefreshingOrderId, setTrackingRefreshingOrderId] = useState<string | null>(null);
+  const [inventoryReturningOrderId, setInventoryReturningOrderId] = useState<string | null>(null);
 
   const selected = orders.find((order) => order.id === selectedId) ?? orders[0] ?? null;
 
@@ -2112,6 +2284,51 @@ function AdminOrdersDashboard() {
     }
   }
 
+  async function returnInventory(order: ShopOrder) {
+    const accessToken = await getAdminAccessToken();
+    if (!accessToken) {
+      setMessage("Sign in again before returning inventory.");
+      return;
+    }
+
+    if (!order.inventory_deducted_at) {
+      setMessage("Inventory has not been marked deducted for this order.");
+      return;
+    }
+
+    if (order.inventory_returned_at) {
+      setMessage("Inventory has already been returned for this order.");
+      return;
+    }
+
+    if (!window.confirm("Return this order's items to inventory? Use this only when the items will not ship or need to be restocked.")) {
+      return;
+    }
+
+    setInventoryReturningOrderId(order.id);
+    setMessage("Returning items to inventory...");
+    try {
+      const response = await fetch(`/api/admin/orders/${order.id}/inventory/return`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        }
+      });
+      const payload = await response.json().catch(() => ({}));
+      const updatedOrder = payload.order as ShopOrder | undefined;
+      if (updatedOrder) replaceOrder(updatedOrder);
+
+      if (!response.ok) {
+        setMessage(payload.error || "Inventory return failed.");
+        return;
+      }
+
+      setMessage("Items returned to inventory.");
+    } finally {
+      setInventoryReturningOrderId(null);
+    }
+  }
+
   function printPackingSlip(order: ShopOrder) {
     const printWindow = window.open("", "_blank", "width=820,height=900");
     if (!printWindow) {
@@ -2261,9 +2478,11 @@ function AdminOrdersDashboard() {
             onBuyShippingLabel={buyShippingLabel}
             onVoidShippingLabel={voidShippingLabel}
             onRefreshTracking={refreshTracking}
+            onReturnInventory={returnInventory}
             labelPurchasing={labelPurchasingOrderId === selected.id}
             labelVoiding={labelVoidingOrderId === selected.id}
             trackingRefreshing={trackingRefreshingOrderId === selected.id}
+            inventoryReturning={inventoryReturningOrderId === selected.id}
             onPrintPackingSlip={printPackingSlip}
           />
         ) : (
@@ -2283,9 +2502,11 @@ function OrderDetail({
   onBuyShippingLabel,
   onVoidShippingLabel,
   onRefreshTracking,
+  onReturnInventory,
   labelPurchasing,
   labelVoiding,
   trackingRefreshing,
+  inventoryReturning,
   onPrintPackingSlip
 }: {
   order: ShopOrder;
@@ -2296,9 +2517,11 @@ function OrderDetail({
   onBuyShippingLabel: (order: ShopOrder) => void;
   onVoidShippingLabel: (order: ShopOrder) => void;
   onRefreshTracking: (order: ShopOrder) => void;
+  onReturnInventory: (order: ShopOrder) => void;
   labelPurchasing: boolean;
   labelVoiding: boolean;
   trackingRefreshing: boolean;
+  inventoryReturning: boolean;
   onPrintPackingSlip: (order: ShopOrder) => void;
 }) {
   const shippingAddress = formatShippingAddress(order.shipping_address);
@@ -2338,6 +2561,11 @@ function OrderDetail({
         <OrderMetric label="fulfillment" value={order.fulfillment_type} />
         <OrderMetric label="items" value={order.order_items.reduce((sum, item) => sum + Number(item.quantity), 0)} />
       </div>
+      {order.inventory_deduction_error ? (
+        <p className="rounded-md bg-rust/10 p-4 text-sm font-bold text-rust">
+          Inventory deduction issue: {order.inventory_deduction_error}
+        </p>
+      ) : null}
 
       <div>
         <h3 className="text-xl font-black text-pine">Items</h3>
@@ -2445,6 +2673,14 @@ function OrderDetail({
           </button>
         ) : null}
         <button className="button button-secondary" onClick={() => onPrintPackingSlip(order)}>Print Packing Slip</button>
+        <button
+          className="button button-secondary text-rust"
+          disabled={!order.inventory_deducted_at || Boolean(order.inventory_returned_at) || inventoryReturning}
+          onClick={() => onReturnInventory(order)}
+          title={order.inventory_returned_at ? "Inventory already returned" : order.inventory_deducted_at ? "Return items to inventory" : "Inventory was not deducted for this order"}
+        >
+          {inventoryReturning ? "Returning..." : order.inventory_returned_at ? "Inventory Returned" : "Return Items to Inventory"}
+        </button>
         <button className="button button-secondary text-rust" onClick={() => onStatus(order, "cancelled")}>Mark Issue/Cancelled</button>
       </div>
       {order.fulfillment_type === "shipping" && !hasLabels && !labelEligibility.eligible ? (
@@ -2515,6 +2751,120 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
       <span className="text-xs font-black uppercase tracking-[0.16em] text-stone">{label}</span>
       <div className="mt-2">{children}</div>
     </label>
+  );
+}
+
+function BundleComponentsEditor({
+  bundleProduct,
+  components,
+  products,
+  variants,
+  availability,
+  onAdd,
+  onDelete,
+  onSave,
+  onMove
+}: {
+  bundleProduct: CatalogProduct;
+  components: CatalogBundleComponent[];
+  products: CatalogProduct[];
+  variants: CatalogVariant[];
+  availability: AdminBundleAvailability | null;
+  onAdd: () => void;
+  onDelete: (component: CatalogBundleComponent) => void;
+  onSave: (component: CatalogBundleComponent, patch: Partial<CatalogBundleComponent>) => void;
+  onMove: (component: CatalogBundleComponent, direction: -1 | 1) => void;
+}) {
+  const availableProducts = products.filter((product) => product.id !== bundleProduct.id && product.product_type !== "bundle");
+  const limiting = availability?.limitingComponents.map((component) => component.name).join(", ") || "Add components";
+
+  return (
+    <section className="rounded-md border border-pine/15 bg-sage/35 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-2xl font-black text-pine">Bundle Components</h2>
+          <p className="mt-2 text-sm font-bold text-stone">
+            Calculated availability: {availability?.available ?? 0} bundle{availability?.available === 1 ? "" : "s"} available. Limited by: {limiting}.
+          </p>
+        </div>
+        <button className="button button-secondary" type="button" onClick={onAdd}>Add Component</button>
+      </div>
+
+      <div className="mt-4 grid gap-3">
+        {components.map((component, index) => {
+          const componentProduct = products.find((product) => product.id === component.component_product_id) ?? availableProducts[0];
+          const componentVariants = variants.filter((variant) => variant.product_id === componentProduct?.id);
+          const componentInventory = componentProduct ? getAdminComponentInventory(component, products, variants) : 0;
+
+          return (
+            <article key={component.id} className="rounded-md border border-pine/15 bg-white/80 p-4">
+              <div className="grid gap-3 lg:grid-cols-[minmax(220px,1fr)_minmax(160px,0.7fr)_120px_auto] lg:items-end">
+                <label className="block">
+                  <span className="text-[0.65rem] font-black uppercase tracking-[0.12em] text-stone">Product</span>
+                  <select
+                    className="admin-input mt-1"
+                    value={component.component_product_id}
+                    onChange={(event) => {
+                      const nextProductId = event.target.value;
+                      const nextVariant = variants.find((variant) => variant.product_id === nextProductId && variant.active);
+                      onSave(component, {
+                        component_product_id: nextProductId,
+                        component_variant_id: nextVariant?.id ?? null
+                      });
+                    }}
+                  >
+                    {availableProducts.map((product) => (
+                      <option key={product.id} value={product.id}>{product.name}</option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="block">
+                  <span className="text-[0.65rem] font-black uppercase tracking-[0.12em] text-stone">Variant</span>
+                  <select
+                    className="admin-input mt-1"
+                    value={component.component_variant_id ?? ""}
+                    onChange={(event) => onSave(component, { component_variant_id: event.target.value || null })}
+                  >
+                    <option value="">Product inventory</option>
+                    {componentVariants.map((variant) => (
+                      <option key={variant.id} value={variant.id}>{variant.name}</option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="block">
+                  <span className="text-[0.65rem] font-black uppercase tracking-[0.12em] text-stone">Packs used</span>
+                  <input
+                    className="admin-input mt-1"
+                    min={1}
+                    step={1}
+                    type="number"
+                    value={component.packs_consumed}
+                    onChange={(event) => onSave(component, { packs_consumed: Number(event.target.value) })}
+                  />
+                </label>
+
+                <div className="flex flex-wrap gap-2">
+                  <button className="rounded-full bg-sage px-3 py-1 text-xs font-black text-pine" disabled={index === 0} type="button" onClick={() => onMove(component, -1)}>Up</button>
+                  <button className="rounded-full bg-sage px-3 py-1 text-xs font-black text-pine" disabled={index === components.length - 1} type="button" onClick={() => onMove(component, 1)}>Down</button>
+                  <button className="rounded-full bg-sage px-3 py-1 text-xs font-black text-rust" type="button" onClick={() => onDelete(component)}>Remove</button>
+                </div>
+              </div>
+              <p className="mt-3 text-sm font-bold text-stone">
+                {componentProduct?.name ?? "Missing product"} has {componentInventory} pack{componentInventory === 1 ? "" : "s"} available for this bundle rule.
+              </p>
+            </article>
+          );
+        })}
+
+        {components.length === 0 ? (
+          <p className="rounded-md border border-dashed border-pine/20 bg-white/70 p-4 text-sm font-bold text-stone">
+            Add products here to calculate bundle availability and deduct component inventory after paid orders.
+          </p>
+        ) : null}
+      </div>
+    </section>
   );
 }
 
@@ -2956,6 +3306,45 @@ function getVariantPriceCheck(variant: CatalogVariant, singleUnitPrice: number |
   return `${quantity} at ${formatMoney(basePrice)} each = ${formatMoney(singlePriceTotal)}. Current ${formatMoney(price)} is ${comparison} (${formatMoney(eachPrice)} each).`;
 }
 
+function getAdminComponentInventory(component: CatalogBundleComponent, products: CatalogProduct[], variants: CatalogVariant[]) {
+  const product = products.find((item) => item.id === component.component_product_id);
+  if (!product) return 0;
+
+  if (product.category !== "Seeds" && component.component_variant_id) {
+    const variant = variants.find((item) => item.id === component.component_variant_id);
+    return Math.max(0, Number(variant?.inventory) || 0);
+  }
+
+  return Math.max(0, Number(product.inventory) || 0);
+}
+
+function getAdminBundleAvailability(
+  bundleProductId: string,
+  components: CatalogBundleComponent[],
+  products: CatalogProduct[],
+  variants: CatalogVariant[]
+): AdminBundleAvailability {
+  const bundleComponents = components.filter((component) => component.bundle_product_id === bundleProductId);
+  if (bundleComponents.length === 0) return { available: 0, limitingComponents: [] };
+
+  const limits = bundleComponents.map((component) => {
+    const product = products.find((item) => item.id === component.component_product_id);
+    const packsConsumed = Math.max(1, Number(component.packs_consumed) || 1);
+    return {
+      productId: component.component_product_id,
+      name: product?.name ?? "Missing component",
+      available: Math.floor(getAdminComponentInventory(component, products, variants) / packsConsumed),
+      packsConsumed
+    };
+  });
+  const available = Math.max(0, Math.min(...limits.map((component) => component.available)));
+
+  return {
+    available,
+    limitingComponents: limits.filter((component) => component.available === available)
+  };
+}
+
 function formatPathLabel(path: string) {
   if (path === "/") return "Home";
   return path;
@@ -3009,17 +3398,24 @@ function escapeHtml(value: string) {
 
 function VariantEditor({
   variant,
+  productCategory,
+  productInventory,
   singleUnitPrice,
   onDelete,
   onSave
 }: {
   variant: CatalogVariant;
+  productCategory: CatalogProduct["category"];
+  productInventory: number;
   singleUnitPrice: number | null;
   onDelete: (variant: CatalogVariant) => void;
   onSave: (variant: CatalogVariant, patch: Partial<CatalogVariant>) => void;
 }) {
   const [draft, setDraft] = useState(variant);
   const priceCheck = getVariantPriceCheck(draft, singleUnitPrice);
+  const isSeedOption = productCategory === "Seeds";
+  const packsConsumed = Math.max(1, Number(draft.packs_consumed) || 1);
+  const seedOptionAvailability = Math.floor(Math.max(0, productInventory) / packsConsumed);
 
   useEffect(() => setDraft(variant), [variant]);
 
@@ -3039,11 +3435,22 @@ function VariantEditor({
           <input className="admin-input mt-1" type="number" step="0.01" value={draft.price} onChange={(event) => setDraft({ ...draft, price: Number(event.target.value) })} />
         </label>
         <label className="block">
-          <span className="text-[0.65rem] font-black uppercase tracking-[0.12em] text-stone">Quantity available</span>
-          <input className="admin-input mt-1" type="number" value={draft.inventory} onChange={(event) => setDraft({ ...draft, inventory: Number(event.target.value) })} />
+          <span className="text-[0.65rem] font-black uppercase tracking-[0.12em] text-stone">{isSeedOption ? "Packs consumed" : "Quantity available"}</span>
+          <input
+            className="admin-input mt-1"
+            min={isSeedOption ? 1 : 0}
+            type="number"
+            value={isSeedOption ? draft.packs_consumed : draft.inventory}
+            onChange={(event) => setDraft(isSeedOption ? { ...draft, packs_consumed: Number(event.target.value) } : { ...draft, inventory: Number(event.target.value) })}
+          />
         </label>
         <button className="button button-secondary" onClick={() => onSave(variant, draft)}>Save</button>
       </div>
+      {isSeedOption ? (
+        <p className="mt-3 rounded-md bg-white/70 p-3 text-sm font-bold leading-6 text-stone">
+          This option can currently sell {seedOptionAvailability} time{seedOptionAvailability === 1 ? "" : "s"} from {Math.max(0, productInventory)} physical 25-seed pack{productInventory === 1 ? "" : "s"}.
+        </p>
+      ) : null}
       {priceCheck ? (
         <p className="mt-3 rounded-md bg-white/70 p-3 text-sm font-bold leading-6 text-stone">
           Price check: {priceCheck}
@@ -3060,7 +3467,7 @@ function VariantEditor({
         >
           {draft.active ? "Active" : "Hidden"}
         </button>
-        {[-5, -1, 1, 5, 10].map((amount) => (
+        {!isSeedOption ? [-5, -1, 1, 5, 10].map((amount) => (
           <button
             key={amount}
             className="rounded-full bg-white px-3 py-1 text-xs font-black text-pine"
@@ -3072,16 +3479,18 @@ function VariantEditor({
           >
             {amount > 0 ? `+${amount}` : amount}
           </button>
-        ))}
-        <button
-          className="rounded-full bg-white px-3 py-1 text-xs font-black text-rust"
-          onClick={() => {
-            setDraft({ ...draft, inventory: 0 });
-            onSave(variant, { inventory: 0 });
-          }}
-        >
-          Sold out
-        </button>
+        )) : null}
+        {!isSeedOption ? (
+          <button
+            className="rounded-full bg-white px-3 py-1 text-xs font-black text-rust"
+            onClick={() => {
+              setDraft({ ...draft, inventory: 0 });
+              onSave(variant, { inventory: 0 });
+            }}
+          >
+            Sold out
+          </button>
+        ) : null}
         <button className="rounded-full bg-white px-3 py-1 text-xs font-black text-rust" onClick={() => onDelete(variant)}>
           Delete option
         </button>

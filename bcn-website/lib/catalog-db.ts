@@ -1,9 +1,10 @@
 import { createClient } from "@supabase/supabase-js";
+import { calculateBundleAvailability, getVariantAvailableInventory } from "./inventory";
 import { getFallbackProductImage, getProductImageAltText } from "./product-images";
 import { decodeProductSlug, normalizeProductSlug, resolveProductSlugAlias } from "./product-slug";
 import { products as fallbackProducts } from "./products";
 import { isShippingClass } from "./shipping/types";
-import type { Product, ProductCategory, ProductImage, ProductVariation } from "./types";
+import type { BundleComponent, Product, ProductCategory, ProductImage, ProductType, ProductVariation } from "./types";
 
 const PRODUCT_IMAGE_BUCKET = "product-images";
 
@@ -17,6 +18,7 @@ type DbProduct = {
   description: string | null;
   price: number | string | null;
   inventory: number | null;
+  product_type: ProductType | null;
   featured: boolean | null;
   active: boolean | null;
   plant_type: string | null;
@@ -73,6 +75,7 @@ type DbVariant = {
   sku: string | null;
   price: number | string | null;
   inventory: number | null;
+  packs_consumed: number | null;
   active: boolean | null;
 };
 
@@ -82,6 +85,15 @@ type DbImage = {
   storage_path: string | null;
   alt_text: string | null;
   is_primary: boolean | null;
+  sort_order: number | null;
+};
+
+type DbBundleComponent = {
+  id: string;
+  bundle_product_id: string;
+  component_product_id: string;
+  component_variant_id: string | null;
+  packs_consumed: number | null;
   sort_order: number | null;
 };
 
@@ -113,12 +125,19 @@ export async function getCatalogProducts() {
   const productIds = productRows.map((product) => product.id);
   if (productIds.length === 0) return [];
 
-  const [{ data: variantRows }, { data: imageRows }] = await Promise.all([
+  const [{ data: variantRows }, { data: imageRows }, { data: bundleComponentRows }] = await Promise.all([
     supabase.from("product_variants").select("*").in("product_id", productIds).eq("active", true).order("name", { ascending: true }),
-    supabase.from("product_images").select("*").in("product_id", productIds).order("sort_order", { ascending: true })
+    supabase.from("product_images").select("*").in("product_id", productIds).order("sort_order", { ascending: true }),
+    supabase.from("bundle_components").select("*").in("bundle_product_id", productIds).order("sort_order", { ascending: true })
   ]);
 
-  return mapDbProducts(productRows as DbProduct[], (variantRows ?? []) as DbVariant[], (imageRows ?? []) as DbImage[], supabase);
+  return mapDbProducts(
+    productRows as DbProduct[],
+    (variantRows ?? []) as DbVariant[],
+    (imageRows ?? []) as DbImage[],
+    (bundleComponentRows ?? []) as DbBundleComponent[],
+    supabase
+  );
 }
 
 export async function getFeaturedCatalogProducts() {
@@ -150,9 +169,11 @@ function mapDbProducts(
   products: DbProduct[],
   variants: DbVariant[],
   images: DbImage[],
+  bundleComponents: DbBundleComponent[],
   supabase: ReturnType<typeof getSupabaseServerClient>
 ): Product[] {
-  return products.map((product) => {
+  const mappedProducts = products.map<Product>((product) => {
+    const baseInventory = Number(product.inventory) || 0;
     const productVariants = variants
       .filter((variant) => variant.product_id === product.id)
       .map<ProductVariation>((variant) => ({
@@ -160,8 +181,13 @@ function mapDbProducts(
         name: variant.name,
         sku: variant.sku ?? "",
         price: Number(variant.price) || 0,
-        inventory: Number(variant.inventory) || 0
+        inventory: Number(variant.inventory) || 0,
+        packsConsumed: Math.max(1, Number(variant.packs_consumed) || 1)
       }));
+    const displayVariants = productVariants.map((variant) => ({
+      ...variant,
+      inventory: product.category === "Seeds" ? getVariantAvailableInventory({ category: product.category, inventory: baseInventory }, variant) : variant.inventory
+    }));
 
     const productImages = images
       .filter((image) => image.product_id === product.id)
@@ -181,7 +207,8 @@ function mapDbProducts(
       category: product.category,
       description: product.description ?? "",
       price: Number(product.price) || 0,
-      inventory: Number(product.inventory) || 0,
+      inventory: baseInventory,
+      productType: (product.product_type === "bundle" ? "bundle" : "standard") as ProductType,
       featured: Boolean(product.featured),
       active: product.active !== false,
       images: productImageDetails.map((image) => image.url),
@@ -228,10 +255,54 @@ function mapDbProducts(
       localPickup: product.local_pickup !== false,
       ships: Boolean(product.ships),
       tags: product.tags ?? [],
-      variations: productVariants,
+      variations: displayVariants,
       source: product.source ?? "manual",
       createdAt: product.created_at ?? "",
       updatedAt: product.updated_at ?? ""
+    };
+  });
+
+  const productsById = new Map(mappedProducts.map((product) => [product.id, product]));
+  return mappedProducts.map((product) => {
+    if (product.productType !== "bundle") return product;
+
+    const components = bundleComponents
+      .filter((component) => component.bundle_product_id === product.id)
+      .sort((a, b) => Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0))
+      .map<BundleComponent>((component) => {
+        const componentProduct = productsById.get(component.component_product_id);
+        const componentVariant = componentProduct?.variations?.find((variant) => variant.id === component.component_variant_id);
+        return {
+          id: component.id,
+          bundleProductId: component.bundle_product_id,
+          componentProductId: component.component_product_id,
+          componentVariantId: component.component_variant_id,
+          packsConsumed: Math.max(1, Number(component.packs_consumed) || 1),
+          sortOrder: Number(component.sort_order) || 0,
+          componentProduct: componentProduct
+            ? {
+                id: componentProduct.id,
+                slug: componentProduct.slug,
+                name: componentProduct.name,
+                scientificName: componentProduct.scientificName,
+                commonName: componentProduct.commonName,
+                category: componentProduct.category,
+                inventory: componentProduct.inventory,
+                images: componentProduct.images,
+                imageDetails: componentProduct.imageDetails,
+                variations: componentProduct.variations
+              }
+            : undefined,
+          componentVariant
+        };
+      });
+    const bundleAvailability = calculateBundleAvailability(components);
+
+    return {
+      ...product,
+      inventory: bundleAvailability.available,
+      bundleComponents: components,
+      bundleAvailability
     };
   });
 }

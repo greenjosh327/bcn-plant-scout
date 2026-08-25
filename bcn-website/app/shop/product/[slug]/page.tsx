@@ -65,6 +65,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
       ? "mt-16 grid gap-6 lg:grid-cols-[0.8fr_1.2fr]"
       : "mt-16 grid gap-6";
   const productImages = getProductImages(product);
+  const bundleComponents = product.productType === "bundle" ? product.bundleComponents ?? [] : [];
 
   return (
     <main className="container py-12">
@@ -113,6 +114,35 @@ export default async function ProductPage({ params }: ProductPageProps) {
                     </div>
                   </div>
                 ))}
+              </div>
+            </div>
+          ) : null}
+          {bundleComponents.length > 0 ? (
+            <div className="mt-8 field-card p-4">
+              <h2 className="text-lg font-black text-pine">What's included</h2>
+              <p className="mt-2 text-sm font-bold leading-6 text-stone">
+                Each species is packaged and labeled separately. They are not mixed together in one bag.
+              </p>
+              <div className="mt-4 grid gap-3">
+                {bundleComponents.map((component) => {
+                  const componentProduct = component.componentProduct;
+                  if (!componentProduct) return null;
+                  const componentImage = getProductImages(componentProduct)[0];
+                  return (
+                    <div key={component.id} className="grid grid-cols-[64px_1fr] gap-3 rounded-md bg-sage/55 p-3">
+                      <div className="relative aspect-square overflow-hidden rounded-md bg-sage">
+                        {componentImage ? (
+                          <Image src={componentImage.url} alt={componentImage.altText} fill className="object-cover" sizes="64px" />
+                        ) : null}
+                      </div>
+                      <div>
+                        <p className="font-black text-pine">{componentProduct.name}</p>
+                        {componentProduct.scientificName ? <p className="text-sm italic text-stone">{componentProduct.scientificName}</p> : null}
+                        <p className="mt-1 text-xs font-bold uppercase tracking-[0.14em] text-stone">Approx. 25 seeds</p>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           ) : null}

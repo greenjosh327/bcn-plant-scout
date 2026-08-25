@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { trackShopAnalyticsEvent } from "@/lib/analytics/shop-analytics";
 import { CART_STORAGE_KEY, type CartLine, type CartProduct, formatMoney, getVariationKey, normalizeCartLines, pruneCartLinesForProducts } from "@/lib/cart";
+import { getProductAvailableInventory, validateCartInventory } from "@/lib/inventory";
 import { productToGoogleAnalyticsItem, trackGoogleEvent } from "@/lib/marketing/google-analytics";
 import { getPrimaryProductImage } from "@/lib/product-images";
 
@@ -112,7 +113,7 @@ export function CartClient({ products }: CartClientProps) {
         const product = products.find((item) => item.id === line.productId);
         if (!product) return null;
         const variant = product.variations?.find((option) => getVariationKey(option) === line.variantKey);
-        const maxInventory = Math.max(variant?.inventory ?? product.inventory, 0);
+        const maxInventory = getProductAvailableInventory(product, variant);
         const quantity = Math.max(1, Math.min(line.quantity, Math.max(maxInventory, 1)));
         const unitPrice = variant?.price ?? product.price;
         return { ...line, quantity, product, variant, unitPrice, maxInventory };
@@ -140,6 +141,7 @@ export function CartClient({ products }: CartClientProps) {
     && !line.product.shippingConfigurationComplete
   );
   const selectedShippingOption = quote?.options.find((option) => option.id === selectedShippingOptionId) ?? null;
+  const inventoryValidation = useMemo(() => validateCartInventory(enriched), [enriched]);
   const addressComplete = Boolean(shippingAddress.street1.trim() && shippingAddress.city.trim() && shippingAddress.state.trim() && shippingAddress.zip.trim());
   const fulfillmentAllowed = fulfillment === "pickup"
     ? (digitalOnly || !hasPickupBlockedItems)
@@ -149,10 +151,12 @@ export function CartClient({ products }: CartClientProps) {
   const canRequestQuote = enriched.length > 0
     && fulfillment === "shipping"
     && fulfillmentAllowed
+    && inventoryValidation.valid
     && addressComplete
     && !quoteLoading;
   const canCheckout = enriched.length > 0
     && fulfillmentAllowed
+    && inventoryValidation.valid
     && shippingReady
     && !checkingOut
     && !quoteLoading;
@@ -399,6 +403,11 @@ export function CartClient({ products }: CartClientProps) {
         {fulfillment === "shipping" && hasSeedEnvelopeItems ? (
           <p className="mt-4 rounded-md bg-sage/60 p-3 text-sm font-bold text-stone">
             Seed-only carts under the envelope limit can use $2 Economy Seed Mail without tracking. Tracked USPS options are shown with live rates.
+          </p>
+        ) : null}
+        {!inventoryValidation.valid ? (
+          <p className="mt-4 rounded-md bg-rust/10 p-3 text-sm font-bold text-rust">
+            {inventoryValidation.errors[0]}
           </p>
         ) : null}
         <label className="mt-5 block">
