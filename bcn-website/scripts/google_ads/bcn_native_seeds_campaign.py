@@ -613,6 +613,7 @@ def fetch_customer_conversion_goals(client: GoogleAdsClient) -> list[dict]:
 def fetch_campaign_assets(client: GoogleAdsClient) -> list[dict]:
     rows = search(client, f"""
         SELECT
+          campaign.id,
           campaign_asset.field_type,
           campaign_asset.status,
           asset.sitelink_asset.link_text,
