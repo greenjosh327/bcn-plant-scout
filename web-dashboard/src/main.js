@@ -2,6 +2,10 @@ import { createClient } from "@supabase/supabase-js";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import "./styles.css";
+import {
+  buildAdminSessionHandoffUrl,
+  consumeAdminSessionHandoff
+} from "./admin-session-handoff.js";
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
@@ -224,6 +228,11 @@ let activeFilters = {
 let map = null;
 let markerLayer = null;
 let selectedRecordId = null;
+let pendingAdminSessionHandoff = consumeAdminSessionHandoff(window.location.href);
+
+if (pendingAdminSessionHandoff) {
+  window.history.replaceState(window.history.state, "", pendingAdminSessionHandoff.cleanUrl);
+}
 
 if (supabaseUrl && supabaseKey) {
   supabase = createClient(supabaseUrl, supabaseKey);
@@ -236,6 +245,12 @@ async function boot() {
     renderMissingConfig();
     return;
   }
+
+  if (pendingAdminSessionHandoff?.session) {
+    const { error } = await supabase.auth.setSession(pendingAdminSessionHandoff.session);
+    if (error) console.warn("Admin session handoff failed:", error.message);
+  }
+  pendingAdminSessionHandoff = null;
 
   const { data } = await supabase.auth.getSession();
   session = data.session;
@@ -549,11 +564,11 @@ function renderDashboard() {
                 <p class="muted">Jump between the Base Camp North admin areas.</p>
               </div>
               <div class="admin-switcher-links">
-                <a class="admin-switcher-link" href="${BCN_SHOP_ADMIN_URL}">Shop Admin</a>
+                <a id="admin-shop-link" class="admin-switcher-link" href="${BCN_SHOP_ADMIN_URL}">Shop Admin</a>
                 <a class="admin-switcher-link active" href="${DASHBOARD_URL}${ADMIN_PATH}"${
                   adminMode ? ' aria-current="page"' : ""
                 }>Scout Admin</a>
-                <a class="admin-switcher-link" href="${BCN_ETSY_ADMIN_URL}">Etsy</a>
+                <a id="admin-etsy-link" class="admin-switcher-link" href="${BCN_ETSY_ADMIN_URL}">Etsy</a>
               </div>
             </nav>
           `
@@ -636,6 +651,8 @@ function renderDashboard() {
 
 function hydrateDashboard() {
   document.querySelector("#sign-out").addEventListener("click", () => supabase.auth.signOut());
+  hydrateAdminHandoffLink("admin-shop-link");
+  hydrateAdminHandoffLink("admin-etsy-link");
   const memberModeButton = document.querySelector("#mode-member");
   const adminModeButton = document.querySelector("#mode-admin");
   if (memberModeButton) {
@@ -686,6 +703,31 @@ function hydrateDashboard() {
     hydrateDashboard();
     redrawDashboardData();
   });
+}
+
+function hydrateAdminHandoffLink(id) {
+  const link = document.querySelector(`#${id}`);
+  if (!link) return;
+
+  link.addEventListener("click", (event) => {
+    event.preventDefault();
+    void openAdminAppWithSession(link.href);
+  });
+}
+
+async function openAdminAppWithSession(targetUrl) {
+  const { data, error } = await supabase.auth.getSession();
+  if (error || !data.session) {
+    window.location.assign(targetUrl);
+    return;
+  }
+
+  try {
+    window.location.assign(buildAdminSessionHandoffUrl(targetUrl, data.session));
+  } catch (handoffError) {
+    console.warn("Admin session handoff could not start:", handoffError.message);
+    window.location.assign(targetUrl);
+  }
 }
 
 function setDashboardMode(nextMode) {

@@ -3,9 +3,10 @@
 import { useEffect, useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { AdminEtsyDashboard } from "@/components/admin-etsy-dashboard";
+import { buildAdminSessionHandoffUrl } from "@/lib/admin-session-handoff";
 import type { AnalyticsSummary } from "@/lib/analytics/admin-summary";
 import { normalizeProductSlug } from "@/lib/product-slug";
-import { hasSupabaseBrowserConfig, supabase } from "@/lib/supabase-browser";
+import { completeAdminSessionHandoff, hasSupabaseBrowserConfig, supabase } from "@/lib/supabase-browser";
 import {
   formatAddressValidationStatus,
   formatOrderShippingMethod,
@@ -610,16 +611,27 @@ export function AdminCatalogEditor({ initialTab = "orders" }: { initialTab?: Adm
       return;
     }
 
-    supabase.auth.getSession().then(({ data }) => {
+    let initializing = true;
+
+    void (async () => {
+      const handoffError = await completeAdminSessionHandoff();
+      const { data } = await supabase.auth.getSession();
+      initializing = false;
+
+      if (handoffError) {
+        setMessage("The admin session could not be transferred. Please sign in again.");
+      }
+
       setSession(data.session);
       if (!data.session) {
         setState("signed-out");
         return;
       }
       void verifyAdminAndLoad(data.session);
-    });
+    })();
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      if (initializing) return;
       setSession(nextSession);
       if (!nextSession) {
         setState("signed-out");
@@ -766,6 +778,24 @@ export function AdminCatalogEditor({ initialTab = "orders" }: { initialTab?: Adm
   async function signOut() {
     if (!supabase) return;
     await supabase.auth.signOut();
+  }
+
+  async function openScoutAdmin() {
+    if (!supabase) return;
+
+    const targetUrl = "https://scout.basecampnorthpa.com/admin";
+    const { data, error } = await supabase.auth.getSession();
+
+    if (error || !data.session) {
+      window.location.assign(targetUrl);
+      return;
+    }
+
+    try {
+      window.location.assign(buildAdminSessionHandoffUrl(targetUrl, data.session));
+    } catch {
+      setMessage("Scout Admin could not be opened with the current session.");
+    }
   }
 
   async function saveProduct() {
@@ -1344,9 +1374,9 @@ export function AdminCatalogEditor({ initialTab = "orders" }: { initialTab?: Adm
           >
             Shop Admin
           </a>
-          <a className="button button-secondary" href="https://scout.basecampnorthpa.com/admin">
+          <button className="button button-secondary" type="button" onClick={() => void openScoutAdmin()}>
             Scout Admin
-          </a>
+          </button>
           <a
             className={`button ${activeTab === "etsy" ? "button-primary" : "button-secondary"}`}
             href="/admin/etsy"
