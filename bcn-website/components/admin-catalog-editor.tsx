@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import type { Session } from "@supabase/supabase-js";
+import { AdminEtsyDashboard } from "@/components/admin-etsy-dashboard";
 import type { AnalyticsSummary } from "@/lib/analytics/admin-summary";
 import { normalizeProductSlug } from "@/lib/product-slug";
 import { hasSupabaseBrowserConfig, supabase } from "@/lib/supabase-browser";
@@ -211,7 +212,7 @@ type ShopOrder = {
 };
 
 type AdminState = "checking" | "signed-out" | "not-admin" | "ready" | "missing-config";
-type AdminTab = "orders" | "catalog" | "analytics";
+type AdminTab = "orders" | "catalog" | "analytics" | "etsy";
 type CatalogFilter = "all" | "needsPhotos" | "lowStock" | "soldOut" | "hidden";
 type CatalogSort = "name" | "active";
 const PRODUCT_IMAGE_BUCKET = "product-images";
@@ -437,7 +438,7 @@ const emptyForm: CatalogForm = {
   show_host_species: true
 };
 
-export function AdminCatalogEditor() {
+export function AdminCatalogEditor({ initialTab = "orders" }: { initialTab?: AdminTab }) {
   const [state, setState] = useState<AdminState>("checking");
   const [session, setSession] = useState<Session | null>(null);
   const [email, setEmail] = useState("");
@@ -453,7 +454,7 @@ export function AdminCatalogEditor() {
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
-  const [activeTab, setActiveTab] = useState<AdminTab>("orders");
+  const [activeTab, setActiveTab] = useState<AdminTab>(initialTab);
   const [catalogFilter, setCatalogFilter] = useState<CatalogFilter>("all");
   const [catalogSort, setCatalogSort] = useState<CatalogSort>("name");
 
@@ -1297,7 +1298,13 @@ export function AdminCatalogEditor() {
     );
   }
 
-  const adminTitle = activeTab === "orders" ? "Orders" : activeTab === "analytics" ? "Analytics" : "Catalog editor";
+  const adminTitle = activeTab === "orders"
+    ? "Orders"
+    : activeTab === "analytics"
+      ? "Analytics"
+      : activeTab === "etsy"
+        ? "Etsy"
+        : "Catalog editor";
 
   return (
     <main className="container py-12">
@@ -1329,12 +1336,20 @@ export function AdminCatalogEditor() {
         >
           Analytics
         </button>
+        <button
+          className={`button ${activeTab === "etsy" ? "button-primary" : "button-secondary"}`}
+          onClick={() => setActiveTab("etsy")}
+        >
+          Etsy
+        </button>
       </div>
 
       {activeTab === "orders" ? (
         <AdminOrdersDashboard />
       ) : activeTab === "analytics" ? (
         <AdminAnalyticsDashboard />
+      ) : activeTab === "etsy" ? (
+        <AdminEtsyDashboard accessToken={session?.access_token ?? ""} />
       ) : (
       <div className="mt-8 grid gap-6 lg:grid-cols-[360px_1fr]">
         <aside className="field-card p-4">

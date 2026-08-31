@@ -1,0 +1,134 @@
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
+import { randomBytes } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import {
+  assertReadOnlyEtsyMethod,
+  collectAllActiveEtsyListings,
+  normalizeEtsyListing,
+  shouldRefreshEtsyToken
+} from "../lib/etsy/client";
+import {
+  createOAuthState,
+  createPkceChallenge,
+  createPkceVerifier,
+  hashOAuthState,
+  oauthStateMatches,
+  openSecret,
+  sealSecret
+} from "../lib/etsy/crypto";
+import { buildEtsyAuthorizationUrl } from "../lib/etsy/oauth";
+import { ETSY_API_BASE_URL, type EtsyConfig } from "../lib/etsy/config";
+import type { EtsyListing } from "../lib/etsy/types";
+
+const config: EtsyConfig = {
+  apiKey: "test-keystring",
+  sharedSecret: "server-only-shared-secret",
+  redirectUri: "https://example.com/api/admin/etsy/callback",
+  encryptionKey: randomBytes(32).toString("base64")
+};
+
+function listing(id: number, overrides: Partial<EtsyListing> = {}): EtsyListing {
+  return {
+    listing_id: id,
+    title: `Listing ${id}`,
+    state: "active",
+    quantity: 4,
+    url: `https://www.etsy.com/listing/${id}`,
+    updated_timestamp: 1_700_000_000,
+    price: { amount: 1250, divisor: 100, currency_code: "USD" },
+    ...overrides
+  };
+}
+
+describe("Etsy Phase 1 integration", () => {
+  it("uses the application server declared by Etsy's current OpenAPI specification", () => {
+    assert.equal(ETSY_API_BASE_URL, "https://openapi.etsy.com/v3/application");
+  });
+
+  it("creates Etsy-compatible PKCE values and validates OAuth state", () => {
+    const verifier = createPkceVerifier();
+    const challenge = createPkceChallenge(verifier);
+    const state = createOAuthState();
+    const stateHash = hashOAuthState(state);
+
+    assert.ok(verifier.length >= 43 && verifier.length <= 128);
+    assert.match(verifier, /^[A-Za-z0-9_-]+$/);
+    assert.equal(challenge.length, 43);
+    assert.match(challenge, /^[A-Za-z0-9_-]+$/);
+    assert.equal(oauthStateMatches(state, stateHash), true);
+    assert.equal(oauthStateMatches(`${state}x`, stateHash), false);
+  });
+
+  it("encrypts OAuth credentials with authenticated encryption", () => {
+    const ciphertext = sealSecret("private-token", config.encryptionKey);
+
+    assert.notEqual(ciphertext, "private-token");
+    assert.equal(openSecret(ciphertext, config.encryptionKey), "private-token");
+    assert.throws(() => openSecret(`${ciphertext}tampered`, config.encryptionKey));
+  });
+
+  it("builds an S256 authorization URL with read-only scopes and no shared secret", () => {
+    const authorizeUrl = new URL(buildEtsyAuthorizationUrl(config, "state-value", "challenge-value"));
+
+    assert.equal(authorizeUrl.origin, "https://www.etsy.com");
+    assert.equal(authorizeUrl.searchParams.get("scope"), "shops_r listings_r");
+    assert.equal(authorizeUrl.searchParams.get("code_challenge_method"), "S256");
+    assert.equal(authorizeUrl.searchParams.get("redirect_uri"), config.redirectUri);
+    assert.equal(authorizeUrl.toString().includes(config.sharedSecret), false);
+  });
+
+  it("normalizes Etsy Money and updated_timestamp values", () => {
+    const normalized = normalizeEtsyListing(listing(42));
+
+    assert.equal(normalized.listingId, 42);
+    assert.equal(normalized.price, 12.5);
+    assert.equal(normalized.currencyCode, "USD");
+    assert.equal(normalized.lastUpdated, "2023-11-14T22:13:20.000Z");
+  });
+
+  it("paginates through every result and defensively keeps only active listings", async () => {
+    const firstPage = Array.from({ length: 100 }, (_, index) => listing(index + 1));
+    const requestedOffsets: number[] = [];
+
+    const listings = await collectAllActiveEtsyListings(async (offset, limit) => {
+      requestedOffsets.push(offset);
+      assert.equal(limit, 100);
+      return offset === 0
+        ? { count: 102, results: firstPage }
+        : { count: 102, results: [listing(101), listing(102, { state: "draft" })] };
+    });
+
+    assert.deepEqual(requestedOffsets, [0, 100]);
+    assert.equal(listings.length, 101);
+    assert.equal(listings.some((item) => item.listingId === 102), false);
+  });
+
+  it("rejects application-level write methods in Phase 1", () => {
+    assert.doesNotThrow(() => assertReadOnlyEtsyMethod("GET"));
+    for (const method of ["POST", "PUT", "PATCH", "DELETE"]) {
+      assert.throws(() => assertReadOnlyEtsyMethod(method), /read only/i);
+    }
+  });
+
+  it("refreshes expired and nearly expired access tokens", () => {
+    const now = Date.parse("2026-08-30T12:00:00.000Z");
+
+    assert.equal(shouldRefreshEtsyToken("2026-08-30T11:59:59.000Z", now), true);
+    assert.equal(shouldRefreshEtsyToken("2026-08-30T12:04:59.000Z", now), true);
+    assert.equal(shouldRefreshEtsyToken("2026-08-30T12:05:01.000Z", now), false);
+    assert.equal(shouldRefreshEtsyToken("not-a-date", now), true);
+  });
+
+  it("keeps the Supabase credential table server-only", async () => {
+    const migration = await readFile(
+      new URL("../supabase/sql/20260830_bcn_etsy_read_only.sql", import.meta.url),
+      "utf8"
+    );
+
+    assert.match(migration, /enable row level security/i);
+    assert.match(migration, /revoke all on table public\.etsy_connections from public, anon, authenticated/i);
+    assert.match(migration, /access_token_encrypted text/i);
+    assert.doesNotMatch(migration, /access_token\s+text/i);
+  });
+});

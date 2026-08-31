@@ -74,6 +74,10 @@ NEXT_PUBLIC_SITE_URL=https://shop.basecampnorthpa.com
 STRIPE_SECRET_KEY=sk_test_or_live_key_here
 STRIPE_WEBHOOK_SECRET=whsec_from_stripe_webhook
 SUPABASE_SERVICE_ROLE_KEY=server_only_service_role_key_here
+ETSY_API_KEY=etsy_application_keystring
+ETSY_SHARED_SECRET=etsy_application_shared_secret
+ETSY_REDIRECT_URI=https://basecampnorthpa.com/api/admin/etsy/callback
+ETSY_TOKEN_ENCRYPTION_KEY=base64_encoded_32_byte_key
 SHIPPO_API_TOKEN=shippo_live_or_test_token_here
 SHIPPO_API_VERSION=2018-02-08
 SHIPPO_WEBHOOK_TOKEN=choose_a_long_random_webhook_token
@@ -94,8 +98,8 @@ BCN_SHIP_FROM_EMAIL=
 ```
 
 Only `NEXT_PUBLIC_*` values are safe for browser code. `STRIPE_SECRET_KEY`,
-`STRIPE_WEBHOOK_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`, `SHIPPO_API_TOKEN`,
-and `SHIPPO_WEBHOOK_TOKEN`
+`STRIPE_WEBHOOK_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`, `ETSY_API_KEY`,
+`ETSY_SHARED_SECRET`, `ETSY_TOKEN_ENCRYPTION_KEY`, `SHIPPO_API_TOKEN`, and `SHIPPO_WEBHOOK_TOKEN`
 must stay server-side in Vercel environment variables or local `.env.local`.
 
 After the domain is live, add this Supabase Auth redirect URL:
@@ -130,6 +134,7 @@ Run the SQL files in this order from the Supabase SQL Editor:
 7. `supabase/sql/20260713_bcn_shipping_quote_checkout_link.sql`
 8. `supabase/sql/20260713_bcn_label_purchase.sql`
 9. `supabase/sql/20260713_bcn_tracking_voids_hardening.sql`
+10. `supabase/sql/20260830_bcn_etsy_read_only.sql`
 
 The shipping data migration creates:
 
@@ -162,6 +167,52 @@ and label refund state used by the admin fulfillment tools.
 
 The Stripe webhook uses the Supabase service role key on the server to write
 orders and update inventory. The browser never writes directly to order tables.
+
+## Etsy Open API v3 (Phase 1)
+
+The owner admin has a read-only Etsy page at `/admin/etsy`. It connects only to
+the `BaseCampNorthPA` shop, retrieves the authenticated shop and all active
+listings, and never writes Etsy listings or BCN catalog/inventory data.
+
+Apply `supabase/sql/20260830_bcn_etsy_read_only.sql` to the same Supabase project
+used by this site. The migration creates one server-only `etsy_connections`
+table. Browser roles receive no table privileges or RLS policies; OAuth tokens
+and the temporary PKCE verifier are encrypted by the application before storage.
+
+Set these values in Vercel Production and in local `.env.local` as needed:
+
+```text
+ETSY_API_KEY=the approved Etsy app keystring
+ETSY_SHARED_SECRET=the approved Etsy app shared secret
+ETSY_REDIRECT_URI=https://basecampnorthpa.com/api/admin/etsy/callback
+ETSY_TOKEN_ENCRYPTION_KEY=a base64-encoded random 32-byte key
+```
+
+Generate the encryption key once and keep the same value for the lifetime of
+the stored connection:
+
+```powershell
+[Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(32))
+```
+
+Register this exact callback URL in the approved Etsy application settings;
+case, scheme, host, path, and trailing slash must match:
+
+```text
+https://basecampnorthpa.com/api/admin/etsy/callback
+```
+
+The integration requests only `shops_r listings_r`. It follows Etsy's official
+[OAuth 2.0 PKCE flow](https://developer.etsy.com/documentation/essentials/authentication/)
+and the endpoints in Etsy's [Open API v3 specification](https://www.etsy.com/openapi/generated/oas/3.0.0.json).
+
+For local testing, Etsy still requires an exact registered HTTPS callback. Start
+the site with `npm run dev`, expose `http://localhost:3000` through an HTTPS
+tunnel, register the tunnel callback ending in `/api/admin/etsy/callback`, and
+set `ETSY_REDIRECT_URI` to that exact URL before restarting the dev server. Sign
+into `/admin/etsy`, select **Connect Etsy**, authorize BaseCampNorthPA, and verify
+the shop summary and active-listing table. Run `npm test` for the focused PKCE,
+encryption, pagination, normalization, and read-only guard coverage.
 
 ## Stripe Webhook
 
