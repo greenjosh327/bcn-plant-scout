@@ -18,9 +18,58 @@ const LISTING_PAGE_SIZE = 100;
 export class EtsyNotConnectedError extends Error {}
 
 class EtsyHttpError extends Error {
-  constructor(public readonly status: number) {
+  constructor(
+    public readonly endpoint: string,
+    public readonly status: number
+  ) {
     super(`Etsy API request failed with status ${status}.`);
   }
+}
+
+type EtsyErrorPayload = {
+  error?: unknown;
+  error_description?: unknown;
+  message?: unknown;
+  detail?: unknown;
+};
+
+function firstString(values: unknown[]) {
+  return values.find((value): value is string => typeof value === "string" && value.trim().length > 0);
+}
+
+function redactEtsyDiagnosticMessage(message: string, sensitiveValues: string[]) {
+  let sanitized = message.replace(/\s+/g, " ").trim();
+
+  for (const value of sensitiveValues) {
+    if (value) sanitized = sanitized.split(value).join("[redacted]");
+  }
+
+  return (
+    sanitized
+      .replace(/\bBearer\s+\S+/gi, "Bearer [redacted]")
+      .replace(/\b\d+\.[A-Za-z0-9_-]{16,}\b/g, "[redacted]")
+      .slice(0, 500) || "No Etsy error message returned."
+  );
+}
+
+async function readEtsyErrorMessage(response: Response, sensitiveValues: string[]) {
+  let responseBody = "";
+
+  try {
+    responseBody = await response.text();
+  } catch {
+    return "Etsy error response body could not be read.";
+  }
+
+  let message = responseBody;
+  try {
+    const payload = JSON.parse(responseBody) as EtsyErrorPayload;
+    message = firstString([payload.error, payload.error_description, payload.message, payload.detail]) ?? responseBody;
+  } catch {
+    // Etsy may return a plain-text error body.
+  }
+
+  return redactEtsyDiagnosticMessage(message, sensitiveValues);
 }
 
 export function assertReadOnlyEtsyMethod(method: string) {
@@ -51,7 +100,16 @@ async function requestEtsyJson<T>(
     cache: "no-store"
   });
 
-  if (!response.ok) throw new EtsyHttpError(response.status);
+  if (!response.ok) {
+    const message = await readEtsyErrorMessage(response, [
+      accessToken,
+      config.apiKey,
+      config.sharedSecret,
+      etsyApiKeyHeader(config)
+    ]);
+    console.error("Etsy API request failed", { endpoint: path, status: response.status, message });
+    throw new EtsyHttpError(path, response.status);
+  }
   return (await response.json()) as T;
 }
 

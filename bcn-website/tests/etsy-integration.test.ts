@@ -5,6 +5,7 @@ import { readFile } from "node:fs/promises";
 import {
   assertReadOnlyEtsyMethod,
   collectAllActiveEtsyListings,
+  fetchEtsySelfWithToken,
   normalizeEtsyListing,
   shouldRefreshEtsyToken
 } from "../lib/etsy/client";
@@ -76,6 +77,59 @@ describe("Etsy Phase 1 integration", () => {
     assert.equal(authorizeUrl.searchParams.get("code_challenge_method"), "S256");
     assert.equal(authorizeUrl.searchParams.get("redirect_uri"), config.redirectUri);
     assert.equal(authorizeUrl.toString().includes(config.sharedSecret), false);
+  });
+
+  it("sends Etsy's required read-only authentication headers", async () => {
+    const accessToken = "12345678.test-access-token";
+    let requestedUrl = "";
+    let requestedHeaders = new Headers();
+
+    await fetchEtsySelfWithToken(accessToken, config, async (input, init) => {
+      requestedUrl = String(input);
+      requestedHeaders = new Headers(init?.headers);
+      return Response.json({ user_id: 12345678, shop_id: 87654321 });
+    });
+
+    assert.equal(requestedUrl, `${ETSY_API_BASE_URL}/users/me`);
+    assert.equal(requestedHeaders.get("authorization"), `Bearer ${accessToken}`);
+    assert.equal(requestedHeaders.get("x-api-key"), `${config.apiKey}:${config.sharedSecret}`);
+  });
+
+  it("logs only safe Etsy request diagnostics on an API error", async () => {
+    const accessToken = "12345678.private-access-token";
+    const logged: unknown[][] = [];
+    const originalConsoleError = console.error;
+    console.error = (...values: unknown[]) => logged.push(values);
+
+    try {
+      await assert.rejects(
+        fetchEtsySelfWithToken(accessToken, config, async () =>
+          Response.json(
+            {
+              error: `Invalid credentials: Bearer ${accessToken} ${config.apiKey}:${config.sharedSecret}`
+            },
+            { status: 403 }
+          )
+        ),
+        /status 403/i
+      );
+    } finally {
+      console.error = originalConsoleError;
+    }
+
+    assert.deepEqual(logged, [
+      [
+        "Etsy API request failed",
+        {
+          endpoint: "/users/me",
+          status: 403,
+          message: "Invalid credentials: Bearer [redacted] [redacted]:[redacted]"
+        }
+      ]
+    ]);
+    assert.equal(JSON.stringify(logged).includes(accessToken), false);
+    assert.equal(JSON.stringify(logged).includes(config.apiKey), false);
+    assert.equal(JSON.stringify(logged).includes(config.sharedSecret), false);
   });
 
   it("normalizes Etsy Money and updated_timestamp values", () => {
