@@ -743,7 +743,7 @@ export function AdminCatalogEditor({ initialTab = "orders" }: { initialTab?: Adm
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${window.location.origin}/admin`
+        redirectTo: `${window.location.origin}${window.location.pathname}`
       }
     });
     if (error) setMessage(error.message);
