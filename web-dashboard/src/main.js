@@ -15,6 +15,8 @@ const PRIVACY_POLICY_URL = `${DASHBOARD_URL}/privacy-policy`;
 const TERMS_URL = `${DASHBOARD_URL}/terms`;
 const ETSY_SHOP_URL = "https://basecampnorthpa.etsy.com";
 const BCN_SHOP_URL = "https://shop.basecampnorthpa.com";
+const BCN_SHOP_ADMIN_URL = "https://basecampnorthpa.com/admin";
+const BCN_ETSY_ADMIN_URL = "https://basecampnorthpa.com/admin/etsy";
 const BCN_FACEBOOK_URL = "https://www.facebook.com/profile.php?id=61581856435743";
 const APP_STORE_URL = "https://apps.apple.com/us/app/bcn-plant-scout/id6784878818";
 const PLAY_STORE_URL =
@@ -537,6 +539,26 @@ function renderDashboard() {
           <button id="sign-out" class="secondary">Sign Out</button>
         </div>
       </header>
+
+      ${
+        isAdmin
+          ? `
+            <nav class="admin-switcher panel" aria-label="BCN admin tools">
+              <div>
+                <p class="eyebrow">Admin tools</p>
+                <p class="muted">Jump between the Base Camp North admin areas.</p>
+              </div>
+              <div class="admin-switcher-links">
+                <a class="admin-switcher-link" href="${BCN_SHOP_ADMIN_URL}">Shop Admin</a>
+                <a class="admin-switcher-link active" href="${DASHBOARD_URL}${ADMIN_PATH}"${
+                  adminMode ? ' aria-current="page"' : ""
+                }>Scout Admin</a>
+                <a class="admin-switcher-link" href="${BCN_ETSY_ADMIN_URL}">Etsy</a>
+              </div>
+            </nav>
+          `
+          : ""
+      }
 
       <section class="stats-grid" id="stats"></section>
       ${adminMode ? `<section class="admin-console panel" id="admin-console"></section>` : ""}

@@ -218,6 +218,20 @@ type CatalogSort = "name" | "active";
 const PRODUCT_IMAGE_BUCKET = "product-images";
 const LOW_STOCK_THRESHOLD = 5;
 const CUSTOM_GROWING_VALUE = "__custom_growing_value__";
+const BCN_ADMIN_ORIGIN = "https://basecampnorthpa.com";
+const BCN_PRODUCTION_HOSTS = new Set([
+  "basecampnorthpa.com",
+  "www.basecampnorthpa.com",
+  "shop.basecampnorthpa.com"
+]);
+
+function getAdminAuthRedirectUrl() {
+  const origin = BCN_PRODUCTION_HOSTS.has(window.location.hostname)
+    ? BCN_ADMIN_ORIGIN
+    : window.location.origin;
+
+  return `${origin}${window.location.pathname}`;
+}
 
 async function getAdminAccessToken() {
   if (!supabase) return null;
@@ -743,7 +757,7 @@ export function AdminCatalogEditor({ initialTab = "orders" }: { initialTab?: Adm
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${window.location.origin}${window.location.pathname}`
+        redirectTo: getAdminAuthRedirectUrl()
       }
     });
     if (error) setMessage(error.message);
@@ -1316,6 +1330,32 @@ export function AdminCatalogEditor({ initialTab = "orders" }: { initialTab?: Adm
         </div>
         <button className="button button-secondary" onClick={signOut}>Sign Out</button>
       </div>
+
+      <nav className="field-card mt-8 flex flex-wrap items-center justify-between gap-4 p-4" aria-label="BCN admin tools">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-stone">Admin tools</p>
+          <p className="mt-1 text-sm text-ink/70">Jump between the Base Camp North admin areas.</p>
+        </div>
+        <div className="flex flex-wrap gap-3">
+          <a
+            className={`button ${activeTab === "etsy" ? "button-secondary" : "button-primary"}`}
+            href="/admin"
+            aria-current={activeTab === "etsy" ? undefined : "page"}
+          >
+            Shop Admin
+          </a>
+          <a className="button button-secondary" href="https://scout.basecampnorthpa.com/admin">
+            Scout Admin
+          </a>
+          <a
+            className={`button ${activeTab === "etsy" ? "button-primary" : "button-secondary"}`}
+            href="/admin/etsy"
+            aria-current={activeTab === "etsy" ? "page" : undefined}
+          >
+            Etsy
+          </a>
+        </div>
+      </nav>
 
       <div className="mt-8 flex flex-wrap gap-3">
         <button

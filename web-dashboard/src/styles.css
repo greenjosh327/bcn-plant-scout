@@ -509,6 +509,39 @@ a {
   color: #ffffff;
 }
 
+.admin-switcher {
+  align-items: center;
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.admin-switcher p {
+  margin-bottom: 0;
+}
+
+.admin-switcher-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.admin-switcher-link {
+  align-items: center;
+  background: #e8f2df;
+  border-radius: 8px;
+  color: #113d22;
+  display: inline-flex;
+  min-height: 44px;
+  padding: 10px 16px;
+}
+
+.admin-switcher-link.active {
+  background: #113d22;
+  color: #ffffff;
+}
+
 .admin-badge {
   background: #113d22;
   border-radius: 999px;
@@ -1052,7 +1085,18 @@ code {
   }
 
   .topbar-actions,
-  .mode-switch {
+  .mode-switch,
+  .admin-switcher-links {
+    width: 100%;
+  }
+
+  .admin-switcher {
+    align-items: start;
+    flex-direction: column;
+  }
+
+  .admin-switcher-link {
+    justify-content: center;
     width: 100%;
   }
 
