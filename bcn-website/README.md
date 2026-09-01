@@ -135,6 +135,8 @@ Run the SQL files in this order from the Supabase SQL Editor:
 8. `supabase/sql/20260713_bcn_label_purchase.sql`
 9. `supabase/sql/20260713_bcn_tracking_voids_hardening.sql`
 10. `supabase/sql/20260830_bcn_etsy_read_only.sql`
+11. `supabase/migrations/20260901115231_bcn_etsy_controlled_inventory.sql`
+12. `supabase/migrations/20260901120525_bcn_etsy_controlled_inventory_indexes.sql`
 
 The shipping data migration creates:
 
@@ -168,16 +170,24 @@ and label refund state used by the admin fulfillment tools.
 The Stripe webhook uses the Supabase service role key on the server to write
 orders and update inventory. The browser never writes directly to order tables.
 
-## Etsy Open API v3 (Phase 1)
+## Etsy Open API v3 (Phase 1 and controlled Phase 2)
 
-The owner admin has a read-only Etsy page at `/admin/etsy`. It connects only to
-the `BaseCampNorthPA` shop, retrieves the authenticated shop and all active
-listings, and never writes Etsy listings or BCN catalog/inventory data.
+The owner admin Etsy page is `/admin/etsy`. Phase 1 continues to retrieve the
+authenticated `BaseCampNorthPA` shop, active listings, and variation inventory
+without writing. Phase 2 adds BCN physical 25-seed-pack inventory, explicit
+species/variation mapping, expiring dry-run proposals, and audited quantity-only
+updates. Page loads, Etsy refreshes, and proposal generation never write Etsy.
 
 Apply `supabase/sql/20260830_bcn_etsy_read_only.sql` to the same Supabase project
 used by this site. The migration creates one server-only `etsy_connections`
 table. Browser roles receive no table privileges or RLS policies; OAuth tokens
 and the temporary PKCE verifier are encrypted by the application before storage.
+
+Then apply `supabase/migrations/20260901115231_bcn_etsy_controlled_inventory.sql`.
+It reconciles the owner-approved physical seed-pack snapshot through
+`inventory_ledger`, standardizes Red Elderberry to 25/100, and creates server-only
+mapping, proposal, idempotency, and audit tables. Catalpa and Fragrant Sumac use
+separate hidden inventory products; Staghorn Sumac remains a different product.
 
 Set these values in Vercel Production and in local `.env.local` as needed:
 
@@ -186,6 +196,7 @@ ETSY_API_KEY=the approved Etsy app keystring
 ETSY_SHARED_SECRET=the approved Etsy app shared secret
 ETSY_REDIRECT_URI=https://basecampnorthpa.com/api/admin/etsy/callback
 ETSY_TOKEN_ENCRYPTION_KEY=a base64-encoded random 32-byte key
+ETSY_INVENTORY_WRITES_ENABLED=false
 ```
 
 Generate the encryption key once and keep the same value for the lifetime of
@@ -202,17 +213,29 @@ case, scheme, host, path, and trailing slash must match:
 https://basecampnorthpa.com/api/admin/etsy/callback
 ```
 
-The integration requests only `shops_r listings_r`. It follows Etsy's official
+The integration requests only `shops_r listings_r listings_w`. `listings_w` is
+the minimum scope required by Etsy's `updateListingInventory` endpoint. No other
+Etsy write endpoint is exposed by the application. Changing scopes requires the
+owner to use **Reconnect Etsy** once after deployment. It follows Etsy's official
 [OAuth 2.0 PKCE flow](https://developer.etsy.com/documentation/essentials/authentication/)
 and the endpoints in Etsy's [Open API v3 specification](https://www.etsy.com/openapi/generated/oas/3.0.0.json).
+
+Keep `ETSY_INVENTORY_WRITES_ENABLED=false` for the first Phase 2 deployment. The
+admin can reconcile mappings and generate the first proposal, but the apply API
+returns a locked response before contacting Etsy. Enable it only after the owner
+has reviewed the first generated proposal. Even when enabled, the owner must
+review exact before/after quantities and type `APPLY ETSY INVENTORY`; the server
+then revalidates proposal age, current Etsy inventory, mappings, and BCN physical
+stock before one quantity-only `PUT /listings/{listing_id}/inventory` per listing.
+Black Cherry and unmatched listings remain ineligible.
 
 For local testing, Etsy still requires an exact registered HTTPS callback. Start
 the site with `npm run dev`, expose `http://localhost:3000` through an HTTPS
 tunnel, register the tunnel callback ending in `/api/admin/etsy/callback`, and
 set `ETSY_REDIRECT_URI` to that exact URL before restarting the dev server. Sign
 into `/admin/etsy`, select **Connect Etsy**, authorize BaseCampNorthPA, and verify
-the shop summary and active-listing table. Run `npm test` for the focused PKCE,
-encryption, pagination, normalization, and read-only guard coverage.
+the shop summary and active-listing table. Run `npm test` for PKCE, encryption,
+pagination, normalization, matching, allocation, payload preservation, and write-gate coverage.
 
 ## Stripe Webhook
 

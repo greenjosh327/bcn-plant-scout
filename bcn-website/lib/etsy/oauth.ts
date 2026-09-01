@@ -1,6 +1,6 @@
 import {
   ETSY_AUTHORIZATION_URL,
-  ETSY_READ_ONLY_SCOPES,
+  ETSY_REQUIRED_SCOPES,
   ETSY_TOKEN_URL,
   type EtsyConfig
 } from "./config";
@@ -59,7 +59,7 @@ export function buildEtsyAuthorizationUrl(config: EtsyConfig, state: string, cod
   url.search = new URLSearchParams({
     response_type: "code",
     redirect_uri: config.redirectUri,
-    scope: ETSY_READ_ONLY_SCOPES.join(" "),
+    scope: ETSY_REQUIRED_SCOPES.join(" "),
     client_id: config.apiKey,
     state,
     code_challenge: codeChallenge,

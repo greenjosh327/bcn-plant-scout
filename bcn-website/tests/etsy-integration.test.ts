@@ -9,6 +9,7 @@ import {
   fetchEtsySelfWithToken,
   normalizeEtsyListing,
   normalizeEtsyListingInventory,
+  preserveGrantedScopesAfterRefresh,
   shouldRefreshEtsyToken
 } from "../lib/etsy/client";
 import {
@@ -21,7 +22,19 @@ import {
   sealSecret
 } from "../lib/etsy/crypto";
 import { buildEtsyAuthorizationUrl } from "../lib/etsy/oauth";
-import { ETSY_API_BASE_URL, type EtsyConfig } from "../lib/etsy/config";
+import {
+  calculateSafeAllocation,
+  findManagedSpeciesByProductId,
+  packSizeQuantityVaries,
+  suggestManagedSpecies,
+  suggestPacksConsumed
+} from "../lib/etsy/inventory-allocation";
+import {
+  assertEtsyInventoryWriteRequest,
+  buildEtsyInventoryUpdatePayload,
+  inventoryOfferingKey
+} from "../lib/etsy/inventory-writer";
+import { ETSY_API_BASE_URL, ETSY_REQUIRED_SCOPES, type EtsyConfig } from "../lib/etsy/config";
 import type { EtsyListing, EtsyListingInventory } from "../lib/etsy/types";
 
 const config: EtsyConfig = {
@@ -44,7 +57,7 @@ function listing(id: number, overrides: Partial<EtsyListing> = {}): EtsyListing 
   };
 }
 
-describe("Etsy Phase 1 integration", () => {
+describe("Etsy Phase 1 and controlled Phase 2 integration", () => {
   it("uses the application server declared by Etsy's current OpenAPI specification", () => {
     assert.equal(ETSY_API_BASE_URL, "https://openapi.etsy.com/v3/application");
   });
@@ -71,11 +84,12 @@ describe("Etsy Phase 1 integration", () => {
     assert.throws(() => openSecret(`${ciphertext}tampered`, config.encryptionKey));
   });
 
-  it("builds an S256 authorization URL with read-only scopes and no shared secret", () => {
+  it("builds an S256 authorization URL with only the required read and inventory-write scopes", () => {
     const authorizeUrl = new URL(buildEtsyAuthorizationUrl(config, "state-value", "challenge-value"));
 
     assert.equal(authorizeUrl.origin, "https://www.etsy.com");
-    assert.equal(authorizeUrl.searchParams.get("scope"), "shops_r listings_r");
+    assert.equal(authorizeUrl.searchParams.get("scope"), "shops_r listings_r listings_w");
+    assert.deepEqual(ETSY_REQUIRED_SCOPES, ["shops_r", "listings_r", "listings_w"]);
     assert.equal(authorizeUrl.searchParams.get("code_challenge_method"), "S256");
     assert.equal(authorizeUrl.searchParams.get("redirect_uri"), config.redirectUri);
     assert.equal(authorizeUrl.toString().includes(config.sharedSecret), false);
@@ -344,6 +358,195 @@ describe("Etsy Phase 1 integration", () => {
     }
   });
 
+  it("keeps Fragrant Sumac and Staghorn Sumac strictly separate", () => {
+    assert.equal(suggestManagedSpecies("Fragrant Sumac (Rhus aromatica) Seeds")?.species, "Fragrant Sumac");
+    assert.equal(suggestManagedSpecies("Staghorn Sumac (Rhus typhina) Seeds"), null);
+    assert.equal(suggestManagedSpecies("Three varieties - Catalpa, Honey Locust, Sumac"), null);
+  });
+
+  it("blocks Black Cherry from controlled inventory writes", () => {
+    const species = suggestManagedSpecies("Black Cherry (Prunus serotina) Seeds");
+    assert.equal(species?.species, "Black Cherry");
+    assert.equal(species?.blockedFromWrites, true);
+    assert.equal(findManagedSpeciesByProductId("prod_0b70691c-58ab-45d0-b392-87f19b0433bf")?.blockedFromWrites, true);
+  });
+
+  it("maps only explicit 25- and 100-seed pack options to physical pack units", () => {
+    const listingSummary = { title: "Red Elderberry Seeds" };
+    assert.equal(
+      suggestPacksConsumed(listingSummary, {
+        sku: "BCN-REB-25",
+        options: [{ propertyId: 1, name: "Pack size", value: "Pack of 25", priceVaries: true, quantityVaries: true, skuVaries: true }]
+      }),
+      1
+    );
+    assert.equal(
+      suggestPacksConsumed(listingSummary, {
+        sku: "BCN-REB-100",
+        options: [{ propertyId: 1, name: "Pack size", value: "Pack of 100", priceVaries: true, quantityVaries: true, skuVaries: true }]
+      }),
+      4
+    );
+    assert.equal(
+      suggestPacksConsumed(listingSummary, {
+        sku: "BCN-REB-50",
+        options: [{ propertyId: 1, name: "Pack size", value: "Pack of 50", priceVaries: true, quantityVaries: true, skuVaries: true }]
+      }),
+      null
+    );
+  });
+
+  it("requires Etsy quantity to vary on the actual pack-size property", () => {
+    assert.equal(
+      packSizeQuantityVaries({
+        options: [
+          {
+            propertyId: 1,
+            name: "Pack size",
+            value: "25 Seeds",
+            priceVaries: true,
+            quantityVaries: true,
+            skuVaries: true
+          }
+        ]
+      }),
+      true
+    );
+    assert.equal(
+      packSizeQuantityVaries({
+        options: [
+          {
+            propertyId: 2,
+            name: "Packaging",
+            value: "Paper packet",
+            priceVaries: false,
+            quantityVaries: true,
+            skuVaries: false
+          }
+        ]
+      }),
+      false
+    );
+  });
+
+  it("forces the 100-seed option to zero below four physical packs", () => {
+    const allocation = calculateSafeAllocation(3, [
+      { key: "25", quantity: 20, packsConsumed: 1, isEnabled: true },
+      { key: "100", quantity: 10, packsConsumed: 4, isEnabled: true }
+    ]);
+
+    assert.equal(allocation.status, "below_100_seed_threshold");
+    assert.equal(allocation.proposed.get("25"), 3);
+    assert.equal(allocation.proposed.get("100"), 0);
+    assert.equal(allocation.proposedCommitment, 3);
+  });
+
+  it("reduces an overcommitted 100-seed option before the 25-seed option", () => {
+    const allocation = calculateSafeAllocation(10, [
+      { key: "25", quantity: 6, packsConsumed: 1, isEnabled: true },
+      { key: "100", quantity: 2, packsConsumed: 4, isEnabled: true }
+    ]);
+
+    assert.equal(allocation.status, "reduced_to_physical_stock");
+    assert.equal(allocation.proposed.get("25"), 6);
+    assert.equal(allocation.proposed.get("100"), 1);
+    assert.equal(allocation.proposedCommitment, 10);
+  });
+
+  it("requires manual allocation when duplicate offerings compete for one species pool", () => {
+    const allocation = calculateSafeAllocation(20, [
+      { key: "listing-a-25", quantity: 5, packsConsumed: 1, isEnabled: true },
+      { key: "listing-b-25", quantity: 5, packsConsumed: 1, isEnabled: true }
+    ]);
+    assert.equal(allocation.status, "manual_allocation");
+  });
+
+  it("permits only the exact Etsy inventory PUT and keeps it disabled by default", () => {
+    assert.throws(
+      () => assertEtsyInventoryWriteRequest("PUT", "/listings/123/inventory", false),
+      /disabled pending owner review/i
+    );
+    assert.doesNotThrow(() => assertEtsyInventoryWriteRequest("PUT", "/listings/123/inventory", true));
+    for (const [method, path] of [
+      ["PATCH", "/listings/123/inventory"],
+      ["PUT", "/listings/123"],
+      ["POST", "/shops/1/listings"]
+    ]) {
+      assert.throws(() => assertEtsyInventoryWriteRequest(method, path, true), /only Etsy listing inventory/i);
+    }
+  });
+
+  it("builds a full Etsy inventory payload while changing only approved quantities", () => {
+    const inventory: EtsyListingInventory = {
+      products: [
+        {
+          product_id: 11,
+          sku: "BCN-25",
+          property_values: [
+            {
+              property_id: 100,
+              property_name: "Pack size",
+              value_ids: [1001],
+              values: ["25 Seeds"],
+              scale_id: null,
+              scale_name: "response-only"
+            }
+          ],
+          offerings: [
+            {
+              offering_id: 21,
+              quantity: 12,
+              is_enabled: true,
+              price: { amount: 500, divisor: 100, currency_code: "USD" },
+              readiness_state_id: 991
+            }
+          ]
+        },
+        {
+          product_id: 12,
+          sku: "BCN-100",
+          property_values: [
+            { property_id: 100, property_name: "Pack size", value_ids: [1002], values: ["100 Seeds"] }
+          ],
+          offerings: [
+            {
+              offering_id: 22,
+              quantity: 3,
+              is_enabled: true,
+              price: { amount: 1200, divisor: 100, currency_code: "USD" },
+              readiness_state_id: null
+            }
+          ]
+        }
+      ],
+      price_on_property: [100],
+      quantity_on_property: [100],
+      sku_on_property: [100],
+      readiness_state_on_property: []
+    };
+    const payload = buildEtsyInventoryUpdatePayload(
+      inventory,
+      new Map([[inventoryOfferingKey(12, 22), 0]])
+    );
+
+    assert.deepEqual(payload.products[0]?.offerings[0], {
+      price: 5,
+      quantity: 12,
+      is_enabled: true,
+      readiness_state_id: 991
+    });
+    assert.deepEqual(payload.products[1]?.offerings[0], {
+      price: 12,
+      quantity: 0,
+      is_enabled: true,
+      readiness_state_id: null
+    });
+    assert.equal("product_id" in payload.products[0], false);
+    assert.equal("offering_id" in payload.products[0].offerings[0], false);
+    assert.equal("scale_name" in (payload.products[0].property_values?.[0] || {}), false);
+    assert.deepEqual(payload.quantity_on_property, [100]);
+  });
+
   it("refreshes expired and nearly expired access tokens", () => {
     const now = Date.parse("2026-08-30T12:00:00.000Z");
 
@@ -351,6 +554,15 @@ describe("Etsy Phase 1 integration", () => {
     assert.equal(shouldRefreshEtsyToken("2026-08-30T12:04:59.000Z", now), true);
     assert.equal(shouldRefreshEtsyToken("2026-08-30T12:05:01.000Z", now), false);
     assert.equal(shouldRefreshEtsyToken("not-a-date", now), true);
+  });
+
+  it("preserves stored OAuth scopes when Etsy omits scope from a refresh response", () => {
+    const tokenSet = preserveGrantedScopesAfterRefresh(
+      { accessToken: "new-token", grantedScopes: [] },
+      ["shops_r", "listings_r", "listings_w"]
+    );
+
+    assert.deepEqual(tokenSet.grantedScopes, ["shops_r", "listings_r", "listings_w"]);
   });
 
   it("keeps the Supabase credential table server-only", async () => {
@@ -363,5 +575,37 @@ describe("Etsy Phase 1 integration", () => {
     assert.match(migration, /revoke all on table public\.etsy_connections from public, anon, authenticated/i);
     assert.match(migration, /access_token_encrypted text/i);
     assert.doesNotMatch(migration, /access_token\s+text/i);
+  });
+
+  it("keeps Phase 2 mappings, proposals, and audit records server-only and ledgered", async () => {
+    const migration = await readFile(
+      new URL("../supabase/migrations/20260901115231_bcn_etsy_controlled_inventory.sql", import.meta.url),
+      "utf8"
+    );
+
+    assert.match(migration, /inventory_ledger_reference_key_unique/i);
+    for (const [productId, inventory] of [
+      ["prod_catalpa-speciosa-seeds", 2],
+      ["prod_fragrant-sumac-seeds", 52],
+      ["prod_donald-wyman-crabapple-seeds", 36],
+      ["prod_prairifire-crabapple-seeds", 1],
+      ["prod_6365ffae-5dda-4d0c-84e6-90b20469d2b1", 34],
+      ["prod_373a4d3c-96b8-493b-a1b1-edf62ada5fb5", 12],
+      ["prod_0b70691c-58ab-45d0-b392-87f19b0433bf", 3],
+      ["prod_bb82b070-4894-4f5e-b332-660b47584560", 10],
+      ["prod_c747934f-4a0c-4850-a205-e90a8c1f0dc5", 14]
+    ] as const) {
+      assert.match(migration, new RegExp(`'${productId.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}',\\s*${inventory}`));
+    }
+    assert.match(migration, /'Pack of 25'[\s\S]*'BCN-2026-REB-25'[\s\S]*packs_consumed = 1/i);
+    for (const table of [
+      "etsy_listing_mappings",
+      "etsy_variation_mappings",
+      "etsy_inventory_change_sets",
+      "etsy_inventory_change_items"
+    ]) {
+      assert.match(migration, new RegExp(`alter table public\\.${table} enable row level security`, "i"));
+      assert.match(migration, new RegExp(`revoke all on table public\\.${table} from public, anon, authenticated`, "i"));
+    }
   });
 });

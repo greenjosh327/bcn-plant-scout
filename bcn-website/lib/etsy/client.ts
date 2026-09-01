@@ -58,7 +58,7 @@ function redactEtsyDiagnosticMessage(message: string, sensitiveValues: string[])
   );
 }
 
-async function readEtsyErrorMessage(response: Response, sensitiveValues: string[]) {
+export async function readEtsyErrorMessage(response: Response, sensitiveValues: string[]) {
   let responseBody = "";
 
   try {
@@ -159,10 +159,12 @@ async function refreshStoredConnection(
   supabase: SupabaseServiceClient,
   encryptedRefreshToken: string,
   config: EtsyConfig,
-  fetchImplementation: typeof fetch
+  fetchImplementation: typeof fetch,
+  fallbackGrantedScopes: string[] = []
 ) {
   const refreshToken = openSecret(encryptedRefreshToken, config.encryptionKey);
-  const tokenSet = await refreshEtsyAccessToken(config, refreshToken, fetchImplementation);
+  const refreshedTokenSet = await refreshEtsyAccessToken(config, refreshToken, fetchImplementation);
+  const tokenSet = preserveGrantedScopesAfterRefresh(refreshedTokenSet, fallbackGrantedScopes);
 
   await saveRefreshedEtsyTokens(supabase, {
     encryptedAccessToken: sealSecret(tokenSet.accessToken, config.encryptionKey),
@@ -173,27 +175,76 @@ async function refreshStoredConnection(
   return tokenSet.accessToken;
 }
 
-async function authorizedEtsyJson<T>(
+export function preserveGrantedScopesAfterRefresh<T extends { grantedScopes: string[] }>(
+  refreshedTokenSet: T,
+  fallbackGrantedScopes: string[]
+) {
+  return refreshedTokenSet.grantedScopes.length > 0
+    ? refreshedTokenSet
+    : { ...refreshedTokenSet, grantedScopes: [...fallbackGrantedScopes] };
+}
+
+export async function getAuthorizedEtsyAccess(
   supabase: SupabaseServiceClient,
-  path: string,
   fetchImplementation: typeof fetch = fetch
 ) {
   const config = getEtsyConfig();
   const connection = await loadEtsyConnection(supabase);
   if (!isConnectedEtsyRow(connection)) throw new EtsyNotConnectedError("Etsy is not connected.");
 
-  const shouldRefresh = shouldRefreshEtsyToken(connection.access_token_expires_at);
-  let accessToken = shouldRefresh
-    ? await refreshStoredConnection(supabase, connection.refresh_token_encrypted, config, fetchImplementation)
+  const accessToken = shouldRefreshEtsyToken(connection.access_token_expires_at)
+    ? await refreshStoredConnection(
+        supabase,
+        connection.refresh_token_encrypted,
+        config,
+        fetchImplementation,
+        connection.granted_scopes || []
+      )
     : openSecret(connection.access_token_encrypted, config.encryptionKey);
+
+  return { accessToken, config, connection };
+}
+
+export async function forceRefreshAuthorizedEtsyAccess(
+  supabase: SupabaseServiceClient,
+  fetchImplementation: typeof fetch = fetch
+) {
+  const config = getEtsyConfig();
+  const connection = await loadEtsyConnection(supabase);
+  if (!isConnectedEtsyRow(connection)) throw new EtsyNotConnectedError("Etsy is not connected.");
+
+  const accessToken = await refreshStoredConnection(
+    supabase,
+    connection.refresh_token_encrypted,
+    config,
+    fetchImplementation,
+    connection.granted_scopes || []
+  );
+  return { accessToken, config, connection };
+}
+
+async function authorizedEtsyJson<T>(
+  supabase: SupabaseServiceClient,
+  path: string,
+  fetchImplementation: typeof fetch = fetch
+) {
+  const authorization = await getAuthorizedEtsyAccess(supabase, fetchImplementation);
+  const { config, connection } = authorization;
+  let { accessToken } = authorization;
+  const refreshedBeforeRequest = shouldRefreshEtsyToken(connection.access_token_expires_at);
 
   try {
     return await requestEtsyJson<T>(path, accessToken, config, fetchImplementation);
   } catch (error) {
-    if (!(error instanceof EtsyHttpError) || error.status !== 401 || shouldRefresh) throw error;
-    accessToken = await refreshStoredConnection(supabase, connection.refresh_token_encrypted, config, fetchImplementation);
+    if (!(error instanceof EtsyHttpError) || error.status !== 401 || refreshedBeforeRequest) throw error;
+    accessToken = (await forceRefreshAuthorizedEtsyAccess(supabase, fetchImplementation)).accessToken;
     return requestEtsyJson<T>(path, accessToken, config, fetchImplementation);
   }
+}
+
+export function getEtsyListingInventory(supabase: SupabaseServiceClient, listingId: number) {
+  if (!Number.isSafeInteger(listingId) || listingId <= 0) throw new Error("A valid Etsy listing ID is required.");
+  return authorizedEtsyJson<EtsyListingInventory>(supabase, `/listings/${listingId}/inventory`);
 }
 
 export function normalizeEtsyListing(listing: EtsyListing): EtsyDashboardListing {
@@ -364,6 +415,7 @@ export async function getEtsyDashboard(supabase: SupabaseServiceClient) {
   return {
     connected: true as const,
     connectedAt: connection.connected_at,
+    grantedScopes: connection.granted_scopes || [],
     shop: normalizeEtsyShop(shop),
     listings: listingsWithInventory
   };

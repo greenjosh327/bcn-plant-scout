@@ -67,6 +67,9 @@ export type EtsyListingPropertyValue = {
   property_name?: string | null;
   value_ids?: number[];
   values?: string[];
+  scale_id?: number | null;
+  scale_name?: string | null;
+  value_pairs?: unknown;
 };
 
 export type EtsyListingOffering = {
@@ -75,6 +78,7 @@ export type EtsyListingOffering = {
   is_enabled: boolean;
   is_deleted?: boolean;
   price: EtsyMoney;
+  readiness_state_id?: number | null;
 };
 
 export type EtsyListingInventoryProduct = {
@@ -90,6 +94,7 @@ export type EtsyListingInventory = {
   price_on_property?: number[];
   quantity_on_property?: number[];
   sku_on_property?: number[];
+  readiness_state_on_property?: number[] | null;
 };
 
 export type EtsyListingWithInventory = {

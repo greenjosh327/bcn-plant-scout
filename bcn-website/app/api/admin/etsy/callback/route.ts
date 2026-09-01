@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { ETSY_EXPECTED_SHOP_NAME, ETSY_READ_ONLY_SCOPES, getEtsyConfig } from "@/lib/etsy/config";
+import { ETSY_EXPECTED_SHOP_NAME, ETSY_REQUIRED_SCOPES, getEtsyConfig } from "@/lib/etsy/config";
 import {
   clearOAuthAttempt,
   loadEtsyConnection,
@@ -66,8 +66,8 @@ export async function GET(request: Request) {
 
     const codeVerifier = openSecret(connection.oauth_code_verifier_encrypted, config.encryptionKey);
     const tokenSet = await exchangeEtsyAuthorizationCode(config, code, codeVerifier);
-    const missingScope = ETSY_READ_ONLY_SCOPES.find((scope) => !tokenSet.grantedScopes.includes(scope));
-    if (missingScope) throw new Error("Etsy did not grant every required read-only scope.");
+    const missingScope = ETSY_REQUIRED_SCOPES.find((scope) => !tokenSet.grantedScopes.includes(scope));
+    if (missingScope) throw new Error("Etsy did not grant every required Phase 2 scope.");
 
     const self = await fetchEtsySelfWithToken(tokenSet.accessToken, config);
     const shop = await fetchEtsyShopWithToken(Number(self.shop_id), tokenSet.accessToken, config);

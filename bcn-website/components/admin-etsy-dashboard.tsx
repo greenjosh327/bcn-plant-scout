@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { AdminEtsyInventoryManager } from "@/components/admin-etsy-inventory-manager";
 import type { EtsyDashboardListing, EtsyDashboardShop } from "@/lib/etsy/types";
 
 type EtsyDashboardResponse =
@@ -8,6 +9,7 @@ type EtsyDashboardResponse =
   | {
       connected: true;
       connectedAt: string | null;
+      grantedScopes: string[];
       shop: EtsyDashboardShop;
       listings: EtsyDashboardListing[];
     };
@@ -121,11 +123,11 @@ export function AdminEtsyDashboard({ accessToken }: { accessToken: string }) {
       <div className="field-card p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-xs font-black uppercase tracking-[0.18em] text-stone">Phase 1 / read only</p>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-stone">Etsy connection</p>
             <h2 className="mt-2 text-2xl font-black text-pine">Etsy connection</h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-ink/70">
-              View the BaseCampNorthPA shop and active Etsy listings. This connection cannot create, edit,
-              renew, deactivate, delete, or publish listings, and it does not change BCN inventory.
+              Phase 1 shop and listing views remain read only. Phase 2 can update only inventory quantities from an
+              explicitly approved proposal; it cannot change titles, descriptions, prices, listing state, renewal, or publication.
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
@@ -235,12 +237,11 @@ export function AdminEtsyDashboard({ accessToken }: { accessToken: string }) {
 
           <div className="field-card overflow-hidden">
             <div className="border-b border-pine/10 p-6">
-              <p className="text-xs font-black uppercase tracking-[0.18em] text-stone">Read only</p>
-              <h2 className="mt-2 text-2xl font-black text-pine">Etsy inventory comparison</h2>
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-stone">Phase 1 / read-only source data</p>
+              <h2 className="mt-2 text-2xl font-black text-pine">Etsy inventory details</h2>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-ink/70">
-                Etsy variation quantities, prices, and SKUs are shown for comparison only. BCN physical inventory is
-                counted in 25-seed packs; for later planning, a 100-seed option represents 4 physical 25-seed packs.
-                No stock conversion, matching, deduction, or synchronization happens here.
+                Etsy variation quantities, prices, and SKUs are shown exactly as returned by Etsy. This refresh remains
+                read only; controlled matching and proposed BCN stock allocation are handled separately below.
               </p>
             </div>
 
@@ -331,6 +332,8 @@ export function AdminEtsyDashboard({ accessToken }: { accessToken: string }) {
               <p className="p-6 text-sm font-bold text-stone">No active Etsy listings are available to compare.</p>
             ) : null}
           </div>
+
+          <AdminEtsyInventoryManager accessToken={accessToken} grantedScopes={dashboard.grantedScopes} />
         </>
       ) : null}
     </section>
