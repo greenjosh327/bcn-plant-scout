@@ -5,8 +5,10 @@ import { readFile } from "node:fs/promises";
 import {
   assertReadOnlyEtsyMethod,
   collectAllActiveEtsyListings,
+  collectEtsyListingInventories,
   fetchEtsySelfWithToken,
   normalizeEtsyListing,
+  normalizeEtsyListingInventory,
   shouldRefreshEtsyToken
 } from "../lib/etsy/client";
 import {
@@ -20,7 +22,7 @@ import {
 } from "../lib/etsy/crypto";
 import { buildEtsyAuthorizationUrl } from "../lib/etsy/oauth";
 import { ETSY_API_BASE_URL, type EtsyConfig } from "../lib/etsy/config";
-import type { EtsyListing } from "../lib/etsy/types";
+import type { EtsyListing, EtsyListingInventory } from "../lib/etsy/types";
 
 const config: EtsyConfig = {
   apiKey: "test-keystring",
@@ -139,6 +141,154 @@ describe("Etsy Phase 1 integration", () => {
     assert.equal(normalized.price, 12.5);
     assert.equal(normalized.currencyCode, "USD");
     assert.equal(normalized.lastUpdated, "2023-11-14T22:13:20.000Z");
+  });
+
+  it("normalizes a listing inventory record with no variations", () => {
+    const inventory: EtsyListingInventory = {
+      products: [
+        {
+          product_id: 10,
+          sku: "",
+          offerings: [
+            {
+              offering_id: 20,
+              quantity: 8,
+              is_enabled: true,
+              price: { amount: 450, divisor: 100, currency_code: "USD" }
+            }
+          ],
+          property_values: []
+        }
+      ],
+      price_on_property: [],
+      quantity_on_property: [],
+      sku_on_property: []
+    };
+
+    const normalized = normalizeEtsyListingInventory(inventory);
+
+    assert.equal(normalized.recordAvailable, true);
+    assert.equal(normalized.hasVariations, false);
+    assert.equal(normalized.priceVaries, false);
+    assert.equal(normalized.quantityVaries, false);
+    assert.deepEqual(normalized.offerings, [
+      {
+        productId: 10,
+        offeringId: 20,
+        options: [],
+        quantity: 8,
+        price: 4.5,
+        currencyCode: "USD",
+        sku: null,
+        isEnabled: true
+      }
+    ]);
+  });
+
+  it("normalizes one Etsy variation and its price and quantity behavior", () => {
+    const normalized = normalizeEtsyListingInventory({
+      products: [
+        {
+          product_id: 11,
+          sku: "BCN-25",
+          offerings: [
+            {
+              offering_id: 21,
+              quantity: 12,
+              is_enabled: true,
+              price: { amount: 500, divisor: 100, currency_code: "USD" }
+            }
+          ],
+          property_values: [
+            { property_id: 100, property_name: "Packet size", value_ids: [1001], values: ["25 Seeds"] }
+          ]
+        }
+      ],
+      price_on_property: [100],
+      quantity_on_property: [100],
+      sku_on_property: [100]
+    });
+
+    assert.equal(normalized.hasVariations, true);
+    assert.equal(normalized.priceVaries, true);
+    assert.equal(normalized.quantityVaries, true);
+    assert.equal(normalized.offerings[0]?.sku, "BCN-25");
+    assert.deepEqual(normalized.offerings[0]?.options, [
+      {
+        propertyId: 100,
+        name: "Packet size",
+        value: "25 Seeds",
+        priceVaries: true,
+        quantityVaries: true,
+        skuVaries: true
+      }
+    ]);
+  });
+
+  it("normalizes multiple Etsy variation offerings with independent quantity, price, and SKU values", () => {
+    const normalized = normalizeEtsyListingInventory({
+      products: [
+        {
+          product_id: 12,
+          sku: "BCN-25",
+          offerings: [
+            {
+              offering_id: 22,
+              quantity: 16,
+              is_enabled: true,
+              price: { amount: 500, divisor: 100, currency_code: "USD" }
+            }
+          ],
+          property_values: [{ property_id: 100, property_name: "Packet size", values: ["25 Seeds"] }]
+        },
+        {
+          product_id: 13,
+          sku: "BCN-100",
+          offerings: [
+            {
+              offering_id: 23,
+              quantity: 3,
+              is_enabled: true,
+              price: { amount: 1400, divisor: 100, currency_code: "USD" }
+            }
+          ],
+          property_values: [{ property_id: 100, property_name: "Packet size", values: ["100 Seeds"] }]
+        }
+      ],
+      price_on_property: [100],
+      quantity_on_property: [100],
+      sku_on_property: [100]
+    });
+
+    assert.equal(normalized.offerings.length, 2);
+    assert.deepEqual(
+      normalized.offerings.map((offering) => ({
+        option: offering.options[0]?.value,
+        quantity: offering.quantity,
+        price: offering.price,
+        sku: offering.sku
+      })),
+      [
+        { option: "25 Seeds", quantity: 16, price: 5, sku: "BCN-25" },
+        { option: "100 Seeds", quantity: 3, price: 14, sku: "BCN-100" }
+      ]
+    );
+  });
+
+  it("batches inventory reads at Etsy's 100-listing limit without changing methods or scopes", async () => {
+    const requestedBatches: number[][] = [];
+    const listingIds = Array.from({ length: 101 }, (_, index) => index + 1);
+
+    const inventories = await collectEtsyListingInventories(listingIds, async (batchIds) => {
+      requestedBatches.push(batchIds);
+      return {
+        count: batchIds.length,
+        results: batchIds.map((listingId) => ({ listing_id: listingId, inventory: null }))
+      };
+    });
+
+    assert.deepEqual(requestedBatches.map((batch) => batch.length), [100, 1]);
+    assert.equal(inventories.size, 101);
   });
 
   it("paginates through every result and defensively keeps only active listings", async () => {

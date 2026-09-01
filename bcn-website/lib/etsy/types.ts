@@ -62,6 +62,74 @@ export type EtsyListingPage = {
   results: EtsyListing[];
 };
 
+export type EtsyListingPropertyValue = {
+  property_id: number;
+  property_name?: string | null;
+  value_ids?: number[];
+  values?: string[];
+};
+
+export type EtsyListingOffering = {
+  offering_id: number;
+  quantity: number;
+  is_enabled: boolean;
+  is_deleted?: boolean;
+  price: EtsyMoney;
+};
+
+export type EtsyListingInventoryProduct = {
+  product_id: number;
+  sku?: string | null;
+  is_deleted?: boolean;
+  offerings?: EtsyListingOffering[];
+  property_values?: EtsyListingPropertyValue[];
+};
+
+export type EtsyListingInventory = {
+  products?: EtsyListingInventoryProduct[];
+  price_on_property?: number[];
+  quantity_on_property?: number[];
+  sku_on_property?: number[];
+};
+
+export type EtsyListingWithInventory = {
+  listing_id: number;
+  inventory?: EtsyListingInventory | null;
+};
+
+export type EtsyListingsInventoryBatch = {
+  count: number;
+  results: EtsyListingWithInventory[];
+};
+
+export type EtsyDashboardVariationOption = {
+  propertyId: number;
+  name: string;
+  value: string;
+  priceVaries: boolean;
+  quantityVaries: boolean;
+  skuVaries: boolean;
+};
+
+export type EtsyDashboardOffering = {
+  productId: number;
+  offeringId: number;
+  options: EtsyDashboardVariationOption[];
+  quantity: number;
+  price: number;
+  currencyCode: string;
+  sku: string | null;
+  isEnabled: boolean;
+};
+
+export type EtsyDashboardInventory = {
+  recordAvailable: boolean;
+  hasVariations: boolean;
+  priceVaries: boolean;
+  quantityVaries: boolean;
+  offerings: EtsyDashboardOffering[];
+};
+
 export type EtsyDashboardListing = {
   listingId: number;
   title: string;
@@ -71,6 +139,7 @@ export type EtsyDashboardListing = {
   currencyCode: string;
   url: string;
   lastUpdated: string;
+  inventory: EtsyDashboardInventory;
 };
 
 export type EtsyDashboardShop = {

@@ -4,16 +4,20 @@ import { loadEtsyConnection, isConnectedEtsyRow, saveRefreshedEtsyTokens } from 
 import { openSecret, sealSecret } from "./crypto";
 import { refreshEtsyAccessToken } from "./oauth";
 import type {
+  EtsyDashboardInventory,
   EtsyDashboardListing,
   EtsyDashboardShop,
   EtsyListing,
+  EtsyListingInventory,
   EtsyListingPage,
+  EtsyListingsInventoryBatch,
   EtsySelf,
   EtsyShop
 } from "./types";
 
 const TOKEN_REFRESH_WINDOW_MS = 5 * 60 * 1000;
 const LISTING_PAGE_SIZE = 100;
+const INVENTORY_BATCH_SIZE = 100;
 
 export class EtsyNotConnectedError extends Error {}
 
@@ -181,8 +185,90 @@ export function normalizeEtsyListing(listing: EtsyListing): EtsyDashboardListing
     url: listing.url,
     lastUpdated: Number.isFinite(updatedTimestamp)
       ? new Date(updatedTimestamp * 1000).toISOString()
-      : new Date(0).toISOString()
+      : new Date(0).toISOString(),
+    inventory: normalizeEtsyListingInventory(null, listing.price?.currency_code || "USD")
   };
+}
+
+export function normalizeEtsyListingInventory(
+  inventory: EtsyListingInventory | null | undefined,
+  fallbackCurrencyCode = "USD"
+): EtsyDashboardInventory {
+  if (!inventory) {
+    return {
+      recordAvailable: false,
+      hasVariations: false,
+      priceVaries: false,
+      quantityVaries: false,
+      offerings: []
+    };
+  }
+
+  const priceOnProperty = new Set((inventory.price_on_property || []).map(Number));
+  const quantityOnProperty = new Set((inventory.quantity_on_property || []).map(Number));
+  const skuOnProperty = new Set((inventory.sku_on_property || []).map(Number));
+  const products = (inventory.products || []).filter((product) => !product.is_deleted);
+
+  const offerings = products.flatMap((product) => {
+    const options = (product.property_values || []).flatMap((property) => {
+      const propertyId = Number(property.property_id);
+      const name = property.property_name?.trim() || `Option ${propertyId}`;
+      const values = (property.values || []).filter((value) => typeof value === "string" && value.trim().length > 0);
+
+      return values.map((value) => ({
+        propertyId,
+        name,
+        value,
+        priceVaries: priceOnProperty.has(propertyId),
+        quantityVaries: quantityOnProperty.has(propertyId),
+        skuVaries: skuOnProperty.has(propertyId)
+      }));
+    });
+
+    return (product.offerings || [])
+      .filter((offering) => !offering.is_deleted)
+      .map((offering) => {
+        const divisor = Number(offering.price?.divisor) > 0 ? Number(offering.price.divisor) : 100;
+        const sku = typeof product.sku === "string" && product.sku.trim() ? product.sku.trim() : null;
+
+        return {
+          productId: Number(product.product_id),
+          offeringId: Number(offering.offering_id),
+          options,
+          quantity: Number(offering.quantity) || 0,
+          price: Number(offering.price?.amount || 0) / divisor,
+          currencyCode: offering.price?.currency_code || fallbackCurrencyCode,
+          sku,
+          isEnabled: Boolean(offering.is_enabled)
+        };
+      });
+  });
+
+  return {
+    recordAvailable: true,
+    hasVariations: products.some((product) => (product.property_values || []).length > 0),
+    priceVaries: priceOnProperty.size > 0,
+    quantityVaries: quantityOnProperty.size > 0,
+    offerings
+  };
+}
+
+export async function collectEtsyListingInventories(
+  listingIds: number[],
+  fetchBatch: (listingIds: number[]) => Promise<EtsyListingsInventoryBatch>
+) {
+  const inventories = new Map<number, EtsyListingInventory | null>();
+
+  for (let index = 0; index < listingIds.length; index += INVENTORY_BATCH_SIZE) {
+    const batchIds = listingIds.slice(index, index + INVENTORY_BATCH_SIZE);
+    const batch = await fetchBatch(batchIds);
+
+    for (const result of Array.isArray(batch.results) ? batch.results : []) {
+      inventories.set(Number(result.listing_id), result.inventory ?? null);
+    }
+  }
+
+  return inventories;
 }
 
 export async function collectAllActiveEtsyListings(
@@ -236,10 +322,24 @@ export async function getEtsyDashboard(supabase: SupabaseServiceClient) {
     )
   );
 
+  const inventories = await collectEtsyListingInventories(
+    listings.map((listing) => listing.listingId),
+    (listingIds) =>
+      authorizedEtsyJson<EtsyListingsInventoryBatch>(
+        supabase,
+        `/listings/batch/inventory?listing_ids=${listingIds.join(",")}`
+      )
+  );
+
+  const listingsWithInventory = listings.map((listing) => ({
+    ...listing,
+    inventory: normalizeEtsyListingInventory(inventories.get(listing.listingId), listing.currencyCode)
+  }));
+
   return {
     connected: true as const,
     connectedAt: connection.connected_at,
     shop: normalizeEtsyShop(shop),
-    listings
+    listings: listingsWithInventory
   };
 }
