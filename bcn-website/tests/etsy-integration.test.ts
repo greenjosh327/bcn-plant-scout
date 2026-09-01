@@ -134,6 +134,35 @@ describe("Etsy Phase 1 integration", () => {
     assert.equal(JSON.stringify(logged).includes(config.sharedSecret), false);
   });
 
+  it("retries a rate-limited read using Etsy's 429 response without changing the request", async () => {
+    const accessToken = "12345678.test-access-token";
+    const warnings: unknown[][] = [];
+    const originalConsoleWarn = console.warn;
+    let requestCount = 0;
+    console.warn = (...values: unknown[]) => warnings.push(values);
+
+    try {
+      const self = await fetchEtsySelfWithToken(accessToken, config, async () => {
+        requestCount += 1;
+        return requestCount === 1
+          ? Response.json({ error: "Exceeded per second rate limit" }, { status: 429, headers: { "retry-after": "0" } })
+          : Response.json({ user_id: 12345678, shop_id: 87654321 });
+      });
+
+      assert.deepEqual(self, { user_id: 12345678, shop_id: 87654321 });
+    } finally {
+      console.warn = originalConsoleWarn;
+    }
+
+    assert.equal(requestCount, 2);
+    assert.deepEqual(warnings, [
+      [
+        "Etsy API read rate limited; retrying",
+        { endpoint: "/users/me", status: 429, message: "Exceeded per second rate limit" }
+      ]
+    ]);
+  });
+
   it("normalizes Etsy Money and updated_timestamp values", () => {
     const normalized = normalizeEtsyListing(listing(42));
 

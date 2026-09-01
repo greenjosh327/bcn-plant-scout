@@ -18,6 +18,8 @@ import type {
 const TOKEN_REFRESH_WINDOW_MS = 5 * 60 * 1000;
 const LISTING_PAGE_SIZE = 100;
 const INVENTORY_BATCH_SIZE = 100;
+const MAX_RATE_LIMIT_RETRIES = 2;
+const MAX_RATE_LIMIT_DELAY_MS = 5_000;
 
 export class EtsyNotConnectedError extends Error {}
 
@@ -76,6 +78,21 @@ async function readEtsyErrorMessage(response: Response, sensitiveValues: string[
   return redactEtsyDiagnosticMessage(message, sensitiveValues);
 }
 
+function getRateLimitDelay(response: Response, attempt: number) {
+  const retryAfter = response.headers.get("retry-after");
+  const seconds = Number(retryAfter);
+  const headerDelay = Number.isFinite(seconds) && seconds >= 0
+    ? seconds * 1000
+    : Math.max(0, Date.parse(retryAfter || "") - Date.now());
+  const exponentialDelay = 250 * 2 ** attempt;
+
+  return Math.min(Math.max(headerDelay || 0, exponentialDelay), MAX_RATE_LIMIT_DELAY_MS);
+}
+
+function wait(milliseconds: number) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
 export function assertReadOnlyEtsyMethod(method: string) {
   if (method.toUpperCase() !== "GET") {
     throw new Error("Phase 1 Etsy application requests are read only.");
@@ -94,27 +111,35 @@ async function requestEtsyJson<T>(
   fetchImplementation: typeof fetch = fetch
 ) {
   assertReadOnlyEtsyMethod("GET");
-  const response = await fetchImplementation(`${ETSY_API_BASE_URL}${path}`, {
-    method: "GET",
-    headers: {
-      accept: "application/json",
-      authorization: `Bearer ${accessToken}`,
-      "x-api-key": etsyApiKeyHeader(config)
-    },
-    cache: "no-store"
-  });
+  for (let attempt = 0; ; attempt += 1) {
+    const response = await fetchImplementation(`${ETSY_API_BASE_URL}${path}`, {
+      method: "GET",
+      headers: {
+        accept: "application/json",
+        authorization: `Bearer ${accessToken}`,
+        "x-api-key": etsyApiKeyHeader(config)
+      },
+      cache: "no-store"
+    });
 
-  if (!response.ok) {
+    if (response.ok) return (await response.json()) as T;
+
     const message = await readEtsyErrorMessage(response, [
       accessToken,
       config.apiKey,
       config.sharedSecret,
       etsyApiKeyHeader(config)
     ]);
+
+    if (response.status === 429 && attempt < MAX_RATE_LIMIT_RETRIES) {
+      console.warn("Etsy API read rate limited; retrying", { endpoint: path, status: response.status, message });
+      await wait(getRateLimitDelay(response, attempt));
+      continue;
+    }
+
     console.error("Etsy API request failed", { endpoint: path, status: response.status, message });
     throw new EtsyHttpError(path, response.status);
   }
-  return (await response.json()) as T;
 }
 
 export function fetchEtsySelfWithToken(accessToken: string, config: EtsyConfig, fetchImplementation?: typeof fetch) {
