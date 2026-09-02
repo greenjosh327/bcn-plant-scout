@@ -67,7 +67,7 @@ export async function GET(request: Request) {
     const codeVerifier = openSecret(connection.oauth_code_verifier_encrypted, config.encryptionKey);
     const tokenSet = await exchangeEtsyAuthorizationCode(config, code, codeVerifier);
     const missingScope = ETSY_REQUIRED_SCOPES.find((scope) => !tokenSet.grantedScopes.includes(scope));
-    if (missingScope) throw new Error("Etsy did not grant every required Phase 2 scope.");
+    if (missingScope) throw new Error("Etsy did not grant every required BCN Etsy scope.");
 
     const self = await fetchEtsySelfWithToken(tokenSet.accessToken, config);
     const shop = await fetchEtsyShopWithToken(Number(self.shop_id), tokenSet.accessToken, config);

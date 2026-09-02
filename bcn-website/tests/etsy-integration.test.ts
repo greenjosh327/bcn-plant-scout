@@ -42,7 +42,14 @@ import {
 } from "../lib/etsy/inventory-apply";
 import { buildVerifiedEtsyOfferingSummary } from "../lib/etsy/inventory-apply-summary";
 import { ETSY_API_BASE_URL, ETSY_REQUIRED_SCOPES, type EtsyConfig } from "../lib/etsy/config";
-import type { EtsyListing, EtsyListingInventory } from "../lib/etsy/types";
+import {
+  BLACK_CHERRY_PRODUCT_ID,
+  normalizeEtsyReceiptForStorage,
+  normalizeEtsyTransactionForStorage,
+  planOrderInventoryForTesting,
+  type ConfirmedOrderMapping
+} from "../lib/etsy/order-sync-core";
+import type { EtsyListing, EtsyListingInventory, EtsyReceipt, EtsyReceiptTransaction } from "../lib/etsy/types";
 
 const config: EtsyConfig = {
   apiKey: "test-keystring",
@@ -91,12 +98,12 @@ describe("Etsy Phase 1 and controlled Phase 2 integration", () => {
     assert.throws(() => openSecret(`${ciphertext}tampered`, config.encryptionKey));
   });
 
-  it("builds an S256 authorization URL with only the required read and inventory-write scopes", () => {
+  it("builds an S256 authorization URL with only the required listing and order scopes", () => {
     const authorizeUrl = new URL(buildEtsyAuthorizationUrl(config, "state-value", "challenge-value"));
 
     assert.equal(authorizeUrl.origin, "https://www.etsy.com");
-    assert.equal(authorizeUrl.searchParams.get("scope"), "shops_r listings_r listings_w");
-    assert.deepEqual(ETSY_REQUIRED_SCOPES, ["shops_r", "listings_r", "listings_w"]);
+    assert.equal(authorizeUrl.searchParams.get("scope"), "shops_r listings_r listings_w transactions_r");
+    assert.deepEqual(ETSY_REQUIRED_SCOPES, ["shops_r", "listings_r", "listings_w", "transactions_r"]);
     assert.equal(authorizeUrl.searchParams.get("code_challenge_method"), "S256");
     assert.equal(authorizeUrl.searchParams.get("redirect_uri"), config.redirectUri);
     assert.equal(authorizeUrl.toString().includes(config.sharedSecret), false);
@@ -739,10 +746,10 @@ describe("Etsy Phase 1 and controlled Phase 2 integration", () => {
   it("preserves stored OAuth scopes when Etsy omits scope from a refresh response", () => {
     const tokenSet = preserveGrantedScopesAfterRefresh(
       { accessToken: "new-token", grantedScopes: [] },
-      ["shops_r", "listings_r", "listings_w"]
+      ["shops_r", "listings_r", "listings_w", "transactions_r"]
     );
 
-    assert.deepEqual(tokenSet.grantedScopes, ["shops_r", "listings_r", "listings_w"]);
+    assert.deepEqual(tokenSet.grantedScopes, ["shops_r", "listings_r", "listings_w", "transactions_r"]);
   });
 
   it("keeps the Supabase credential table server-only", async () => {
@@ -823,5 +830,286 @@ describe("Etsy Phase 1 and controlled Phase 2 integration", () => {
 
     assert.ok(clearIndex >= 0);
     assert.ok(refreshIndex > clearIndex);
+  });
+});
+
+function paidReceipt(overrides: Partial<EtsyReceipt> = {}) {
+  return normalizeEtsyReceiptForStorage({
+    receipt_id: 9001,
+    status: "paid",
+    is_paid: true,
+    is_canceled: false,
+    created_timestamp: 1_788_000_000,
+    updated_timestamp: 1_788_000_030,
+    refunds: [],
+    ...overrides
+  });
+}
+
+function orderTransaction(
+  transactionId: number,
+  input: Partial<EtsyReceiptTransaction> & { packSize?: 25 | 100 } = {}
+) {
+  const packSize = input.packSize ?? 25;
+  return normalizeEtsyTransactionForStorage({
+    transaction_id: transactionId,
+    receipt_id: input.receipt_id ?? 9001,
+    listing_id: input.listing_id ?? 7001,
+    product_id: input.product_id ?? (packSize === 25 ? 25001 : 100001),
+    sku: input.sku ?? `BCN-TEST-${packSize}`,
+    quantity: input.quantity ?? 1,
+    paid_timestamp: input.paid_timestamp ?? 1_788_000_010,
+    product_data: input.product_data ?? [{ property_id: 100, property_name: "Pack Size", values: [`${packSize} Seeds`] }],
+    variations: input.variations
+  });
+}
+
+function confirmedMapping(
+  transaction: ReturnType<typeof orderTransaction>,
+  bcnProductId = "prod-catalpa",
+  packsConsumed: 1 | 4 = 1,
+  overrides: Partial<ConfirmedOrderMapping> = {}
+): ConfirmedOrderMapping {
+  assert.notEqual(transaction.listing_id, null);
+  assert.notEqual(transaction.product_id, null);
+  return {
+    listingId: transaction.listing_id!,
+    etsyProductId: transaction.product_id!,
+    sku: transaction.sku,
+    variationFingerprint: transaction.variation_fingerprint,
+    bcnProductId,
+    packsConsumed,
+    confirmed: true,
+    ...overrides
+  };
+}
+
+describe("Etsy Phase 2.5 order-based inventory synchronization", () => {
+  it("requests transactions_r as the only new OAuth scope", () => {
+    assert.deepEqual(ETSY_REQUIRED_SCOPES, ["shops_r", "listings_r", "listings_w", "transactions_r"]);
+  });
+
+  it("a 25-seed sale consumes one physical pack", () => {
+    const transaction = orderTransaction(1);
+    const result = planOrderInventoryForTesting({
+      receipt: paidReceipt(),
+      transactions: [transaction],
+      mappings: [confirmedMapping(transaction)],
+      inventory: { "prod-catalpa": 2 }
+    });
+    assert.equal(result.plans[0].physicalPacks, 1);
+    assert.equal(result.resultingInventory["prod-catalpa"], 1);
+  });
+
+  it("a 100-seed sale consumes four physical packs", () => {
+    const transaction = orderTransaction(2, { packSize: 100 });
+    const result = planOrderInventoryForTesting({
+      receipt: paidReceipt(),
+      transactions: [transaction],
+      mappings: [confirmedMapping(transaction, "prod-elderberry", 4)],
+      inventory: { "prod-elderberry": 14 }
+    });
+    assert.equal(result.plans[0].physicalPacks, 4);
+    assert.equal(result.resultingInventory["prod-elderberry"], 10);
+  });
+
+  it("multiplies physical pack use for multi-quantity purchases", () => {
+    const transaction = orderTransaction(3, { packSize: 100, quantity: 3 });
+    const result = planOrderInventoryForTesting({
+      receipt: paidReceipt(),
+      transactions: [transaction],
+      mappings: [confirmedMapping(transaction, "prod-chokeberry", 4)],
+      inventory: { "prod-chokeberry": 20 }
+    });
+    assert.equal(result.plans[0].physicalPacks, 12);
+    assert.equal(result.resultingInventory["prod-chokeberry"], 8);
+  });
+
+  it("processes multiple exact listing mappings in one receipt", () => {
+    const first = orderTransaction(4, { listing_id: 7001, product_id: 25001 });
+    const second = orderTransaction(5, { listing_id: 7002, product_id: 25002, sku: "BCN-BEACH-25" });
+    const result = planOrderInventoryForTesting({
+      receipt: paidReceipt(),
+      transactions: [first, second],
+      mappings: [confirmedMapping(first, "prod-catalpa"), confirmedMapping(second, "prod-beach")],
+      inventory: { "prod-catalpa": 2, "prod-beach": 12 }
+    });
+    assert.deepEqual(result.plans.map((plan) => plan.status), ["processed", "processed"]);
+    assert.deepEqual(result.resultingInventory, { "prod-catalpa": 1, "prod-beach": 11 });
+  });
+
+  it("records an unmatched transaction for manual review without decrementing", () => {
+    const transaction = orderTransaction(6);
+    const result = planOrderInventoryForTesting({
+      receipt: paidReceipt(), transactions: [transaction], mappings: [], inventory: { "prod-catalpa": 2 }
+    });
+    assert.equal(result.plans[0].status, "manual_review");
+    assert.equal(result.resultingInventory["prod-catalpa"], 2);
+  });
+
+  it("keeps Black Cherry blocked even if a mapping exists", () => {
+    const transaction = orderTransaction(7);
+    const result = planOrderInventoryForTesting({
+      receipt: paidReceipt(),
+      transactions: [transaction],
+      mappings: [confirmedMapping(transaction, BLACK_CHERRY_PRODUCT_ID)],
+      inventory: { [BLACK_CHERRY_PRODUCT_ID]: 3 }
+    });
+    assert.equal(result.plans[0].status, "manual_review");
+    assert.equal(result.resultingInventory[BLACK_CHERRY_PRODUCT_ID], 3);
+  });
+
+  it("never infers Staghorn Sumac from a Fragrant Sumac mapping", () => {
+    const fragrant = orderTransaction(8, { listing_id: 8001, product_id: 8101, sku: "FRAGRANT-25" });
+    const staghorn = orderTransaction(9, { listing_id: 8002, product_id: 8201, sku: "STAGHORN-25" });
+    const result = planOrderInventoryForTesting({
+      receipt: paidReceipt(),
+      transactions: [staghorn],
+      mappings: [confirmedMapping(fragrant, "prod-fragrant")],
+      inventory: { "prod-fragrant": 52 }
+    });
+    assert.equal(result.plans[0].status, "manual_review");
+    assert.equal(result.resultingInventory["prod-fragrant"], 52);
+  });
+
+  it("rejects insufficient stock without allowing inventory below zero", () => {
+    const transaction = orderTransaction(10, { packSize: 100 });
+    const result = planOrderInventoryForTesting({
+      receipt: paidReceipt(),
+      transactions: [transaction],
+      mappings: [confirmedMapping(transaction, "prod-catalpa", 4)],
+      inventory: { "prod-catalpa": 2 }
+    });
+    assert.equal(result.plans[0].status, "manual_review");
+    assert.equal(result.resultingInventory["prod-catalpa"], 2);
+  });
+
+  it("duplicate replay cannot decrement the same Etsy transaction twice", () => {
+    const transaction = orderTransaction(11);
+    const result = planOrderInventoryForTesting({
+      receipt: paidReceipt(),
+      transactions: [transaction],
+      mappings: [confirmedMapping(transaction)],
+      inventory: { "prod-catalpa": 1 },
+      processedTransactionIds: new Set([11])
+    });
+    assert.equal(result.plans[0].status, "duplicate");
+    assert.equal(result.resultingInventory["prod-catalpa"], 1);
+  });
+
+  it("a retry after a partial failure skips committed transactions and processes the remainder", () => {
+    const committed = orderTransaction(12);
+    const retryable = orderTransaction(13, { product_id: 25002, sku: "BCN-TEST2-25" });
+    const result = planOrderInventoryForTesting({
+      receipt: paidReceipt(),
+      transactions: [committed, retryable],
+      mappings: [confirmedMapping(committed), confirmedMapping(retryable)],
+      inventory: { "prod-catalpa": 1 },
+      processedTransactionIds: new Set([12])
+    });
+    assert.deepEqual(result.plans.map((plan) => plan.status), ["duplicate", "processed"]);
+    assert.equal(result.resultingInventory["prod-catalpa"], 0);
+  });
+
+  it("unpaid and canceled receipts do not decrement stock", () => {
+    const transaction = orderTransaction(14);
+    for (const receipt of [paidReceipt({ is_paid: false }), paidReceipt({ is_canceled: true })]) {
+      const result = planOrderInventoryForTesting({
+        receipt, transactions: [transaction], mappings: [confirmedMapping(transaction)], inventory: { "prod-catalpa": 2 }
+      });
+      assert.equal(result.plans[0].status, "ignored");
+      assert.equal(result.resultingInventory["prod-catalpa"], 2);
+    }
+  });
+
+  it("refunds require manual review and never restore or decrement stock automatically", () => {
+    const transaction = orderTransaction(15);
+    const result = planOrderInventoryForTesting({
+      receipt: paidReceipt({ refunds: [{ created_timestamp: 1_788_000_020, reason: "refund", status: "processed" }] }),
+      transactions: [transaction], mappings: [confirmedMapping(transaction)], inventory: { "prod-catalpa": 2 }
+    });
+    assert.equal(result.plans[0].status, "manual_review");
+    assert.equal(result.resultingInventory["prod-catalpa"], 2);
+  });
+
+  it("stores only allowlisted receipt and variation audit fields", () => {
+    const receipt = normalizeEtsyReceiptForStorage({
+      receipt_id: 22,
+      status: "paid",
+      is_paid: true,
+      refunds: [{ reason: "refund", status: "processed", created_timestamp: 1_788_000_020 }],
+      ...({ buyer_email: "never-store@example.com", name: "Never Store" } as object)
+    });
+    const transaction = normalizeEtsyTransactionForStorage({
+      transaction_id: 22,
+      receipt_id: 22,
+      listing_id: 33,
+      product_id: 44,
+      quantity: 1,
+      paid_timestamp: 1_788_000_010,
+      variations: [{ property_id: 54, formatted_name: "Personalization", formatted_value: "private text" }]
+    });
+    assert.equal(JSON.stringify(receipt).includes("never-store"), false);
+    assert.equal(JSON.stringify(transaction).includes("private text"), false);
+  });
+
+  it("the migration enforces leases, atomic ledger references, RLS, and no baseline seed", async () => {
+    const migration = await readFile(
+      new URL("../supabase/migrations/20260902125852_bcn_etsy_order_sync.sql", import.meta.url),
+      "utf8"
+    );
+    for (const table of ["etsy_order_sync_state", "etsy_order_sync_runs", "etsy_receipts", "etsy_transactions"]) {
+      assert.match(migration, new RegExp(`alter table public\\.${table} enable row level security`, "i"));
+      assert.match(migration, new RegExp(`revoke all on table public\\.${table} from public, anon, authenticated`, "i"));
+    }
+    assert.match(migration, /lease_expires_at > now\(\)/i);
+    assert.match(migration, /unique \(connection_id, shop_id, transaction_id\)/i);
+    assert.match(migration, /format\('etsy:%s:%s', p_shop_id, pending_transaction\.transaction_id\)/i);
+    assert.match(migration, /and inventory >= pending_transaction\.physical_packs_consumed/i);
+    assert.match(migration, /manual_review_post_processing_change/i);
+    assert.equal((migration.match(/insert into public\.etsy_order_sync_state/gi) || []).length, 1);
+  });
+
+  it("prevents concurrent order-sync attempts with a persistent database lease", async () => {
+    const migration = await readFile(
+      new URL("../supabase/migrations/20260902125852_bcn_etsy_order_sync.sql", import.meta.url),
+      "utf8"
+    );
+    assert.match(migration, /active_run_id is not null[\s\S]*lease_expires_at > now\(\)/i);
+    assert.match(migration, /raise exception 'Another Etsy order sync is already running\.'/i);
+  });
+
+  it("enforces one inventory-ledger entry per Etsy transaction", async () => {
+    const migration = await readFile(
+      new URL("../supabase/migrations/20260902125852_bcn_etsy_order_sync.sql", import.meta.url),
+      "utf8"
+    );
+    assert.match(migration, /unique \(connection_id, shop_id, transaction_id\)/i);
+    assert.match(migration, /format\('etsy:%s:%s', p_shop_id, pending_transaction\.transaction_id\)/i);
+    assert.match(migration, /on conflict \(reference_key\) where reference_key is not null do nothing/i);
+  });
+
+  it("stops a failed run without advancing the successful-sync cursor", async () => {
+    const source = await readFile(new URL("../lib/etsy/order-sync.ts", import.meta.url), "utf8");
+    const processIndex = source.indexOf('supabase.rpc("process_etsy_order_receipt"');
+    const finishIndex = source.indexOf('supabase.rpc("finish_etsy_order_sync"');
+    const failIndex = source.indexOf('supabase.rpc("fail_etsy_order_sync"');
+    assert.ok(processIndex >= 0);
+    assert.ok(finishIndex > processIndex);
+    assert.ok(failIndex > finishIndex);
+    assert.match(source, /if \(processError \|\| !processData\) \{[\s\S]*throw new Error/i);
+  });
+
+  it("order sync performs Etsy GETs and generates a fresh proposal without applying it", async () => {
+    const source = await readFile(new URL("../lib/etsy/order-sync.ts", import.meta.url), "utf8");
+    const client = await readFile(new URL("../lib/etsy/client.ts", import.meta.url), "utf8");
+    assert.match(source, /getEtsyShopReceiptsPage/);
+    assert.match(source, /getEtsyReceiptTransactions/);
+    assert.match(source, /idempotencyKey: `etsy-order-sync:\$\{activeRun\.run_id\}`/);
+    assert.match(source, /processing_status", "manual_review_insufficient_stock"/);
+    assert.doesNotMatch(source, /\.eq\("last_sync_run_id", activeRun\.run_id\)[\s\S]{0,160}manual_review_insufficient_stock/);
+    assert.doesNotMatch(source, /applyEtsyInventoryProposal|updateEtsyListingInventory/);
+    assert.match(client, /authorizedEtsyJson<EtsyReceiptPage>/);
+    assert.match(client, /authorizedEtsyJson<EtsyReceiptTransactionPage>/);
   });
 });

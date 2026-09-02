@@ -11,6 +11,8 @@ import type {
   EtsyListingInventory,
   EtsyListingPage,
   EtsyListingsInventoryBatch,
+  EtsyReceiptPage,
+  EtsyReceiptTransactionPage,
   EtsySelf,
   EtsyShop
 } from "./types";
@@ -285,6 +287,48 @@ export function getEtsyListingInventory(supabase: SupabaseServiceClient, listing
 export function getEtsyListingInventoryRead(supabase: SupabaseServiceClient, listingId: number) {
   if (!Number.isSafeInteger(listingId) || listingId <= 0) throw new Error("A valid Etsy listing ID is required.");
   return authorizedEtsyJsonResult<EtsyListingInventory>(supabase, `/listings/${listingId}/inventory`);
+}
+
+export function getEtsyShopReceiptsPage(
+  supabase: SupabaseServiceClient,
+  input: {
+    shopId: number;
+    minLastModified: number;
+    maxLastModified: number;
+    offset: number;
+    limit?: number;
+  }
+) {
+  const { shopId, minLastModified, maxLastModified, offset, limit = 100 } = input;
+  for (const [name, value] of Object.entries({ shopId, minLastModified, maxLastModified, offset, limit })) {
+    if (!Number.isSafeInteger(value) || value < (name === "offset" ? 0 : 1)) {
+      throw new Error(`A valid Etsy ${name} is required.`);
+    }
+  }
+
+  const query = new URLSearchParams({
+    min_last_modified: String(minLastModified),
+    max_last_modified: String(maxLastModified),
+    limit: String(Math.min(100, limit)),
+    offset: String(offset),
+    sort_on: "updated",
+    sort_order: "asc"
+  });
+  return authorizedEtsyJson<EtsyReceiptPage>(supabase, `/shops/${shopId}/receipts?${query.toString()}`);
+}
+
+export function getEtsyReceiptTransactions(
+  supabase: SupabaseServiceClient,
+  shopId: number,
+  receiptId: number
+) {
+  if (!Number.isSafeInteger(shopId) || shopId <= 0 || !Number.isSafeInteger(receiptId) || receiptId <= 0) {
+    throw new Error("Valid Etsy shop and receipt IDs are required.");
+  }
+  return authorizedEtsyJson<EtsyReceiptTransactionPage>(
+    supabase,
+    `/shops/${shopId}/receipts/${receiptId}/transactions`
+  );
 }
 
 export function normalizeEtsyListing(listing: EtsyListing): EtsyDashboardListing {

@@ -170,7 +170,7 @@ and label refund state used by the admin fulfillment tools.
 The Stripe webhook uses the Supabase service role key on the server to write
 orders and update inventory. The browser never writes directly to order tables.
 
-## Etsy Open API v3 (Phase 1 and controlled Phase 2)
+## Etsy Open API v3 (Phase 1, controlled Phase 2, and Phase 2.5 order sync)
 
 The owner admin Etsy page is `/admin/etsy`. Phase 1 continues to retrieve the
 authenticated `BaseCampNorthPA` shop, active listings, and variation inventory
@@ -189,6 +189,12 @@ It reconciles the owner-approved physical seed-pack snapshot through
 mapping, proposal, idempotency, and audit tables. Catalpa and Fragrant Sumac use
 separate hidden inventory products; Staghorn Sumac remains a different product.
 
+Then apply `supabase/migrations/20260902125852_bcn_etsy_order_sync.sql`. It adds
+server-only order-sync state, run, sanitized receipt, and transaction tables;
+an atomic paid-sale inventory RPC; transaction/ledger idempotency; and a
+persistent single-run lease. The migration intentionally creates no baseline
+row and performs no inventory adjustment.
+
 Set these values in Vercel Production and in local `.env.local` as needed:
 
 ```text
@@ -197,6 +203,7 @@ ETSY_SHARED_SECRET=the approved Etsy app shared secret
 ETSY_REDIRECT_URI=https://basecampnorthpa.com/api/admin/etsy/callback
 ETSY_TOKEN_ENCRYPTION_KEY=a base64-encoded random 32-byte key
 ETSY_INVENTORY_WRITES_ENABLED=false
+ETSY_ORDER_SYNC_ENABLED=false
 ```
 
 Generate the encryption key once and keep the same value for the lifetime of
@@ -213,11 +220,13 @@ case, scheme, host, path, and trailing slash must match:
 https://basecampnorthpa.com/api/admin/etsy/callback
 ```
 
-The integration requests only `shops_r listings_r listings_w`. `listings_w` is
-the minimum scope required by Etsy's `updateListingInventory` endpoint. No other
-Etsy write endpoint is exposed by the application. Changing scopes requires the
-owner to use **Reconnect Etsy** once after deployment. It follows Etsy's official
-[OAuth 2.0 PKCE flow](https://developer.etsy.com/documentation/essentials/authentication/)
+The integration requests only `shops_r listings_r listings_w transactions_r`.
+`listings_w` is the minimum scope required by Etsy's `updateListingInventory`
+endpoint. No other Etsy write endpoint is exposed by the application.
+`transactions_r` is the only Phase 2.5 addition and permits GET access to shop
+receipts and their transactions. Changing scopes requires the owner to use
+**Reconnect Etsy** once after deployment. It follows Etsy's official
+[OAuth 2.0 PKCE flow](https://developers.etsy.com/documentation/essentials/authentication/)
 and the endpoints in Etsy's [Open API v3 specification](https://www.etsy.com/openapi/generated/oas/3.0.0.json).
 
 Keep `ETSY_INVENTORY_WRITES_ENABLED=false` for the first Phase 2 deployment. The
@@ -228,6 +237,23 @@ review exact before/after quantities and type `APPLY ETSY INVENTORY`; the server
 then revalidates proposal age, current Etsy inventory, mappings, and BCN physical
 stock before one quantity-only `PUT /listings/{listing_id}/inventory` per listing.
 Black Cherry and unmatched listings remain ineligible.
+
+Keep `ETSY_ORDER_SYNC_ENABLED=false` during the initial Phase 2.5 deploy and Etsy
+reconnection. After reconnecting, the owner can initialize the first-sync
+baseline from `/admin/etsy` by typing `START ETSY ORDER SYNC`. The timestamp
+defaults to that instant, cannot be silently replaced, and does not fetch Etsy,
+change inventory, or generate a proposal. With the flag still false, the order
+sync button remains locked. Enable the flag only in a later owner-approved step.
+
+When enabled, each manual order sync requires `SYNC ETSY ORDERS`, calls only
+`GET /shops/{shop_id}/receipts` and
+`GET /shops/{shop_id}/receipts/{receipt_id}/transactions`, and processes only
+exact confirmed listing/product/SKU/variation mappings. Paid 25-seed units use
+one physical pack and 100-seed units use four. Duplicate Etsy transaction IDs
+cannot create duplicate ledger entries, inventory cannot fall below zero, and
+refunds, cancellations, Black Cherry, Staghorn Sumac, and unmatched records go
+to manual review without automatic stock restoration. Successful deductions
+create a fresh Phase 2 proposal for owner review but never apply it to Etsy.
 
 For local testing, Etsy still requires an exact registered HTTPS callback. Start
 the site with `npm run dev`, expose `http://localhost:3000` through an HTTPS

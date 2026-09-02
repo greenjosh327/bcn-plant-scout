@@ -5,7 +5,12 @@ export const ETSY_CONNECTION_ID = "basecampnorthpa";
 export const ETSY_EXPECTED_SHOP_NAME = "BaseCampNorthPA";
 export const ETSY_READ_ONLY_SCOPES = ["shops_r", "listings_r"] as const;
 export const ETSY_INVENTORY_WRITE_SCOPE = "listings_w" as const;
-export const ETSY_REQUIRED_SCOPES = [...ETSY_READ_ONLY_SCOPES, ETSY_INVENTORY_WRITE_SCOPE] as const;
+export const ETSY_ORDER_READ_SCOPE = "transactions_r" as const;
+export const ETSY_REQUIRED_SCOPES = [
+  ...ETSY_READ_ONLY_SCOPES,
+  ETSY_INVENTORY_WRITE_SCOPE,
+  ETSY_ORDER_READ_SCOPE
+] as const;
 
 export type EtsyConfig = {
   apiKey: string;
@@ -42,4 +47,8 @@ export function etsyApiKeyHeader(config: EtsyConfig) {
 
 export function etsyInventoryWritesEnabled() {
   return process.env.ETSY_INVENTORY_WRITES_ENABLED?.trim().toLowerCase() === "true";
+}
+
+export function etsyOrderSyncEnabled() {
+  return process.env.ETSY_ORDER_SYNC_ENABLED?.trim().toLowerCase() === "true";
 }

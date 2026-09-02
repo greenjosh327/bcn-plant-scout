@@ -158,3 +158,58 @@ export type EtsyDashboardShop = {
   reviewCount: number;
   reviewAverage: number | null;
 };
+
+export type EtsyReceiptRefund = {
+  created_timestamp?: number | null;
+  reason?: string | null;
+  status?: string | null;
+};
+
+export type EtsyReceipt = {
+  receipt_id: number;
+  status?: string | null;
+  is_paid?: boolean;
+  is_canceled?: boolean;
+  is_shipped?: boolean;
+  create_timestamp?: number | null;
+  created_timestamp?: number | null;
+  update_timestamp?: number | null;
+  updated_timestamp?: number | null;
+  refunds?: EtsyReceiptRefund[];
+};
+
+export type EtsyReceiptPage = {
+  count: number;
+  results: EtsyReceipt[];
+};
+
+export type EtsyTransactionVariation = {
+  property_id?: number | null;
+  value_id?: number | null;
+  formatted_name?: string | null;
+  formatted_value?: string | null;
+  question_id?: number | null;
+};
+
+export type EtsyTransactionProductData = {
+  property_id?: number | null;
+  property_name?: string | null;
+  values?: string[];
+};
+
+export type EtsyReceiptTransaction = {
+  transaction_id: number;
+  receipt_id: number;
+  listing_id?: number | null;
+  product_id?: number | null;
+  sku?: string | null;
+  quantity: number;
+  paid_timestamp?: number | null;
+  variations?: EtsyTransactionVariation[];
+  product_data?: EtsyTransactionProductData[];
+};
+
+export type EtsyReceiptTransactionPage = {
+  count: number;
+  results: EtsyReceiptTransaction[];
+};

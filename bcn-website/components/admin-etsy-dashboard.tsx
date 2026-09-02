@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AdminEtsyInventoryManager } from "@/components/admin-etsy-inventory-manager";
+import { AdminEtsyOrderSync } from "@/components/admin-etsy-order-sync";
 import type { EtsyDashboardListing, EtsyDashboardShop } from "@/lib/etsy/types";
 
 type EtsyDashboardResponse =
@@ -340,6 +341,8 @@ export function AdminEtsyDashboard({ accessToken }: { accessToken: string }) {
             grantedScopes={dashboard.grantedScopes}
             onDashboardRefresh={loadDashboard}
           />
+
+          <AdminEtsyOrderSync accessToken={accessToken} grantedScopes={dashboard.grantedScopes} />
         </>
       ) : null}
     </section>

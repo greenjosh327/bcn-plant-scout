@@ -246,7 +246,8 @@ function buildRows(
   listings: EtsyDashboardListing[],
   physicalInventory: PhysicalSeedInventoryItem[],
   listingMappings: ListingMappingRow[],
-  variationMappings: VariationMappingRow[]
+  variationMappings: VariationMappingRow[],
+  blockedProductIds = new Set<string>()
 ) {
   const physicalById = new Map(physicalInventory.map((product) => [product.productId, product]));
   const listingMappingById = new Map(listingMappings.map((mapping) => [Number(mapping.listing_id), mapping]));
@@ -271,6 +272,7 @@ function buildRows(
     for (const detail of match.offeringDetails) {
       const { offering, mapping, packsConsumed } = detail;
       const currentCommitment = packsConsumed && offering.isEnabled ? offering.quantity * packsConsumed : null;
+      const productBlockedByOrderReview = Boolean(match.species && blockedProductIds.has(match.species.productId));
       rows.push({
         listingMappingId: listingMapping?.id || null,
         variationMappingId: mapping?.id || null,
@@ -289,10 +291,12 @@ function buildRows(
         physicalPackInventory: match.physical?.physicalPacks ?? null,
         proposedQuantity: offering.quantity,
         proposedPackCommitment: currentCommitment,
-        matchStatus: match.matchStatus,
+        matchStatus: productBlockedByOrderReview ? "blocked" : match.matchStatus,
         canConfirmMapping: match.canConfirm,
-        eligible: match.confirmed,
-        warning: offering.isEnabled ? match.warning : `${match.warning} This Etsy offering is currently disabled.`,
+        eligible: match.confirmed && !productBlockedByOrderReview,
+        warning: productBlockedByOrderReview
+          ? "An Etsy order for this product needs manual inventory review. Reconciliation is blocked until resolved."
+          : offering.isEnabled ? match.warning : `${match.warning} This Etsy offering is currently disabled.`,
         isChange: false
       });
     }
@@ -348,9 +352,9 @@ async function persistProposal(
   shopId: number,
   sourceFingerprint: string,
   expiresAt: string,
-  rows: EtsyInventoryProposalRow[]
+  rows: EtsyInventoryProposalRow[],
+  idempotencyKey: string = randomUUID()
 ) {
-  const idempotencyKey = randomUUID();
   const { data: changeSet, error: changeSetError } = await supabase
     .from("etsy_inventory_change_sets")
     .insert({
@@ -364,6 +368,14 @@ async function persistProposal(
     .select("id")
     .single();
   if (changeSetError || !changeSet) {
+    if (changeSetError?.code === "23505") {
+      const { data: existing, error: existingError } = await supabase
+        .from("etsy_inventory_change_sets")
+        .select("id")
+        .eq("idempotency_key", idempotencyKey)
+        .maybeSingle();
+      if (!existingError && existing) return String(existing.id);
+    }
     throw new Error(`Could not save the Etsy inventory proposal: ${changeSetError?.message || "Unknown error"}`);
   }
 
@@ -400,7 +412,8 @@ async function persistProposal(
 
 export async function generateEtsyInventoryProposal(
   supabase: SupabaseServiceClient,
-  adminUserId: string
+  adminUserId: string,
+  options: { idempotencyKey?: string; blockedProductIds?: string[] } = {}
 ): Promise<EtsyInventoryProposal> {
   const [dashboard, physicalInventory] = await Promise.all([
     getEtsyDashboard(supabase),
@@ -412,7 +425,13 @@ export async function generateEtsyInventoryProposal(
     supabase,
     dashboard.listings.map((listing) => listing.listingId)
   );
-  const rows = buildRows(dashboard.listings, physicalInventory, mappings.listings, mappings.variations);
+  const rows = buildRows(
+    dashboard.listings,
+    physicalInventory,
+    mappings.listings,
+    mappings.variations,
+    new Set(options.blockedProductIds || [])
+  );
   const sourceFingerprint = stableInventoryFingerprint({
     physicalInventory,
     listings: dashboard.listings.map((listing) => ({
@@ -428,7 +447,8 @@ export async function generateEtsyInventoryProposal(
     dashboard.shop.shopId,
     sourceFingerprint,
     expiresAt,
-    rows
+    rows,
+    options.idempotencyKey
   );
   const hasInventoryWriteScope = dashboard.grantedScopes.includes(ETSY_INVENTORY_WRITE_SCOPE);
   const writesEnabled = etsyInventoryWritesEnabled();
