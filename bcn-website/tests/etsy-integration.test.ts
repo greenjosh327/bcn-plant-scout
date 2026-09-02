@@ -49,6 +49,11 @@ import {
   planOrderInventoryForTesting,
   type ConfirmedOrderMapping
 } from "../lib/etsy/order-sync-core";
+import {
+  buildEtsyTransactionPreviewCandidate,
+  formatEasternTimestamp,
+  type EtsyPreviewMapping
+} from "../lib/etsy/order-preview";
 import type { EtsyListing, EtsyListingInventory, EtsyReceipt, EtsyReceiptTransaction } from "../lib/etsy/types";
 
 const config: EtsyConfig = {
@@ -152,8 +157,7 @@ describe("Etsy Phase 1 and controlled Phase 2 integration", () => {
         "Etsy API request failed",
         {
           endpoint: "/users/me",
-          status: 403,
-          message: "Invalid credentials: Bearer [redacted] [redacted]:[redacted]"
+          status: 403
         }
       ]
     ]);
@@ -186,7 +190,7 @@ describe("Etsy Phase 1 and controlled Phase 2 integration", () => {
     assert.deepEqual(warnings, [
       [
         "Etsy API read rate limited; retrying",
-        { endpoint: "/users/me", status: 429, message: "Exceeded per second rate limit" }
+        { endpoint: "/users/me", status: 429 }
       ]
     ]);
   });
@@ -1109,7 +1113,94 @@ describe("Etsy Phase 2.5 order-based inventory synchronization", () => {
     assert.match(source, /processing_status", "manual_review_insufficient_stock"/);
     assert.doesNotMatch(source, /\.eq\("last_sync_run_id", activeRun\.run_id\)[\s\S]{0,160}manual_review_insufficient_stock/);
     assert.doesNotMatch(source, /applyEtsyInventoryProposal|updateEtsyListingInventory/);
-    assert.match(client, /authorizedEtsyJson<EtsyReceiptPage>/);
-    assert.match(client, /authorizedEtsyJson<EtsyReceiptTransactionPage>/);
+    assert.match(client, /authorizedEtsyJsonResult<EtsyReceiptPage>/);
+    assert.match(client, /authorizedEtsyJsonResult<EtsyReceiptTransactionPage>/);
+  });
+
+  it("builds a sanitized read-only preview for one exact confirmed mapping", () => {
+    const rawTransaction: EtsyReceiptTransaction = {
+      transaction_id: 33001,
+      receipt_id: 22001,
+      listing_id: 4504040390,
+      product_id: 32175277174,
+      sku: "BCN-CAT-25",
+      quantity: 1,
+      paid_timestamp: 1_788_373_800,
+      product_data: [{ property_id: 100, property_name: "Packs", values: ["Pack of 25"] }],
+      ...({ buyer_user_id: 123, title: "Never return listing title" } as object)
+    };
+    const normalized = normalizeEtsyTransactionForStorage(rawTransaction);
+    const mappings: EtsyPreviewMapping[] = [{
+      listingId: 4504040390,
+      etsyProductId: 32175277174,
+      sku: "BCN-CAT-25",
+      variationFingerprint: normalized.variation_fingerprint,
+      bcnProductId: "prod_catalpa-speciosa-seeds",
+      bcnProductName: "Northern Catalpa",
+      packsConsumed: 1
+    }];
+    const candidate = buildEtsyTransactionPreviewCandidate({
+      receipt_id: 22001,
+      status: "paid",
+      is_paid: true,
+      ...({ buyer_email: "never-return@example.com", name: "Never Return" } as object)
+    }, rawTransaction, mappings);
+
+    assert.ok(candidate);
+    assert.equal(candidate.exactConfirmedMapping, true);
+    assert.equal(candidate.matchedBcnProduct, "Northern Catalpa");
+    assert.equal(candidate.confirmedPackMultiplier, 1);
+    assert.equal(candidate.expectedPhysicalPackImpact, 1);
+    assert.deepEqual(candidate.variations, [{ propertyId: 100, name: "Packs", value: "Pack of 25" }]);
+    assert.equal(JSON.stringify(candidate).includes("never-return"), false);
+    assert.equal(JSON.stringify(candidate).includes("listing title"), false);
+  });
+
+  it("does not claim a match when product, SKU, or variation differs", () => {
+    const rawTransaction: EtsyReceiptTransaction = {
+      transaction_id: 33002,
+      receipt_id: 22002,
+      listing_id: 4504040390,
+      product_id: 32175277174,
+      sku: "WRONG-SKU",
+      quantity: 1,
+      paid_timestamp: 1_788_373_800,
+      product_data: [{ property_id: 100, property_name: "Packs", values: ["Pack of 25"] }]
+    };
+    const candidate = buildEtsyTransactionPreviewCandidate({
+      receipt_id: 22002,
+      status: "paid",
+      is_paid: true
+    }, rawTransaction, [{
+      listingId: 4504040390,
+      etsyProductId: 32175277174,
+      sku: "BCN-CAT-25",
+      variationFingerprint: "different-fingerprint",
+      bcnProductId: "prod_catalpa-speciosa-seeds",
+      bcnProductName: "Northern Catalpa",
+      packsConsumed: 1
+    }]);
+
+    assert.ok(candidate);
+    assert.equal(candidate.exactConfirmedMapping, false);
+    assert.equal(candidate.matchedBcnProduct, null);
+    assert.equal(candidate.expectedPhysicalPackImpact, null);
+  });
+
+  it("formats paid timestamps explicitly in Eastern Time", () => {
+    assert.match(formatEasternTimestamp("2026-09-02T18:30:00.000Z"), /09\/02\/2026/);
+    assert.match(formatEasternTimestamp("2026-09-02T18:30:00.000Z"), /02:30:00 PM EDT/);
+  });
+
+  it("keeps the transaction preview route GET-only and free of persistence or inventory mutation calls", async () => {
+    const previewSource = await readFile(new URL("../lib/etsy/order-preview.ts", import.meta.url), "utf8");
+    const routeSource = await readFile(new URL("../app/api/admin/etsy/orders/preview/route.ts", import.meta.url), "utf8");
+    assert.match(routeSource, /export async function GET/);
+    assert.match(routeSource, /requireAdmin/);
+    assert.doesNotMatch(routeSource, /export async function (POST|PUT|PATCH|DELETE)/);
+    assert.doesNotMatch(previewSource, /\.(insert|update|upsert|delete|rpc)\(/);
+    assert.doesNotMatch(previewSource, /generateEtsyInventoryProposal|syncEtsyOrders|inventory_ledger/);
+    assert.match(previewSource, /wasPaid: true/);
+    assert.match(previewSource, /candidate\.listingId === listingId/);
   });
 });

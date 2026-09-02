@@ -53,6 +53,33 @@ type OrderSyncStatus = {
   }>;
 };
 
+type EtsyTransactionPreview = {
+  listingIdFilter: number;
+  windowStartedAt: string;
+  windowEndedAt: string;
+  truncated: boolean;
+  candidates: Array<{
+    receiptId: number;
+    transactionId: number;
+    paidAtUtc: string;
+    paidAtEastern: string;
+    listingId: number;
+    etsyProductId: number | null;
+    sku: string | null;
+    variations: Array<{ propertyId: number; name: string; value: string }>;
+    variationLabel: string;
+    quantityPurchased: number;
+    receiptStatus: string;
+    isCancelled: boolean;
+    isRefunded: boolean;
+    exactConfirmedMapping: boolean;
+    matchedBcnProduct: string | null;
+    matchedBcnProductId: string | null;
+    confirmedPackMultiplier: 1 | 4 | null;
+    expectedPhysicalPackImpact: number | null;
+  }>;
+};
+
 function formatDate(value: string | null | undefined) {
   if (!value) return "Not yet";
   const date = new Date(value);
@@ -79,6 +106,10 @@ export function AdminEtsyOrderSync({
   const [baselineConfirmation, setBaselineConfirmation] = useState("");
   const [syncConfirmation, setSyncConfirmation] = useState("");
   const [message, setMessage] = useState("");
+  const [listingIdFilter, setListingIdFilter] = useState("4504040390");
+  const [previewing, setPreviewing] = useState(false);
+  const [preview, setPreview] = useState<EtsyTransactionPreview | null>(null);
+  const [previewMessage, setPreviewMessage] = useState("");
 
   const loadStatus = useCallback(async () => {
     if (!accessToken) return;
@@ -158,6 +189,34 @@ export function AdminEtsyOrderSync({
     }
   }
 
+  async function previewTransactions() {
+    if (!accessToken || !scopeGranted || !/^\d+$/.test(listingIdFilter)) return;
+    setPreviewing(true);
+    setPreviewMessage("");
+    setPreview(null);
+    try {
+      const response = await fetch(
+        `/api/admin/etsy/orders/preview?listingId=${encodeURIComponent(listingIdFilter)}`,
+        {
+          headers: { Authorization: `Bearer ${accessToken}` },
+          cache: "no-store"
+        }
+      );
+      const payload = await response.json() as EtsyTransactionPreview & { error?: string };
+      if (!response.ok) throw new Error(payload.error || "Recent Etsy transactions could not be previewed.");
+      setPreview(payload);
+      setPreviewMessage(
+        payload.candidates.length > 0
+          ? `${payload.candidates.length} matching paid transaction${payload.candidates.length === 1 ? "" : "s"} found.`
+          : "No recent paid transactions matched this listing ID."
+      );
+    } catch (error) {
+      setPreviewMessage(error instanceof Error ? error.message : "Recent Etsy transactions could not be previewed.");
+    } finally {
+      setPreviewing(false);
+    }
+  }
+
   return (
     <section className="space-y-5" aria-labelledby="etsy-order-sync-heading">
       <div className="field-card p-6">
@@ -188,6 +247,83 @@ export function AdminEtsyOrderSync({
           </p>
         ) : null}
         {message ? <p className="mt-4 rounded-md bg-sage px-4 py-3 text-sm font-bold text-pine">{message}</p> : null}
+
+        <div className="mt-5 rounded-lg border border-pine/15 p-5">
+          <h3 className="font-black text-pine">Read-only recent transaction preview</h3>
+          <p className="mt-2 text-sm leading-6 text-ink/70">
+            This owner-only preview reads paid Etsy receipts from the last 72 hours and checks each transaction against
+            the exact confirmed listing, product, SKU, and variation mapping. It does not save orders, initialize the
+            baseline, change BCN inventory, create a proposal, or write to Etsy.
+          </p>
+          <div className="mt-4 flex flex-wrap items-end gap-3">
+            <div>
+              <label className="block text-sm font-black text-pine" htmlFor="etsy-transaction-listing-filter">
+                Etsy listing ID
+              </label>
+              <input
+                id="etsy-transaction-listing-filter"
+                className="mt-2 w-full rounded-lg border border-pine/20 bg-white px-4 py-3 sm:w-64"
+                value={listingIdFilter}
+                onChange={(event) => setListingIdFilter(event.target.value.trim())}
+                inputMode="numeric"
+                pattern="[0-9]+"
+                autoComplete="off"
+              />
+            </div>
+            <button
+              className="button button-secondary"
+              disabled={!scopeGranted || previewing || !/^\d+$/.test(listingIdFilter)}
+              onClick={() => void previewTransactions()}
+            >
+              {previewing ? "Previewing..." : "Preview recent paid transactions"}
+            </button>
+          </div>
+          {!scopeGranted ? <p className="mt-3 text-sm font-bold text-rust">transactions_r is required for this read-only preview.</p> : null}
+          {previewMessage ? <p className="mt-4 text-sm font-bold text-pine" aria-live="polite">{previewMessage}</p> : null}
+
+          {preview ? (
+            <div className="mt-5 border-t border-pine/10 pt-5">
+              <p className="text-xs font-bold uppercase tracking-[0.12em] text-stone">
+                Window: {preview.windowStartedAt} through {preview.windowEndedAt} UTC
+              </p>
+              {preview.truncated ? <p className="mt-2 text-sm font-bold text-rust">The preview reached its 300-receipt safety limit.</p> : null}
+              <div className="mt-4 space-y-4">
+                {preview.candidates.map((candidate) => (
+                  <article key={candidate.transactionId} className="rounded-lg bg-sage/45 p-5">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-[0.12em] text-stone">Receipt / transaction</p>
+                        <p className="mt-1 font-black text-pine">{candidate.receiptId} / {candidate.transactionId}</p>
+                      </div>
+                      <span className={`rounded-full px-3 py-1 text-xs font-black ${candidate.exactConfirmedMapping ? "bg-pine text-white" : "bg-amber-100 text-rust"}`}>
+                        {candidate.exactConfirmedMapping ? "Exact confirmed mapping" : "No exact confirmed mapping"}
+                      </span>
+                    </div>
+                    <dl className="mt-4 grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
+                      <PreviewField label="Paid UTC" value={candidate.paidAtUtc} />
+                      <PreviewField label="Paid Eastern" value={candidate.paidAtEastern} />
+                      <PreviewField label="Receipt status" value={candidate.receiptStatus} />
+                      <PreviewField label="Listing ID" value={candidate.listingId} />
+                      <PreviewField label="Etsy product ID" value={candidate.etsyProductId ?? "Not returned"} />
+                      <PreviewField label="SKU" value={candidate.sku || "Not present"} />
+                      <PreviewField
+                        label="Variation values"
+                        value={candidate.variations.length > 0
+                          ? candidate.variations.map((variation) => `${variation.name}: ${variation.value}`).join(" / ")
+                          : candidate.variationLabel}
+                      />
+                      <PreviewField label="Quantity purchased" value={candidate.quantityPurchased} />
+                      <PreviewField label="Cancelled / refunded" value={`${candidate.isCancelled ? "Yes" : "No"} / ${candidate.isRefunded ? "Yes" : "No"}`} />
+                      <PreviewField label="Matched BCN product" value={candidate.matchedBcnProduct || "Manual review"} />
+                      <PreviewField label="Confirmed pack multiplier" value={candidate.confirmedPackMultiplier ?? "Not matched"} />
+                      <PreviewField label="Expected physical-pack impact" value={candidate.expectedPhysicalPackImpact ?? "Not calculated"} />
+                    </dl>
+                  </article>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
 
         {!status?.baseline ? (
           <div className="mt-5 rounded-lg border border-pine/15 p-5">
@@ -359,4 +495,8 @@ function StatusPill({ label, value, good }: { label: string; value: string; good
 
 function Metric({ label, value }: { label: string; value: number }) {
   return <div className="rounded-lg bg-sage/60 p-4"><p className="text-xs font-black uppercase tracking-[0.12em] text-stone">{label}</p><p className="mt-2 text-2xl font-black text-pine">{value}</p></div>;
+}
+
+function PreviewField({ label, value }: { label: string; value: string | number }) {
+  return <div><dt className="text-xs font-black uppercase tracking-[0.1em] text-stone">{label}</dt><dd className="mt-1 break-words font-bold text-ink/80">{value}</dd></div>;
 }

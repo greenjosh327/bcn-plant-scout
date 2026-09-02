@@ -152,12 +152,12 @@ async function requestEtsyJsonResult<T>(
     ]);
 
     if (response.status === 429 && attempt < MAX_RATE_LIMIT_RETRIES) {
-      console.warn("Etsy API read rate limited; retrying", { endpoint: path, status: response.status, message });
+      console.warn("Etsy API read rate limited; retrying", { endpoint: path, status: response.status });
       await wait(getRateLimitDelay(response, attempt));
       continue;
     }
 
-    console.error("Etsy API request failed", { endpoint: path, status: response.status, message });
+    console.error("Etsy API request failed", { endpoint: path, status: response.status });
     throw new EtsyHttpError(path, response.status, message);
   }
 }
@@ -297,9 +297,24 @@ export function getEtsyShopReceiptsPage(
     maxLastModified: number;
     offset: number;
     limit?: number;
+    wasPaid?: boolean;
   }
 ) {
-  const { shopId, minLastModified, maxLastModified, offset, limit = 100 } = input;
+  return getEtsyShopReceiptsPageRead(supabase, input).then((result) => result.data);
+}
+
+export function getEtsyShopReceiptsPageRead(
+  supabase: SupabaseServiceClient,
+  input: {
+    shopId: number;
+    minLastModified: number;
+    maxLastModified: number;
+    offset: number;
+    limit?: number;
+    wasPaid?: boolean;
+  }
+) {
+  const { shopId, minLastModified, maxLastModified, offset, limit = 100, wasPaid } = input;
   for (const [name, value] of Object.entries({ shopId, minLastModified, maxLastModified, offset, limit })) {
     if (!Number.isSafeInteger(value) || value < (name === "offset" ? 0 : 1)) {
       throw new Error(`A valid Etsy ${name} is required.`);
@@ -314,7 +329,8 @@ export function getEtsyShopReceiptsPage(
     sort_on: "updated",
     sort_order: "asc"
   });
-  return authorizedEtsyJson<EtsyReceiptPage>(supabase, `/shops/${shopId}/receipts?${query.toString()}`);
+  if (typeof wasPaid === "boolean") query.set("was_paid", String(wasPaid));
+  return authorizedEtsyJsonResult<EtsyReceiptPage>(supabase, `/shops/${shopId}/receipts?${query.toString()}`);
 }
 
 export function getEtsyReceiptTransactions(
@@ -322,10 +338,18 @@ export function getEtsyReceiptTransactions(
   shopId: number,
   receiptId: number
 ) {
+  return getEtsyReceiptTransactionsRead(supabase, shopId, receiptId).then((result) => result.data);
+}
+
+export function getEtsyReceiptTransactionsRead(
+  supabase: SupabaseServiceClient,
+  shopId: number,
+  receiptId: number
+) {
   if (!Number.isSafeInteger(shopId) || shopId <= 0 || !Number.isSafeInteger(receiptId) || receiptId <= 0) {
     throw new Error("Valid Etsy shop and receipt IDs are required.");
   }
-  return authorizedEtsyJson<EtsyReceiptTransactionPage>(
+  return authorizedEtsyJsonResult<EtsyReceiptTransactionPage>(
     supabase,
     `/shops/${shopId}/receipts/${receiptId}/transactions`
   );
