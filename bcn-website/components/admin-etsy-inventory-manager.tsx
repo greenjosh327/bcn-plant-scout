@@ -1,6 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import {
+  buildVerifiedEtsyOfferingSummary,
+  type EtsyAppliedChangeItem,
+  type VerifiedEtsyOfferingSummary
+} from "@/lib/etsy/inventory-apply-summary";
 import type { EtsyInventoryProposal } from "@/lib/etsy/inventory-proposals";
 
 function formatDate(value: string) {
@@ -18,10 +23,12 @@ function statusClass(status: EtsyInventoryProposal["rows"][number]["matchStatus"
 
 export function AdminEtsyInventoryManager({
   accessToken,
-  grantedScopes
+  grantedScopes,
+  onDashboardRefresh
 }: {
   accessToken: string;
   grantedScopes: string[];
+  onDashboardRefresh: () => Promise<unknown>;
 }) {
   const [proposal, setProposal] = useState<EtsyInventoryProposal | null>(null);
   const [loading, setLoading] = useState(false);
@@ -30,6 +37,7 @@ export function AdminEtsyInventoryManager({
   const [reviewOpen, setReviewOpen] = useState(false);
   const [confirmation, setConfirmation] = useState("");
   const [applying, setApplying] = useState(false);
+  const [verifiedOfferings, setVerifiedOfferings] = useState<VerifiedEtsyOfferingSummary[]>([]);
 
   const changedRows = useMemo(
     () => proposal?.rows.filter((row) => row.eligible && row.isChange) || [],
@@ -49,6 +57,7 @@ export function AdminEtsyInventoryManager({
     setLoading(true);
     setMessage("");
     setReviewOpen(false);
+    setVerifiedOfferings([]);
 
     try {
       const response = await fetch("/api/admin/etsy/inventory/proposal", {
@@ -106,11 +115,24 @@ export function AdminEtsyInventoryManager({
         body: JSON.stringify({ confirmation }),
         cache: "no-store"
       });
-      const payload = (await response.json()) as { error?: string; changeSet?: { status?: string } };
+      const payload = (await response.json()) as {
+        error?: string;
+        changeSet?: { status?: string };
+        items?: EtsyAppliedChangeItem[];
+      };
       if (!response.ok) throw new Error(payload.error || "The Etsy inventory proposal could not be applied.");
-      setMessage(`Etsy inventory result: ${payload.changeSet?.status || "completed"}. Generate a fresh proposal to verify.`);
+      const status = payload.changeSet?.status || "unknown";
+      const verified = buildVerifiedEtsyOfferingSummary(payload.items || []);
+      setVerifiedOfferings(verified);
+      setProposal(null);
       setReviewOpen(false);
       setConfirmation("");
+      await onDashboardRefresh();
+      setMessage(
+        status === "completed"
+          ? `Etsy inventory result: completed. ${verified.length} changed offering${verified.length === 1 ? " was" : "s were"} verified by a fresh Etsy read.`
+          : `Etsy inventory result: ${status}. Processing stopped; no automatic retry was attempted.`
+      );
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The Etsy inventory proposal could not be applied.");
     } finally {
@@ -147,6 +169,47 @@ export function AdminEtsyInventoryManager({
         </p>
         {message ? <p className="mt-4 text-sm font-bold text-rust">{message}</p> : null}
       </div>
+
+      {verifiedOfferings.length > 0 ? (
+        <div className="field-card overflow-hidden border-2 border-pine">
+          <div className="border-b border-pine/10 p-6">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-stone">Post-apply verification</p>
+            <h2 className="mt-2 text-2xl font-black text-pine">Verified on Etsy</h2>
+            <p className="mt-2 text-sm leading-6 text-ink/70">
+              Each quantity below came from the immediate fresh Etsy inventory GET after the approved PUT.
+            </p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[960px] text-left text-sm">
+              <thead className="bg-sage/70 text-xs font-black uppercase tracking-[0.12em] text-stone">
+                <tr>
+                  <th className="px-4 py-3">Species</th>
+                  <th className="px-4 py-3">Listing</th>
+                  <th className="px-4 py-3">SKU</th>
+                  <th className="px-4 py-3">Variation</th>
+                  <th className="px-4 py-3">Final verified quantity</th>
+                  <th className="px-4 py-3">Verified at</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-pine/10">
+                {verifiedOfferings.map((offering) => (
+                  <tr key={`${offering.listingId}-${offering.sku || offering.variationName}`}>
+                    <td className="px-4 py-4 font-black text-pine">{offering.species}</td>
+                    <td className="px-4 py-4 text-ink/70">
+                      <p className="font-bold text-pine">{offering.listingTitle}</p>
+                      <p className="mt-1 text-xs">ID {offering.listingId}</p>
+                    </td>
+                    <td className="px-4 py-4 text-ink/70">{offering.sku || "Not set"}</td>
+                    <td className="px-4 py-4 text-ink/70">{offering.variationName}</td>
+                    <td className="px-4 py-4 text-lg font-black text-pine">{offering.finalVerifiedQuantity}</td>
+                    <td className="px-4 py-4 text-ink/70">{formatDate(offering.verifiedAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : null}
 
       {proposal ? (
         <>

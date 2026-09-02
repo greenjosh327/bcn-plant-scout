@@ -44,6 +44,25 @@ export class EtsyInventoryWriteError extends Error {
   }
 }
 
+export type SanitizedEtsyInventoryResponse = {
+  products: Array<{
+    productId: number;
+    sku: string | null;
+    offerings: Array<{
+      offeringId: number;
+      quantity: number;
+      isEnabled: boolean;
+    }>;
+  }>;
+  quantityOnProperty: number[];
+};
+
+export type EtsyInventoryUpdateResult = {
+  endpoint: string;
+  status: number;
+  response: SanitizedEtsyInventoryResponse;
+};
+
 export function assertEtsyInventoryWriteRequest(method: string, path: string, enabled = etsyInventoryWritesEnabled()) {
   if (!enabled) throw new Error("Etsy inventory writes are disabled pending owner review of the first proposal.");
   if (method.toUpperCase() !== "PUT" || !/^\/listings\/[1-9]\d*\/inventory$/.test(path)) {
@@ -53,6 +72,23 @@ export function assertEtsyInventoryWriteRequest(method: string, path: string, en
 
 export function inventoryOfferingKey(productId: number, offeringId: number) {
   return `${productId}:${offeringId}`;
+}
+
+export function sanitizeEtsyInventoryResponse(value: unknown): SanitizedEtsyInventoryResponse {
+  const inventory = value && typeof value === "object" ? (value as EtsyListingInventory) : {};
+
+  return {
+    products: (inventory.products || []).map((product) => ({
+      productId: Number(product.product_id),
+      sku: typeof product.sku === "string" && product.sku.trim() ? product.sku.trim().slice(0, 200) : null,
+      offerings: (product.offerings || []).map((offering) => ({
+        offeringId: Number(offering.offering_id),
+        quantity: Number(offering.quantity),
+        isEnabled: Boolean(offering.is_enabled)
+      }))
+    })),
+    quantityOnProperty: (inventory.quantity_on_property || []).map(Number)
+  };
 }
 
 export function buildEtsyInventoryUpdatePayload(
@@ -136,7 +172,20 @@ async function sendInventoryUpdate(
     cache: "no-store"
   });
 
-  if (response.ok) return (await response.json()) as EtsyListingInventory;
+  if (response.ok) {
+    let body: unknown = {};
+    try {
+      body = JSON.parse(await response.text());
+    } catch {
+      // A successful non-JSON body is omitted; the mandatory GET read-back remains authoritative.
+    }
+
+    return {
+      endpoint: path,
+      status: response.status,
+      response: sanitizeEtsyInventoryResponse(body)
+    } satisfies EtsyInventoryUpdateResult;
+  }
 
   const safeMessage = await readEtsyErrorMessage(response, [
     authorization.accessToken,

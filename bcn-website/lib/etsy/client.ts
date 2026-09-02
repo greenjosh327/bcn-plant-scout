@@ -18,15 +18,24 @@ import type {
 const TOKEN_REFRESH_WINDOW_MS = 5 * 60 * 1000;
 const LISTING_PAGE_SIZE = 100;
 const INVENTORY_BATCH_SIZE = 100;
+const INDIVIDUAL_INVENTORY_REQUEST_DELAY_MS = 225;
 const MAX_RATE_LIMIT_RETRIES = 2;
 const MAX_RATE_LIMIT_DELAY_MS = 5_000;
 
+export type EtsyReadResult<T> = {
+  endpoint: string;
+  status: number;
+  fetchedAt: string;
+  data: T;
+};
+
 export class EtsyNotConnectedError extends Error {}
 
-class EtsyHttpError extends Error {
+export class EtsyHttpError extends Error {
   constructor(
     public readonly endpoint: string,
-    public readonly status: number
+    public readonly status: number,
+    public readonly safeMessage: string
   ) {
     super(`Etsy API request failed with status ${status}.`);
   }
@@ -104,7 +113,7 @@ export function shouldRefreshEtsyToken(expiresAt: string, now = Date.now()) {
   return !Number.isFinite(expirationTime) || expirationTime <= now + TOKEN_REFRESH_WINDOW_MS;
 }
 
-async function requestEtsyJson<T>(
+async function requestEtsyJsonResult<T>(
   path: string,
   accessToken: string,
   config: EtsyConfig,
@@ -117,12 +126,21 @@ async function requestEtsyJson<T>(
       headers: {
         accept: "application/json",
         authorization: `Bearer ${accessToken}`,
+        "cache-control": "no-cache",
+        pragma: "no-cache",
         "x-api-key": etsyApiKeyHeader(config)
       },
       cache: "no-store"
     });
 
-    if (response.ok) return (await response.json()) as T;
+    if (response.ok) {
+      return {
+        endpoint: path,
+        status: response.status,
+        fetchedAt: new Date().toISOString(),
+        data: (await response.json()) as T
+      } satisfies EtsyReadResult<T>;
+    }
 
     const message = await readEtsyErrorMessage(response, [
       accessToken,
@@ -138,8 +156,17 @@ async function requestEtsyJson<T>(
     }
 
     console.error("Etsy API request failed", { endpoint: path, status: response.status, message });
-    throw new EtsyHttpError(path, response.status);
+    throw new EtsyHttpError(path, response.status, message);
   }
+}
+
+async function requestEtsyJson<T>(
+  path: string,
+  accessToken: string,
+  config: EtsyConfig,
+  fetchImplementation: typeof fetch = fetch
+) {
+  return (await requestEtsyJsonResult<T>(path, accessToken, config, fetchImplementation)).data;
 }
 
 export function fetchEtsySelfWithToken(accessToken: string, config: EtsyConfig, fetchImplementation?: typeof fetch) {
@@ -223,7 +250,7 @@ export async function forceRefreshAuthorizedEtsyAccess(
   return { accessToken, config, connection };
 }
 
-async function authorizedEtsyJson<T>(
+async function authorizedEtsyJsonResult<T>(
   supabase: SupabaseServiceClient,
   path: string,
   fetchImplementation: typeof fetch = fetch
@@ -234,17 +261,30 @@ async function authorizedEtsyJson<T>(
   const refreshedBeforeRequest = shouldRefreshEtsyToken(connection.access_token_expires_at);
 
   try {
-    return await requestEtsyJson<T>(path, accessToken, config, fetchImplementation);
+    return await requestEtsyJsonResult<T>(path, accessToken, config, fetchImplementation);
   } catch (error) {
     if (!(error instanceof EtsyHttpError) || error.status !== 401 || refreshedBeforeRequest) throw error;
     accessToken = (await forceRefreshAuthorizedEtsyAccess(supabase, fetchImplementation)).accessToken;
-    return requestEtsyJson<T>(path, accessToken, config, fetchImplementation);
+    return requestEtsyJsonResult<T>(path, accessToken, config, fetchImplementation);
   }
+}
+
+async function authorizedEtsyJson<T>(
+  supabase: SupabaseServiceClient,
+  path: string,
+  fetchImplementation: typeof fetch = fetch
+) {
+  return (await authorizedEtsyJsonResult<T>(supabase, path, fetchImplementation)).data;
 }
 
 export function getEtsyListingInventory(supabase: SupabaseServiceClient, listingId: number) {
   if (!Number.isSafeInteger(listingId) || listingId <= 0) throw new Error("A valid Etsy listing ID is required.");
   return authorizedEtsyJson<EtsyListingInventory>(supabase, `/listings/${listingId}/inventory`);
+}
+
+export function getEtsyListingInventoryRead(supabase: SupabaseServiceClient, listingId: number) {
+  if (!Number.isSafeInteger(listingId) || listingId <= 0) throw new Error("A valid Etsy listing ID is required.");
+  return authorizedEtsyJsonResult<EtsyListingInventory>(supabase, `/listings/${listingId}/inventory`);
 }
 
 export function normalizeEtsyListing(listing: EtsyListing): EtsyDashboardListing {
@@ -347,6 +387,20 @@ export async function collectEtsyListingInventories(
   return inventories;
 }
 
+export async function collectIndividualEtsyListingInventories(
+  listingIds: number[],
+  fetchListing: (listingId: number) => Promise<EtsyListingInventory>
+) {
+  const inventories = new Map<number, EtsyListingInventory | null>();
+
+  for (const listingId of listingIds) {
+    inventories.set(listingId, await fetchListing(listingId));
+    if (listingId !== listingIds[listingIds.length - 1]) await wait(INDIVIDUAL_INVENTORY_REQUEST_DELAY_MS);
+  }
+
+  return inventories;
+}
+
 export async function collectAllActiveEtsyListings(
   fetchPage: (offset: number, limit: number) => Promise<EtsyListingPage>
 ) {
@@ -398,13 +452,9 @@ export async function getEtsyDashboard(supabase: SupabaseServiceClient) {
     )
   );
 
-  const inventories = await collectEtsyListingInventories(
+  const inventories = await collectIndividualEtsyListingInventories(
     listings.map((listing) => listing.listingId),
-    (listingIds) =>
-      authorizedEtsyJson<EtsyListingsInventoryBatch>(
-        supabase,
-        `/listings/batch/inventory?listing_ids=${listingIds.join(",")}`
-      )
+    (listingId) => getEtsyListingInventory(supabase, listingId)
   );
 
   const listingsWithInventory = listings.map((listing) => ({

@@ -6,6 +6,7 @@ import {
   assertReadOnlyEtsyMethod,
   collectAllActiveEtsyListings,
   collectEtsyListingInventories,
+  collectIndividualEtsyListingInventories,
   fetchEtsySelfWithToken,
   normalizeEtsyListing,
   normalizeEtsyListingInventory,
@@ -32,8 +33,14 @@ import {
 import {
   assertEtsyInventoryWriteRequest,
   buildEtsyInventoryUpdatePayload,
-  inventoryOfferingKey
+  inventoryOfferingKey,
+  sanitizeEtsyInventoryResponse
 } from "../lib/etsy/inventory-writer";
+import {
+  changeSetMeetsCompletionInvariant,
+  putThenReadBackEtsyInventory
+} from "../lib/etsy/inventory-apply";
+import { buildVerifiedEtsyOfferingSummary } from "../lib/etsy/inventory-apply-summary";
 import { ETSY_API_BASE_URL, ETSY_REQUIRED_SCOPES, type EtsyConfig } from "../lib/etsy/config";
 import type { EtsyListing, EtsyListingInventory } from "../lib/etsy/types";
 
@@ -334,6 +341,50 @@ describe("Etsy Phase 1 and controlled Phase 2 integration", () => {
     assert.equal(inventories.size, 101);
   });
 
+  it("uses fresh individual listing inventory instead of a stale batch snapshot", async () => {
+    const staleBatch = await collectEtsyListingInventories([42], async () => ({
+      count: 1,
+      results: [
+        {
+          listing_id: 42,
+          inventory: {
+            products: [
+              {
+                product_id: 10,
+                offerings: [
+                  {
+                    offering_id: 20,
+                    quantity: 6,
+                    is_enabled: true,
+                    price: { amount: 500, divisor: 100, currency_code: "USD" }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }));
+    const freshIndividual = await collectIndividualEtsyListingInventories([42], async () => ({
+      products: [
+        {
+          product_id: 10,
+          offerings: [
+            {
+              offering_id: 20,
+              quantity: 2,
+              is_enabled: true,
+              price: { amount: 500, divisor: 100, currency_code: "USD" }
+            }
+          ]
+        }
+      ]
+    }));
+
+    assert.equal(normalizeEtsyListingInventory(staleBatch.get(42)).offerings[0]?.quantity, 6);
+    assert.equal(normalizeEtsyListingInventory(freshIndividual.get(42)).offerings[0]?.quantity, 2);
+  });
+
   it("paginates through every result and defensively keeps only active listings", async () => {
     const firstPage = Array.from({ length: 100 }, (_, index) => listing(index + 1));
     const requestedOffsets: number[] = [];
@@ -547,6 +598,135 @@ describe("Etsy Phase 1 and controlled Phase 2 integration", () => {
     assert.deepEqual(payload.quantity_on_property, [100]);
   });
 
+  it("allowlists successful Etsy PUT diagnostics and omits response-only or secret-shaped fields", () => {
+    const sanitized = sanitizeEtsyInventoryResponse({
+      access_token: "must-not-survive",
+      products: [
+        {
+          product_id: 11,
+          sku: "BCN-25",
+          response_only: "drop-me",
+          offerings: [
+            { offering_id: 21, quantity: 2, is_enabled: true, price: { amount: 500, divisor: 100 } }
+          ]
+        }
+      ],
+      quantity_on_property: [100]
+    });
+
+    assert.deepEqual(sanitized, {
+      products: [
+        {
+          productId: 11,
+          sku: "BCN-25",
+          offerings: [{ offeringId: 21, quantity: 2, isEnabled: true }]
+        }
+      ],
+      quantityOnProperty: [100]
+    });
+    assert.equal(JSON.stringify(sanitized).includes("must-not-survive"), false);
+  });
+
+  it("performs one immediate read-back and never promotes a quantity mismatch to success", async () => {
+    let putCalls = 0;
+    let readCalls = 0;
+    const result = await putThenReadBackEtsyInventory(
+      [{ etsy_product_id: 11, etsy_offering_id: 21, proposed_quantity: 2 }],
+      async () => {
+        putCalls += 1;
+        return {
+          endpoint: "/listings/42/inventory",
+          status: 200,
+          response: { products: [], quantityOnProperty: [] }
+        };
+      },
+      async () => {
+        readCalls += 1;
+        return {
+          endpoint: "/listings/42/inventory",
+          status: 200,
+          fetchedAt: "2026-09-02T01:00:00.000Z",
+          data: {
+            products: [
+              {
+                product_id: 11,
+                offerings: [
+                  {
+                    offering_id: 21,
+                    quantity: 3,
+                    is_enabled: true,
+                    price: { amount: 500, divisor: 100, currency_code: "USD" }
+                  }
+                ]
+              }
+            ]
+          }
+        };
+      }
+    );
+
+    assert.equal(putCalls, 1);
+    assert.equal(readCalls, 1);
+    assert.equal(result.verification.matches, false);
+    assert.equal(result.verification.verified[0]?.actualQuantity, 3);
+  });
+
+  it("requires exact persisted quantities and timestamps before a change set can complete", () => {
+    const verifiedItem = {
+      before_quantity: 6,
+      proposed_quantity: 2,
+      result_status: "succeeded" as const,
+      verified_quantity: 2,
+      verified_at: "2026-09-02T01:00:00.000Z"
+    };
+
+    assert.equal(changeSetMeetsCompletionInvariant([verifiedItem]), true);
+    assert.equal(changeSetMeetsCompletionInvariant([{ ...verifiedItem, verified_quantity: 3 }]), false);
+    assert.equal(changeSetMeetsCompletionInvariant([{ ...verifiedItem, verified_at: null }]), false);
+    assert.equal(changeSetMeetsCompletionInvariant([{ ...verifiedItem, result_status: "unknown" }]), false);
+  });
+
+  it("builds the post-apply Verified on Etsy summary only from exact read-back matches", () => {
+    const summary = buildVerifiedEtsyOfferingSummary([
+      {
+        species: "Catalpa",
+        listing_id: 42,
+        listing_title: "Catalpa Seeds",
+        sku: "BCN-CAT-25",
+        variation_name: "Pack of 25",
+        before_quantity: 6,
+        proposed_quantity: 2,
+        result_status: "succeeded",
+        verified_quantity: 2,
+        verified_at: "2026-09-02T01:00:00.000Z"
+      },
+      {
+        species: "Catalpa",
+        listing_id: 42,
+        listing_title: "Catalpa Seeds",
+        sku: "BCN-CAT-100",
+        variation_name: "Pack of 100",
+        before_quantity: 2,
+        proposed_quantity: 0,
+        result_status: "unknown",
+        verified_quantity: 2,
+        verified_at: null
+      }
+    ]);
+
+    assert.deepEqual(summary, [
+      {
+        species: "Catalpa",
+        listingId: 42,
+        listingTitle: "Catalpa Seeds",
+        sku: "BCN-CAT-25",
+        variationName: "Pack of 25",
+        finalVerifiedQuantity: 2,
+        verifiedAt: "2026-09-02T01:00:00.000Z"
+      }
+    ]);
+  });
+
   it("refreshes expired and nearly expired access tokens", () => {
     const now = Date.parse("2026-08-30T12:00:00.000Z");
 
@@ -607,5 +787,41 @@ describe("Etsy Phase 1 and controlled Phase 2 integration", () => {
       assert.match(migration, new RegExp(`alter table public\\.${table} enable row level security`, "i"));
       assert.match(migration, new RegExp(`revoke all on table public\\.${table} from public, anon, authenticated`, "i"));
     }
+  });
+
+  it("persists sanitized PUT and fresh GET verification evidence in the server-only audit table", async () => {
+    const migration = await readFile(
+      new URL("../supabase/migrations/20260902013815_bcn_etsy_inventory_verification_audit.sql", import.meta.url),
+      "utf8"
+    );
+
+    for (const column of [
+      "put_endpoint",
+      "put_http_status",
+      "put_response",
+      "readback_endpoint",
+      "readback_http_status",
+      "readback_quantities",
+      "readback_at",
+      "verified_at"
+    ]) {
+      assert.match(migration, new RegExp(`add column if not exists ${column}`, "i"));
+    }
+    assert.doesNotMatch(
+      migration,
+      /add column if not exists (access_token|refresh_token|api_key|shared_secret|authorization_code|pkce)/i
+    );
+  });
+
+  it("clears the applied proposal before forcing a fresh Etsy dashboard read", async () => {
+    const component = await readFile(
+      new URL("../components/admin-etsy-inventory-manager.tsx", import.meta.url),
+      "utf8"
+    );
+    const clearIndex = component.indexOf("setProposal(null)");
+    const refreshIndex = component.indexOf("await onDashboardRefresh()", clearIndex);
+
+    assert.ok(clearIndex >= 0);
+    assert.ok(refreshIndex > clearIndex);
   });
 });

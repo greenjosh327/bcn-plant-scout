@@ -50,7 +50,7 @@ export function AdminEtsyDashboard({ accessToken }: { accessToken: string }) {
   );
 
   const loadDashboard = useCallback(async () => {
-    if (!accessToken) return;
+    if (!accessToken) return null;
 
     setLoading(true);
 
@@ -62,8 +62,10 @@ export function AdminEtsyDashboard({ accessToken }: { accessToken: string }) {
       const payload = (await response.json()) as EtsyDashboardResponse & { error?: string };
       if (!response.ok) throw new Error(payload.error || "Etsy data could not be loaded.");
       setDashboard(payload);
+      return payload;
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Etsy data could not be loaded.");
+      return null;
     } finally {
       setLoading(false);
     }
@@ -333,7 +335,11 @@ export function AdminEtsyDashboard({ accessToken }: { accessToken: string }) {
             ) : null}
           </div>
 
-          <AdminEtsyInventoryManager accessToken={accessToken} grantedScopes={dashboard.grantedScopes} />
+          <AdminEtsyInventoryManager
+            accessToken={accessToken}
+            grantedScopes={dashboard.grantedScopes}
+            onDashboardRefresh={loadDashboard}
+          />
         </>
       ) : null}
     </section>

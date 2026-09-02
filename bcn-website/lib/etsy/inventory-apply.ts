@@ -1,5 +1,11 @@
 import type { SupabaseServiceClient } from "@/lib/admin-api";
-import { getEtsyListingInventory, normalizeEtsyListingInventory } from "./client";
+import {
+  getEtsyListingInventory,
+  getEtsyListingInventoryRead,
+  normalizeEtsyListingInventory,
+  EtsyHttpError,
+  type EtsyReadResult
+} from "./client";
 import {
   ETSY_CONNECTION_ID,
   ETSY_INVENTORY_WRITE_SCOPE,
@@ -10,14 +16,19 @@ import {
   EtsyInventoryWriteError,
   buildEtsyInventoryUpdatePayload,
   inventoryOfferingKey,
-  updateEtsyListingInventory
+  updateEtsyListingInventory,
+  type EtsyInventoryUpdateResult
 } from "./inventory-writer";
+import type { EtsyListingInventory } from "./types";
 
 type ChangeSetRow = {
   id: string;
   admin_user_id: string;
   status: "proposed" | "applying" | "completed" | "partial" | "failed" | "stale" | "cancelled";
   expires_at: string;
+  approved_at: string | null;
+  completed_at: string | null;
+  error_summary: string | null;
 };
 
 type ChangeItemRow = {
@@ -25,20 +36,110 @@ type ChangeItemRow = {
   listing_mapping_id: number | null;
   variation_mapping_id: number | null;
   bcn_product_id: string | null;
+  species: string | null;
   listing_id: number;
+  listing_title: string;
   etsy_product_id: number;
   etsy_offering_id: number;
   sku: string | null;
+  variation_name: string;
   packs_consumed: number | null;
   before_quantity: number;
   proposed_quantity: number;
   proposed_pack_commitment: number | null;
   physical_pack_inventory: number | null;
   result_status: "proposed" | "no_change" | "blocked" | "succeeded" | "failed" | "skipped" | "unknown";
+  put_endpoint: string | null;
+  put_http_status: number | null;
+  put_response: unknown;
+  readback_endpoint: string | null;
+  readback_http_status: number | null;
+  readback_quantities: unknown;
+  readback_at: string | null;
+  verified_quantity: number | null;
+  verified_at: string | null;
+  attempted_at: string | null;
+  completed_at: string | null;
 };
 
+type VerificationExpectedItem = Pick<
+  ChangeItemRow,
+  "etsy_product_id" | "etsy_offering_id" | "proposed_quantity"
+>;
+
+export type EtsyReadbackQuantity = {
+  productId: number;
+  offeringId: number;
+  sku: string | null;
+  quantity: number;
+};
+
+export function etsyReadbackQuantities(inventory: EtsyListingInventory): EtsyReadbackQuantity[] {
+  return normalizeEtsyListingInventory(inventory).offerings.map((offering) => ({
+    productId: offering.productId,
+    offeringId: offering.offeringId,
+    sku: offering.sku,
+    quantity: offering.quantity
+  }));
+}
+
+export function verifyEtsyInventoryReadback(
+  inventory: EtsyListingInventory,
+  items: VerificationExpectedItem[]
+) {
+  const quantities = etsyReadbackQuantities(inventory);
+  const verified = items.map((item) => {
+    const offering = quantities.find(
+      (candidate) =>
+        candidate.productId === item.etsy_product_id && candidate.offeringId === item.etsy_offering_id
+    );
+    return {
+      productId: item.etsy_product_id,
+      offeringId: item.etsy_offering_id,
+      expectedQuantity: item.proposed_quantity,
+      actualQuantity: offering?.quantity ?? null,
+      matches: offering?.quantity === item.proposed_quantity
+    };
+  });
+
+  return { matches: verified.every((item) => item.matches), quantities, verified };
+}
+
+export function changeSetMeetsCompletionInvariant(
+  items: Array<
+    Pick<
+      ChangeItemRow,
+      "before_quantity" | "proposed_quantity" | "result_status" | "verified_quantity" | "verified_at"
+    >
+  >
+) {
+  const changedItems = items.filter((item) => item.before_quantity !== item.proposed_quantity);
+  return changedItems.length > 0 && changedItems.every(
+    (item) =>
+      item.result_status === "succeeded" &&
+      item.verified_quantity === item.proposed_quantity &&
+      Boolean(item.verified_at)
+  );
+}
+
+export async function putThenReadBackEtsyInventory(
+  items: VerificationExpectedItem[],
+  put: () => Promise<EtsyInventoryUpdateResult>,
+  read: () => Promise<EtsyReadResult<EtsyListingInventory>>,
+  recordPut: (result: EtsyInventoryUpdateResult) => Promise<void> = async () => undefined
+) {
+  const putResult = await put();
+  await recordPut(putResult);
+  const readback = await read();
+  return {
+    putResult,
+    readback,
+    verification: verifyEtsyInventoryReadback(readback.data, items)
+  };
+}
+
 function safeErrorMessage(error: unknown) {
-  if (error instanceof EtsyInventoryWriteError) return error.safeMessage;
+  if (error instanceof EtsyInventoryWriteError || error instanceof EtsyHttpError) return error.safeMessage;
   const message = error instanceof Error ? error.message : "Unknown inventory update error.";
   return message.replace(/\bBearer\s+\S+/gi, "Bearer [redacted]").slice(0, 500);
 }
@@ -46,7 +147,7 @@ function safeErrorMessage(error: unknown) {
 async function loadChangeSet(supabase: SupabaseServiceClient, proposalId: string, adminUserId: string) {
   const { data: changeSet, error: changeSetError } = await supabase
     .from("etsy_inventory_change_sets")
-    .select("id, admin_user_id, status, expires_at")
+    .select("id, admin_user_id, status, expires_at, approved_at, completed_at, error_summary")
     .eq("id", proposalId)
     .eq("admin_user_id", adminUserId)
     .maybeSingle();
@@ -56,7 +157,7 @@ async function loadChangeSet(supabase: SupabaseServiceClient, proposalId: string
   const { data: items, error: itemsError } = await supabase
     .from("etsy_inventory_change_items")
     .select(
-      "id, listing_mapping_id, variation_mapping_id, bcn_product_id, listing_id, etsy_product_id, etsy_offering_id, sku, packs_consumed, before_quantity, proposed_quantity, proposed_pack_commitment, physical_pack_inventory, result_status"
+      "id, listing_mapping_id, variation_mapping_id, bcn_product_id, species, listing_id, listing_title, etsy_product_id, etsy_offering_id, sku, variation_name, packs_consumed, before_quantity, proposed_quantity, proposed_pack_commitment, physical_pack_inventory, result_status, put_endpoint, put_http_status, put_response, readback_endpoint, readback_http_status, readback_quantities, readback_at, verified_quantity, verified_at, attempted_at, completed_at"
     )
     .eq("change_set_id", proposalId)
     .order("listing_id")
@@ -174,18 +275,6 @@ async function validateListingInventory(
   return inventory;
 }
 
-function verifiedListingMatches(inventory: Awaited<ReturnType<typeof getEtsyListingInventory>>, items: ChangeItemRow[]) {
-  const normalized = normalizeEtsyListingInventory(inventory);
-  return items.every((item) =>
-    normalized.offerings.some(
-      (offering) =>
-        offering.productId === item.etsy_product_id &&
-        offering.offeringId === item.etsy_offering_id &&
-        offering.quantity === item.proposed_quantity
-    )
-  );
-}
-
 export async function applyEtsyInventoryProposal(
   supabase: SupabaseServiceClient,
   adminUserId: string,
@@ -251,6 +340,7 @@ export async function applyEtsyInventoryProposal(
       (item) => item.listing_id === listingId && (item.result_status === "proposed" || item.result_status === "no_change")
     );
     const changedItems = listingItems.filter((item) => item.result_status === "proposed");
+    let putCompleted = false;
 
     try {
       const freshInventory = await validateListingInventory(supabase, listingItems, variationFingerprints);
@@ -262,42 +352,95 @@ export async function applyEtsyInventoryProposal(
       );
       const payload = buildEtsyInventoryUpdatePayload(freshInventory, approvedQuantities);
       await markItems(supabase, changedItems.map((item) => item.id), { attempted_at: new Date().toISOString() });
-      await updateEtsyListingInventory(supabase, listingId, payload);
-      const verified = await getEtsyListingInventory(supabase, listingId);
-      if (!verifiedListingMatches(verified, changedItems)) {
-        throw new Error("Etsy accepted the request but the read-back quantities did not match the approved proposal.");
+      const result = await putThenReadBackEtsyInventory(
+        changedItems,
+        () => updateEtsyListingInventory(supabase, listingId, payload),
+        () => getEtsyListingInventoryRead(supabase, listingId),
+        async (putResult) => {
+          await markItems(supabase, changedItems.map((item) => item.id), {
+            put_endpoint: putResult.endpoint,
+            put_http_status: putResult.status,
+            put_response: putResult.response
+          });
+          putCompleted = true;
+        }
+      );
+      const diagnosticValues = {
+        put_endpoint: result.putResult.endpoint,
+        put_http_status: result.putResult.status,
+        put_response: result.putResult.response,
+        readback_endpoint: result.readback.endpoint,
+        readback_http_status: result.readback.status,
+        readback_quantities: result.verification.quantities,
+        readback_at: result.readback.fetchedAt
+      };
+      await markItems(supabase, changedItems.map((item) => item.id), diagnosticValues);
+
+      if (!result.verification.matches) {
+        const mismatchMessage = "Etsy PUT returned success, but the immediate read-back did not match the approved quantities.";
+        await markItems(supabase, changedItems.map((item) => item.id), {
+          ...diagnosticValues,
+          result_status: "unknown",
+          etsy_status_code: result.putResult.status,
+          etsy_error_message: mismatchMessage,
+          completed_at: new Date().toISOString()
+        });
+
+        const remainingListingIds = listingIds.slice(index + 1);
+        const remainingIds = items
+          .filter((item) => remainingListingIds.includes(item.listing_id) && item.result_status === "proposed")
+          .map((item) => item.id);
+        await markItems(supabase, remainingIds, {
+          result_status: "skipped",
+          etsy_error_message: "Skipped after an earlier listing write failed immediate read-back verification.",
+          completed_at: new Date().toISOString()
+        });
+        await markChangeSet(supabase, proposalId, {
+          status: successfulWrites > 0 ? "partial" : "failed",
+          error_summary: mismatchMessage,
+          completed_at: new Date().toISOString()
+        });
+        return loadChangeSet(supabase, proposalId, adminUserId);
       }
 
-      await markItems(supabase, changedItems.map((item) => item.id), {
-        result_status: "succeeded",
-        verified_quantity: null,
-        completed_at: new Date().toISOString()
-      });
+      const verifiedAt = result.readback.fetchedAt;
       for (const item of changedItems) {
+        const verified = result.verification.verified.find(
+          (candidate) =>
+            candidate.productId === item.etsy_product_id && candidate.offeringId === item.etsy_offering_id
+        );
         const { error } = await supabase
           .from("etsy_inventory_change_items")
-          .update({ verified_quantity: item.proposed_quantity })
+          .update({
+            ...diagnosticValues,
+            result_status: "succeeded",
+            etsy_status_code: result.putResult.status,
+            etsy_error_message: null,
+            verified_quantity: verified?.actualQuantity,
+            verified_at: verifiedAt,
+            completed_at: new Date().toISOString()
+          })
           .eq("id", item.id);
         if (error) throw new Error(`Could not record verified Etsy quantity: ${error.message}`);
       }
       successfulWrites += 1;
     } catch (error) {
-      let resultStatus: ChangeItemRow["result_status"] = error instanceof EtsyInventoryWriteError ? "failed" : "unknown";
-      try {
-        const current = await getEtsyListingInventory(supabase, listingId);
-        if (verifiedListingMatches(current, changedItems)) resultStatus = "succeeded";
-      } catch {
-        // A failed read-back remains unknown rather than assuming the Etsy write failed or succeeded.
-      }
+      const resultStatus: ChangeItemRow["result_status"] = error instanceof EtsyInventoryWriteError ? "failed" : "unknown";
+      const writeFailureDiagnostics = error instanceof EtsyInventoryWriteError
+        ? { put_endpoint: error.endpoint, put_http_status: error.status, etsy_status_code: error.status }
+        : { etsy_status_code: null };
+      const readbackFailureDiagnostics = putCompleted && error instanceof EtsyHttpError
+        ? { readback_endpoint: error.endpoint, readback_http_status: error.status }
+        : {};
 
       await markItems(supabase, changedItems.map((item) => item.id), {
         result_status: resultStatus,
-        etsy_status_code: error instanceof EtsyInventoryWriteError ? error.status : null,
+        ...writeFailureDiagnostics,
+        ...readbackFailureDiagnostics,
         etsy_error_message: safeErrorMessage(error),
         completed_at: new Date().toISOString()
       });
 
-      if (resultStatus === "succeeded") successfulWrites += 1;
       const remainingListingIds = listingIds.slice(index + 1);
       const remainingIds = items
         .filter((item) => remainingListingIds.includes(item.listing_id) && item.result_status === "proposed")
@@ -314,6 +457,16 @@ export async function applyEtsyInventoryProposal(
       });
       return loadChangeSet(supabase, proposalId, adminUserId);
     }
+  }
+
+  const finalAudit = await loadChangeSet(supabase, proposalId, adminUserId);
+  if (!changeSetMeetsCompletionInvariant(finalAudit.items)) {
+    await markChangeSet(supabase, proposalId, {
+      status: successfulWrites > 0 ? "partial" : "failed",
+      error_summary: "The Etsy change set did not satisfy the verified-quantity completion invariant.",
+      completed_at: new Date().toISOString()
+    });
+    return loadChangeSet(supabase, proposalId, adminUserId);
   }
 
   await markChangeSet(supabase, proposalId, { status: "completed", completed_at: new Date().toISOString() });
