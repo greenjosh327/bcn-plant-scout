@@ -235,6 +235,23 @@ async function openEtsySession(
 ): Promise<EtsySession> {
   let authorization = await getAuthorizedEtsyAccess(supabase, fetchImplementation);
   let refreshPromise: Promise<void> | null = null;
+  let requestQueue = Promise.resolve();
+  let nextRequestAt = 0;
+
+  async function waitForRequestSlot() {
+    let release!: () => void;
+    const previous = requestQueue;
+    requestQueue = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await previous;
+    const waitMilliseconds = Math.max(0, nextRequestAt - Date.now());
+    if (waitMilliseconds > 0) {
+      await new Promise((resolve) => setTimeout(resolve, waitMilliseconds));
+    }
+    nextRequestAt = Date.now() + 300;
+    release();
+  }
 
   async function refresh() {
     if (!refreshPromise) {
@@ -251,6 +268,7 @@ async function openEtsySession(
     assertMuscadineEtsyRequest(method, path);
 
     async function send() {
+      await waitForRequestSlot();
       const body = bodyFactory?.();
       const headers: Record<string, string> = {
         accept: "application/json",
