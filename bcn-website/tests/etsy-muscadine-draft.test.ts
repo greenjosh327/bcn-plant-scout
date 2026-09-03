@@ -26,6 +26,7 @@ const preflight: MuscadineDraftPreflight = {
   taxonomy: { id: 123, name: "Seeds", path: "Craft Supplies & Tools > Seeds" },
   shippingProfile: { id: 456, title: "Seed Shipping", profileType: "calculated", originCountry: "US" },
   processingProfile: { id: 789, state: "ready_to_ship", minimumDays: 1, maximumDays: 3, label: "1 - 3 days" },
+  physicalPackage: { weight: 2, weightUnit: "oz", length: 9, width: 6, height: 1, dimensionsUnit: "in" },
   referenceListing: { listingId: 4504040390, title: "Catalpa Seeds", state: "active" },
   existingDrafts: [],
   quantityPlan: "zero",
@@ -51,6 +52,12 @@ test("draft creation body uses only the verified taxonomy and fulfillment profil
   assert.equal(body.get("taxonomy_id"), "123");
   assert.equal(body.get("shipping_profile_id"), "456");
   assert.equal(body.get("readiness_state_id"), "789");
+  assert.equal(body.get("item_weight"), "2");
+  assert.equal(body.get("item_weight_unit"), "oz");
+  assert.equal(body.get("item_length"), "9");
+  assert.equal(body.get("item_width"), "6");
+  assert.equal(body.get("item_height"), "1");
+  assert.equal(body.get("item_dimensions_unit"), "in");
   assert.equal(body.get("type"), "physical");
   assert.equal(body.get("should_auto_renew"), "false");
   assert.equal(body.get("state"), null);

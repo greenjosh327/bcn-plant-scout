@@ -78,6 +78,12 @@ type EtsyListingRecord = {
   return_policy_id?: number | null;
   readiness_state_id?: number | null;
   shop_section_id?: number | null;
+  item_weight?: number | null;
+  item_weight_unit?: string | null;
+  item_length?: number | null;
+  item_width?: number | null;
+  item_height?: number | null;
+  item_dimensions_unit?: string | null;
   is_taxable?: boolean;
   tags?: string[];
   materials?: string[];
@@ -148,6 +154,14 @@ export type MuscadineDraftPreflight = {
     maximumDays: number;
     label: string;
   } | null;
+  physicalPackage: {
+    weight: number;
+    weightUnit: string;
+    length: number;
+    width: number;
+    height: number;
+    dimensionsUnit: string;
+  } | null;
   referenceListing: { listingId: number; title: string; state: string } | null;
   existingDrafts: Array<{ listingId: number; title: string }>;
   quantityPlan: string;
@@ -177,6 +191,14 @@ export type MuscadineDraftReadback = {
   images: Array<{ imageId: number; rank: number; altText: string }>;
   shippingProfile: { id: number; title: string; profileType: string } | null;
   processingProfile: { id: number; label: string; state: string } | null;
+  physicalPackage: {
+    weight: number;
+    weightUnit: string;
+    length: number;
+    width: number;
+    height: number;
+    dimensionsUnit: string;
+  };
   quantityInputRequired: boolean;
   reviewUrl: string;
   warnings: string[];
@@ -195,6 +217,11 @@ export class MuscadineDraftError extends Error {
 function positiveInteger(value: unknown) {
   const numberValue = Number(value);
   return Number.isSafeInteger(numberValue) && numberValue > 0 ? numberValue : 0;
+}
+
+function positiveNumber(value: unknown) {
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) && numberValue > 0 ? numberValue : 0;
 }
 
 function assertMuscadineEtsyRequest(method: EtsyRequestMethod, path: string) {
@@ -351,6 +378,12 @@ function buildFingerprint(input: {
   readinessStateId: number;
   returnPolicyId: number;
   shopSectionId: number;
+  itemWeight: number;
+  itemWeightUnit: string;
+  itemLength: number;
+  itemWidth: number;
+  itemHeight: number;
+  itemDimensionsUnit: string;
 }) {
   return createHash("sha256").update(JSON.stringify({ title: MUSCADINE_DRAFT_TITLE, ...input })).digest("hex");
 }
@@ -388,8 +421,21 @@ async function preflightWithSession(session: EtsySession): Promise<MuscadineDraf
   const readinessStateId = positiveInteger(referenceListing.readiness_state_id);
   const returnPolicyId = positiveInteger(referenceListing.return_policy_id);
   const shopSectionId = positiveInteger(referenceListing.shop_section_id);
+  const itemWeight = positiveNumber(referenceListing.item_weight);
+  const itemWeightUnit = ["oz", "lb", "g", "kg"].includes(referenceListing.item_weight_unit || "")
+    ? referenceListing.item_weight_unit || ""
+    : "";
+  const itemLength = positiveNumber(referenceListing.item_length);
+  const itemWidth = positiveNumber(referenceListing.item_width);
+  const itemHeight = positiveNumber(referenceListing.item_height);
+  const itemDimensionsUnit = ["in", "ft", "mm", "cm", "m", "yd", "inches"].includes(
+    referenceListing.item_dimensions_unit || ""
+  ) ? referenceListing.item_dimensions_unit || "" : "";
   if (referenceShopId !== shopId || referenceListing.state !== "active") {
     blockers.push("The confirmed Catalpa seed listing is not an active listing in BaseCampNorthPA.");
+  }
+  if (!itemWeight || !itemWeightUnit || !itemLength || !itemWidth || !itemHeight || !itemDimensionsUnit) {
+    blockers.push("The Catalpa seed listing does not expose a complete calculated-shipping package.");
   }
 
   const taxonomy = flattenTaxonomy(Array.isArray(taxonomyTree.results) ? taxonomyTree.results : [])
@@ -420,7 +466,13 @@ async function preflightWithSession(session: EtsySession): Promise<MuscadineDraf
     shippingProfileId,
     readinessStateId,
     returnPolicyId,
-    shopSectionId
+    shopSectionId,
+    itemWeight,
+    itemWeightUnit,
+    itemLength,
+    itemWidth,
+    itemHeight,
+    itemDimensionsUnit
   });
 
   return {
@@ -449,6 +501,16 @@ async function preflightWithSession(session: EtsySession): Promise<MuscadineDraf
           label: processing.processing_days_display_label || "Processing time not labeled"
         }
       : null,
+    physicalPackage: itemWeight && itemWeightUnit && itemLength && itemWidth && itemHeight && itemDimensionsUnit
+      ? {
+          weight: itemWeight,
+          weightUnit: itemWeightUnit,
+          length: itemLength,
+          width: itemWidth,
+          height: itemHeight,
+          dimensionsUnit: itemDimensionsUnit
+        }
+      : null,
     referenceListing: positiveInteger(referenceListing.listing_id)
       ? {
           listingId: positiveInteger(referenceListing.listing_id),
@@ -471,8 +533,8 @@ export async function preflightMuscadineDraft(
 }
 
 export function buildMuscadineDraftCreateBody(preflight: MuscadineDraftPreflight) {
-  if (!preflight.taxonomy || !preflight.shippingProfile || !preflight.processingProfile) {
-    throw new MuscadineDraftError("The verified Etsy taxonomy and fulfillment profiles are required.");
+  if (!preflight.taxonomy || !preflight.shippingProfile || !preflight.processingProfile || !preflight.physicalPackage) {
+    throw new MuscadineDraftError("The verified Etsy taxonomy, fulfillment profiles, and shipping package are required.");
   }
 
   const body = new URLSearchParams({
@@ -485,6 +547,12 @@ export function buildMuscadineDraftCreateBody(preflight: MuscadineDraftPreflight
     taxonomy_id: String(preflight.taxonomy.id),
     shipping_profile_id: String(preflight.shippingProfile.id),
     readiness_state_id: String(preflight.processingProfile.id),
+    item_weight: String(preflight.physicalPackage.weight),
+    item_weight_unit: preflight.physicalPackage.weightUnit,
+    item_length: String(preflight.physicalPackage.length),
+    item_width: String(preflight.physicalPackage.width),
+    item_height: String(preflight.physicalPackage.height),
+    item_dimensions_unit: preflight.physicalPackage.dimensionsUnit,
     materials: MUSCADINE_DRAFT_MATERIALS.join(","),
     tags: MUSCADINE_DRAFT_TAGS.join(","),
     is_supply: "true",
@@ -759,6 +827,14 @@ export async function readMuscadineDraft(
           state: context.processing.readiness_state || "unknown"
         }
       : null,
+    physicalPackage: {
+      weight: positiveNumber(listing.item_weight),
+      weightUnit: listing.item_weight_unit || "",
+      length: positiveNumber(listing.item_length),
+      width: positiveNumber(listing.item_width),
+      height: positiveNumber(listing.item_height),
+      dimensionsUnit: listing.item_dimensions_unit || ""
+    },
     quantityInputRequired: true,
     reviewUrl: `https://www.etsy.com/your/shops/me/listing-editor/edit/${listingId}`,
     warnings
