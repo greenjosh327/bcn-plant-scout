@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { jsonError } from "@/lib/admin-api";
 import {
+  configureMuscadineDraftInventory,
   createMuscadineDraft,
   MUSCADINE_DRAFT_CONFIRMATION,
+  MUSCADINE_DRAFT_VARIATIONS,
   MuscadineDraftError,
   preflightMuscadineDraft,
   readMuscadineDraft
@@ -54,8 +56,10 @@ export async function GET(request: Request) {
         authorization.mode === "operation" &&
         readback.state === "draft" &&
         readback.imageCount === 3 &&
-        readback.variations.length === 2 &&
-        readback.variations.every((variation) => variation.quantity === 0 && !variation.isEnabled)
+        MUSCADINE_DRAFT_VARIATIONS.every((expected) => {
+          const actual = readback.variations.find((variation) => variation.sku === expected.sku);
+          return actual?.quantity === expected.quantity && actual.isEnabled === expected.isEnabled;
+        })
       ) {
         await completeMuscadineOperation(supabase, authorization, listingId);
       }
@@ -85,8 +89,9 @@ export async function POST(request: Request) {
 
     const operation = await claimMuscadineOperation(supabase, authorization);
     if (operation?.listing_id) {
+      const resumed = await configureMuscadineDraftInventory(supabase, Number(operation.listing_id));
       return NextResponse.json(
-        { listingId: Number(operation.listing_id), state: "draft", resumed: true },
+        { ...resumed, resumed: true },
         { status: 200, headers: { "cache-control": "no-store" } }
       );
     }

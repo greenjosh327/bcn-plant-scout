@@ -60,7 +60,7 @@ export const MUSCADINE_DRAFT_TAGS = [
 export const MUSCADINE_DRAFT_MATERIALS = ["muscadine seeds", "untreated seeds"] as const;
 
 export const MUSCADINE_DRAFT_VARIATIONS = [
-  { name: "Pack of 25 seeds", price: 5.99, sku: "BCN-MUSC-25-2026", quantity: 0, isEnabled: false },
+  { name: "Pack of 25 seeds", price: 5.99, sku: "BCN-MUSC-25-2026", quantity: 0, isEnabled: true },
   { name: "Pack of 100 seeds", price: 12.99, sku: "BCN-MUSC-100-2026", quantity: 0, isEnabled: false }
 ] as const;
 
@@ -392,7 +392,7 @@ async function preflightWithSession(session: EtsySession): Promise<MuscadineDraf
   const blockers: string[] = [];
   const warnings = [
     "The exact cultivar is unknown; the draft makes no cultivar, fruit color, flavor, sweetness, or parent-type consistency claim.",
-    "Both pack-size offerings will remain disabled at quantity 0 until the owner supplies final physical inventory."
+    "Both pack sizes remain at quantity 0. Etsy requires one offering to be enabled, so only the 25-seed option is enabled while the listing remains a draft."
   ];
   const grantedScopes = session.connection.granted_scopes || [];
   const missingScopes = REQUIRED_SCOPES.filter((scope) => !grantedScopes.includes(scope));
@@ -519,7 +519,7 @@ async function preflightWithSession(session: EtsySession): Promise<MuscadineDraf
         }
       : null,
     existingDrafts,
-    quantityPlan: "Create the required base draft, then set both variations to quantity 0 and disabled. No physical inventory quantity is inferred.",
+    quantityPlan: "Set both variations to quantity 0. Keep only the 25-seed offering enabled because Etsy requires one enabled offering; no physical inventory quantity is inferred.",
     blockers,
     warnings
   };
@@ -635,10 +635,62 @@ export function verifyMuscadineInventory(inventory: EtsyListingInventory) {
       target &&
       variation.name === target.name &&
       Math.abs(variation.price - target.price) < 0.001 &&
-      variation.quantity === 0 &&
-      !variation.isEnabled
+      variation.quantity === target.quantity &&
+      variation.isEnabled === target.isEnabled
     );
   });
+}
+
+async function configureMuscadineDraftInventoryWithSession(session: EtsySession, listingId: number) {
+  const listing = await session.requestJson<EtsyListingRecord>("GET", `/listings/${listingId}`);
+  const shopId = positiveInteger(session.connection.shop_id);
+  const readinessStateId = positiveInteger(listing.readiness_state_id);
+  if (
+    positiveInteger(listing.listing_id) !== listingId ||
+    positiveInteger(listing.shop_id) !== shopId ||
+    listing.state !== "draft" ||
+    listing.title?.trim() !== MUSCADINE_DRAFT_TITLE ||
+    !readinessStateId
+  ) {
+    throw new MuscadineDraftError("The target is not the verified new Muscadine draft.", 409, listingId);
+  }
+
+  const payload = buildMuscadineInventoryPayload(readinessStateId);
+  await session.requestJson<EtsyListingInventory>(
+    "PUT",
+    `/listings/${listingId}/inventory`,
+    () => JSON.stringify(payload)
+  );
+  const inventory = await session.requestJson<EtsyListingInventory>("GET", `/listings/${listingId}/inventory`);
+  if (!verifyMuscadineInventory(inventory)) {
+    throw new MuscadineDraftError(
+      "The variation read-back did not match the required zero-quantity draft configuration.",
+      502,
+      listingId
+    );
+  }
+}
+
+export async function configureMuscadineDraftInventory(
+  supabase: SupabaseServiceClient,
+  listingId: number,
+  fetchImplementation: typeof fetch = fetch
+) {
+  if (!positiveInteger(listingId)) throw new MuscadineDraftError("A valid Etsy listing ID is required.");
+  try {
+    await configureMuscadineDraftInventoryWithSession(
+      await openEtsySession(supabase, fetchImplementation),
+      listingId
+    );
+  } catch (error) {
+    if (error instanceof MuscadineDraftError && error.listingId) throw error;
+    throw new MuscadineDraftError(
+      `Etsy did not finish the Muscadine variation setup: ${error instanceof Error ? error.message : "Unknown error"}`,
+      error instanceof MuscadineDraftError ? error.status : 502,
+      listingId
+    );
+  }
+  return { listingId, state: "draft" as const };
 }
 
 export async function createMuscadineDraft(
@@ -666,20 +718,7 @@ export async function createMuscadineDraft(
   }
 
   try {
-    const payload = buildMuscadineInventoryPayload(preflight.processingProfile!.id);
-    await session.requestJson<EtsyListingInventory>(
-      "PUT",
-      `/listings/${listingId}/inventory`,
-      () => JSON.stringify(payload)
-    );
-    const inventory = await session.requestJson<EtsyListingInventory>("GET", `/listings/${listingId}/inventory`);
-    if (!verifyMuscadineInventory(inventory)) {
-      throw new MuscadineDraftError(
-        "The new draft was created, but the variation read-back did not match the required zero-quantity configuration.",
-        502,
-        listingId
-      );
-    }
+    await configureMuscadineDraftInventoryWithSession(session, listingId);
   } catch (error) {
     if (error instanceof MuscadineDraftError && error.listingId) throw error;
     throw new MuscadineDraftError(

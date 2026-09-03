@@ -65,7 +65,7 @@ test("draft creation body uses only the verified taxonomy and fulfillment profil
   assert.equal(body.get("materials"), MUSCADINE_DRAFT_MATERIALS.join(","));
 });
 
-test("inventory payload creates two disabled zero-quantity pack-size variations", () => {
+test("inventory payload creates zero-quantity pack sizes with only Etsy's required offering enabled", () => {
   const payload = buildMuscadineInventoryPayload(789);
   assert.deepEqual(payload.price_on_property, [513]);
   assert.deepEqual(payload.quantity_on_property, [513]);
@@ -84,14 +84,14 @@ test("inventory payload creates two disabled zero-quantity pack-size variations"
       sku: variation.sku,
       name: variation.name,
       price: variation.price,
-      quantity: 0,
-      enabled: false,
+      quantity: variation.quantity,
+      enabled: variation.isEnabled,
       readiness: 789
     }))
   );
 });
 
-test("inventory verification requires exact SKUs, prices, names, and zero disabled quantities", () => {
+test("inventory verification requires exact SKUs, prices, names, zero quantities, and enabled states", () => {
   const inventory = {
     products: MUSCADINE_DRAFT_VARIATIONS.map((variation, index) => ({
       product_id: 100 + index,
@@ -100,7 +100,7 @@ test("inventory verification requires exact SKUs, prices, names, and zero disabl
       offerings: [{
         offering_id: 200 + index,
         quantity: 0,
-        is_enabled: false,
+        is_enabled: variation.isEnabled,
         readiness_state_id: 789,
         price: { amount: Math.round(variation.price * 100), divisor: 100, currency_code: "USD" }
       }]
