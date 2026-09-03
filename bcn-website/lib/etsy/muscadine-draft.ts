@@ -60,7 +60,7 @@ export const MUSCADINE_DRAFT_TAGS = [
 export const MUSCADINE_DRAFT_MATERIALS = ["muscadine seeds", "untreated seeds"] as const;
 
 export const MUSCADINE_DRAFT_VARIATIONS = [
-  { name: "Pack of 25 seeds", price: 5.99, sku: "BCN-MUSC-25-2026", quantity: 0, isEnabled: true },
+  { name: "Pack of 25 seeds", price: 5.99, sku: "BCN-MUSC-25-2026", quantity: 1, isEnabled: true },
   { name: "Pack of 100 seeds", price: 12.99, sku: "BCN-MUSC-100-2026", quantity: 0, isEnabled: false }
 ] as const;
 
@@ -392,7 +392,7 @@ async function preflightWithSession(session: EtsySession): Promise<MuscadineDraf
   const blockers: string[] = [];
   const warnings = [
     "The exact cultivar is unknown; the draft makes no cultivar, fruit color, flavor, sweetness, or parent-type consistency claim.",
-    "Both pack sizes remain at quantity 0. Etsy requires one offering to be enabled, so only the 25-seed option is enabled while the listing remains a draft."
+    "Etsy requires one enabled offering with positive quantity, so the unpublished draft uses its minimum placeholder quantity 1 on the 25-seed option and 0 on the disabled 100-seed option. This is not BCN physical inventory."
   ];
   const grantedScopes = session.connection.granted_scopes || [];
   const missingScopes = REQUIRED_SCOPES.filter((scope) => !grantedScopes.includes(scope));
@@ -519,7 +519,7 @@ async function preflightWithSession(session: EtsySession): Promise<MuscadineDraf
         }
       : null,
     existingDrafts,
-    quantityPlan: "Set both variations to quantity 0. Keep only the 25-seed offering enabled because Etsy requires one enabled offering; no physical inventory quantity is inferred.",
+    quantityPlan: "Use Etsy's required draft placeholder quantity 1 on the enabled 25-seed option and 0 on the disabled 100-seed option. No BCN physical inventory quantity is inferred.",
     blockers,
     warnings
   };
@@ -664,7 +664,7 @@ async function configureMuscadineDraftInventoryWithSession(session: EtsySession,
   const inventory = await session.requestJson<EtsyListingInventory>("GET", `/listings/${listingId}/inventory`);
   if (!verifyMuscadineInventory(inventory)) {
     throw new MuscadineDraftError(
-      "The variation read-back did not match the required zero-quantity draft configuration.",
+      "The variation read-back did not match the required minimum-quantity draft configuration.",
       502,
       listingId
     );

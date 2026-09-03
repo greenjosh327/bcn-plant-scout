@@ -65,7 +65,7 @@ test("draft creation body uses only the verified taxonomy and fulfillment profil
   assert.equal(body.get("materials"), MUSCADINE_DRAFT_MATERIALS.join(","));
 });
 
-test("inventory payload creates zero-quantity pack sizes with only Etsy's required offering enabled", () => {
+test("inventory payload uses only Etsy's minimum required positive draft offering", () => {
   const payload = buildMuscadineInventoryPayload(789);
   assert.deepEqual(payload.price_on_property, [513]);
   assert.deepEqual(payload.quantity_on_property, [513]);
@@ -91,7 +91,7 @@ test("inventory payload creates zero-quantity pack sizes with only Etsy's requir
   );
 });
 
-test("inventory verification requires exact SKUs, prices, names, zero quantities, and enabled states", () => {
+test("inventory verification requires exact SKUs, prices, names, draft quantities, and enabled states", () => {
   const inventory = {
     products: MUSCADINE_DRAFT_VARIATIONS.map((variation, index) => ({
       product_id: 100 + index,
@@ -99,7 +99,7 @@ test("inventory verification requires exact SKUs, prices, names, zero quantities
       property_values: [{ property_id: 513, property_name: "Pack Size", value_ids: [1000 + index], values: [variation.name] }],
       offerings: [{
         offering_id: 200 + index,
-        quantity: 0,
+        quantity: variation.quantity,
         is_enabled: variation.isEnabled,
         readiness_state_id: 789,
         price: { amount: Math.round(variation.price * 100), divisor: 100, currency_code: "USD" }
@@ -111,7 +111,7 @@ test("inventory verification requires exact SKUs, prices, names, zero quantities
     readiness_state_on_property: []
   };
   assert.equal(verifyMuscadineInventory(inventory), true);
-  inventory.products[0].offerings[0].quantity = 1;
+  inventory.products[1].offerings[0].quantity = 1;
   assert.equal(verifyMuscadineInventory(inventory), false);
 });
 
