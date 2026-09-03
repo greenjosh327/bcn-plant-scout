@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AdminEtsyInventoryManager } from "@/components/admin-etsy-inventory-manager";
-import { AdminEtsyMuscadineDraft } from "@/components/admin-etsy-muscadine-draft";
 import { AdminEtsyOrderSync } from "@/components/admin-etsy-order-sync";
 import type { EtsyDashboardListing, EtsyDashboardShop } from "@/lib/etsy/types";
 
@@ -342,8 +341,6 @@ export function AdminEtsyDashboard({ accessToken }: { accessToken: string }) {
             grantedScopes={dashboard.grantedScopes}
             onDashboardRefresh={loadDashboard}
           />
-
-          <AdminEtsyMuscadineDraft accessToken={accessToken} grantedScopes={dashboard.grantedScopes} />
 
           <AdminEtsyOrderSync accessToken={accessToken} grantedScopes={dashboard.grantedScopes} />
         </>

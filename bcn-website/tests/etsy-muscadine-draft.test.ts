@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   assertMuscadineEtsyRequest,
@@ -128,4 +129,21 @@ test("taxonomy lookup keeps the current full Etsy category path", () => {
     name: "Seeds",
     path: "Craft Supplies & Tools > Home & Hobby > Seeds"
   });
+});
+
+test("the direct operation is single-use, server-only, and absent from the admin page", () => {
+  const migration = readFileSync(
+    new URL("../supabase/migrations/20260903011817_bcn_etsy_one_time_draft_operation.sql", import.meta.url),
+    "utf8"
+  );
+  const operation = readFileSync(new URL("../lib/etsy/muscadine-operation.ts", import.meta.url), "utf8");
+  const dashboard = readFileSync(new URL("../components/admin-etsy-dashboard.tsx", import.meta.url), "utf8");
+
+  assert.match(migration, /enable row level security/i);
+  assert.match(migration, /revoke all on table public\.etsy_one_time_draft_operations from public, anon, authenticated/i);
+  assert.match(migration, /token_hash text/);
+  assert.match(operation, /timingSafeEqual/);
+  assert.match(operation, /token_hash: null/);
+  assert.doesNotMatch(operation, /console\.(log|info|warn|error).*token/i);
+  assert.doesNotMatch(dashboard, /MuscadineDraft|Create Muscadine/);
 });

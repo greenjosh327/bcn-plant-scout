@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { jsonError, requireAdmin } from "@/lib/admin-api";
+import { jsonError } from "@/lib/admin-api";
 import { MuscadineDraftError, uploadMuscadineDraftImage } from "@/lib/etsy/muscadine-draft";
+import { authorizeMuscadineRequest, recordMuscadineImageUploaded } from "@/lib/etsy/muscadine-operation";
 import { getSupabaseServiceClient } from "@/lib/supabase-service";
 
 export const runtime = "nodejs";
@@ -12,11 +13,13 @@ export async function POST(
 ) {
   try {
     const supabase = getSupabaseServiceClient();
-    const admin = await requireAdmin(request, supabase);
-    if ("error" in admin) return jsonError(admin.error || "Admin authorization failed.", admin.status);
+    const authorization = await authorizeMuscadineRequest(request, supabase);
 
     const { listingId: listingIdParam } = await params;
     const listingId = Number(listingIdParam);
+    if (authorization.mode === "operation" && Number(authorization.operation.listing_id) !== listingId) {
+      return jsonError("The one-time operation does not own this Etsy draft.", 403);
+    }
     const form = await request.formData();
     const rank = Number(form.get("rank"));
     const image = form.get("image");
@@ -28,6 +31,7 @@ export async function POST(
       image,
       fileName: image instanceof File && image.name ? image.name : `muscadine-${rank}.jpg`
     });
+    await recordMuscadineImageUploaded(supabase, authorization, listingId, rank);
     return NextResponse.json(result, { status: result.uploaded ? 201 : 200, headers: { "cache-control": "no-store" } });
   } catch (error) {
     const status = error instanceof MuscadineDraftError ? error.status : 500;
