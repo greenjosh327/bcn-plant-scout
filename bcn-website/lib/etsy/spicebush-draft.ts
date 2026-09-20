@@ -178,6 +178,15 @@ function moneyValue(value: unknown) {
   };
 }
 
+function decodeEtsyText(value: string) {
+  return value
+    .replace(/&#39;|&#x27;/gi, "'")
+    .replace(/&quot;/gi, '"')
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&amp;/gi, "&");
+}
+
 function inventoryVariations(inventory: EtsyListingInventory) {
   return (inventory.products || []).filter((product) => !product.is_deleted).flatMap((product) => {
     const name = (product.property_values || []).flatMap((property) => property.values || []).join(" / ");
@@ -591,7 +600,8 @@ export async function readSpicebushDraft(supabase: SupabaseServiceClient, listin
   ) || null;
   const orderedImages = [...(images.results || [])].sort((left, right) => Number(left.rank) - Number(right.rank));
   const warnings: string[] = [];
-  if (listing.description !== SPICEBUSH_DRAFT_DESCRIPTION) warnings.push("Description read-back mismatch.");
+  const description = decodeEtsyText(listing.description || "");
+  if (description !== SPICEBUSH_DRAFT_DESCRIPTION) warnings.push("Description read-back mismatch.");
   if (JSON.stringify(listing.tags || []) !== JSON.stringify(SPICEBUSH_DRAFT_TAGS)) warnings.push("Tag read-back mismatch.");
   if (orderedImages.length !== 4) warnings.push(`Expected 4 images; Etsy returned ${orderedImages.length}.`);
   warnings.push("Final BCN physical inventory quantities still require owner input before publication.");
@@ -601,7 +611,7 @@ export async function readSpicebushDraft(supabase: SupabaseServiceClient, listin
     listingId,
     state: listing.state || "unknown",
     title: listing.title || "",
-    description: listing.description || "",
+    description,
     taxonomy,
     tags: listing.tags || [],
     materials: listing.materials || [],
