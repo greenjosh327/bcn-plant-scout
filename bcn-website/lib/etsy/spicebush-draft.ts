@@ -368,8 +368,11 @@ async function preflightWithSession(session: EtsySession): Promise<SpicebushPref
   const itemHeight = positiveNumber(reference.item_height);
   const itemWeightUnit = reference.item_weight_unit || "";
   const itemDimensionsUnit = reference.item_dimensions_unit || "";
-  if (positiveInteger(reference.shop_id) !== SHOP_ID || reference.state !== "active") {
-    blockers.push("The confirmed Catalpa seed reference listing is not active in BaseCampNorthPA.");
+  if (
+    positiveInteger(reference.shop_id) !== SHOP_ID ||
+    !reference.title?.toLowerCase().includes("catalpa")
+  ) {
+    blockers.push("The confirmed Catalpa seed reference listing does not match BaseCampNorthPA.");
   }
   if (!taxonomyId || !shippingProfileId || !readinessStateId || !itemWeight || !itemLength || !itemWidth || !itemHeight) {
     blockers.push("The reference seed listing does not expose a complete category, fulfillment setup, and package.");
