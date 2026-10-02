@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AdminEtsyInventoryManager } from "@/components/admin-etsy-inventory-manager";
 import { AdminEtsyOrderSync } from "@/components/admin-etsy-order-sync";
+import { AdminEtsySeedProductDrafts } from "@/components/admin-etsy-seed-product-drafts";
 import type { EtsyDashboardListing, EtsyDashboardShop } from "@/lib/etsy/types";
 
 type EtsyDashboardResponse =
@@ -193,6 +194,8 @@ export function AdminEtsyDashboard({ accessToken }: { accessToken: string }) {
               ) : null}
             </div>
           </div>
+
+          <AdminEtsySeedProductDrafts accessToken={accessToken} />
 
           <div className="field-card overflow-hidden">
             <div className="border-b border-pine/10 p-6">
