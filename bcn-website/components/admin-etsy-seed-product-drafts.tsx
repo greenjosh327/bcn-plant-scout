@@ -71,7 +71,7 @@ export function AdminEtsySeedProductDrafts({ accessToken }: { accessToken: strin
         throw new Error(`${payload.error || "Draft creation failed."}${payload.listingId ? ` Listing ${payload.listingId} may need review.` : ""}`);
       }
       setResults(payload.results);
-      setMessage("Both Etsy listings were created and verified as unavailable zero-quantity drafts.");
+      setMessage("Both Etsy listings were created and verified with Etsy's minimum draft-only inventory.");
       setPreflight(null);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Draft creation failed.");
@@ -87,8 +87,8 @@ export function AdminEtsySeedProductDrafts({ accessToken }: { accessToken: strin
           <p className="text-xs font-black uppercase tracking-[0.18em] text-stone">Temporary owner-only operation</p>
           <h2 className="mt-2 text-2xl font-black text-pine">Create approved Snailseed and Milkweed drafts</h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-ink/70">
-            This operation creates exactly two Etsy drafts, adds no images, publishes nothing, and verifies both Pack Size
-            offerings at quantity zero, so neither pack size is available for purchase.
+            This operation creates exactly two Etsy drafts, adds no images, publishes nothing, and verifies Etsy&apos;s minimum
+            required draft-only inventory. The listings remain unavailable to buyers.
           </p>
         </div>
         <div className="flex flex-wrap gap-3">

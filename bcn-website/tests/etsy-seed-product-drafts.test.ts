@@ -17,15 +17,15 @@ describe("fixed owner-approved Etsy seed product drafts", () => {
     }
   });
 
-  it("builds Etsy-valid enabled zero-quantity 25 and 100 seed offerings", () => {
+  it("builds Etsy's minimum valid inventory for an unpublished physical draft", () => {
     for (const product of SEED_PRODUCT_DRAFTS) {
       const payload = buildSeedProductDraftInventoryPayload(product, 123);
       assert.deepEqual(payload.price_on_property, [513]);
       assert.deepEqual(payload.quantity_on_property, [513]);
       assert.deepEqual(payload.sku_on_property, [513]);
       assert.deepEqual(payload.products.map((entry) => entry.property_values[0].values[0]), ["25 Seeds", "100 Seeds"]);
-      assert.deepEqual(payload.products.map((entry) => entry.offerings[0].quantity), [0, 0]);
-      assert.deepEqual(payload.products.map((entry) => entry.offerings[0].is_enabled), [true, true]);
+      assert.deepEqual(payload.products.map((entry) => entry.offerings[0].quantity), [1, 0]);
+      assert.deepEqual(payload.products.map((entry) => entry.offerings[0].is_enabled), [true, false]);
       assert.deepEqual(payload.products.map((entry) => entry.offerings[0].readiness_state_id), [123, 123]);
     }
   });

@@ -314,8 +314,8 @@ export function buildSeedProductDraftInventoryPayload(
       }],
       offerings: [{
         price: variation.price,
-        quantity: 0,
-        is_enabled: true,
+        quantity: index === 0 ? 1 : 0,
+        is_enabled: index === 0,
         readiness_state_id: readinessStateId
       }]
     })),
@@ -339,12 +339,12 @@ function verifyInventory(product: SeedProductDefinition, inventory: EtsyListingI
   for (const property of [inventory.price_on_property, inventory.quantity_on_property, inventory.sku_on_property]) {
     if (!(property || []).map(Number).includes(CUSTOM_PACK_SIZE_PROPERTY_ID)) return false;
   }
-  return product.variants.every((expected) => variations.some((actual) =>
+  return product.variants.every((expected, index) => variations.some((actual) =>
     actual.sku === expected.sku &&
     actual.name === expected.name &&
     Math.abs(actual.price - expected.price) < 0.001 &&
-    actual.quantity === 0 &&
-    actual.isEnabled === true
+    actual.quantity === (index === 0 ? 1 : 0) &&
+    actual.isEnabled === (index === 0)
   ));
 }
 
@@ -605,7 +605,7 @@ async function preflightWithSession(session: EtsySession): Promise<SeedProductDr
       ...(recoveryListingId ? [
         `The exact partial Snailseed draft ${recoveryListingId}, created by the interrupted attempt, will be recovered instead of creating a duplicate.`
       ] : []),
-      "Etsy requires a positive bootstrap quantity to create a physical draft and at least one offering to remain enabled. Each draft will be verified with two enabled zero-quantity offerings, so neither pack size is available for purchase.",
+      "Etsy requires every physical draft to retain at least one enabled offering with quantity greater than zero. Each listing will keep the minimum draft-only inventory: 25 Seeds quantity 1 enabled and 100 Seeds quantity 0 disabled. The listing remains a draft and is unavailable to buyers.",
       "No Etsy listing state or publication endpoint is available to this operation."
     ]
   };
@@ -631,7 +631,7 @@ async function readDraft(
   if (decodeEtsyText(listing.description || "") !== product.description) warnings.push("Description read-back mismatch.");
   if (JSON.stringify(listing.tags || []) !== JSON.stringify(product.tags)) warnings.push("Tag read-back mismatch.");
   if (JSON.stringify(listing.materials || []) !== JSON.stringify(product.materials)) warnings.push("Material read-back mismatch.");
-  if (!verifyInventory(product, inventory)) warnings.push("Zero-quantity variation read-back mismatch.");
+  if (!verifyInventory(product, inventory)) warnings.push("Minimum draft inventory read-back mismatch.");
   if ((images.results || []).length !== 0) warnings.push("Unexpected listing images were returned.");
 
   return {
