@@ -9,7 +9,7 @@ import {
 import type { EtsyListingInventory, EtsySelf, EtsyShop } from "./types";
 
 const SHOP_ID = 62898597;
-const REFERENCE_SEED_LISTING_ID = 4504040390;
+const REFERENCE_SEED_LISTING_ID = 4579251897;
 const CUSTOM_PACK_SIZE_PROPERTY_ID = 513;
 const REQUIRED_SCOPES = ["shops_r", "listings_r", "listings_w"] as const;
 const LISTING_STATES = ["active", "inactive", "sold_out", "draft", "removed", "expired"] as const;
@@ -482,7 +482,7 @@ async function preflightWithSession(session: EtsySession): Promise<SeedProductDr
   const itemWeightUnit = reference.item_weight_unit || "";
   const itemDimensionsUnit = reference.item_dimensions_unit || "";
   if (positiveInteger(reference.shop_id) !== SHOP_ID || reference.state !== "active") {
-    blockers.push("The confirmed Catalpa seed reference listing is not active in BaseCampNorthPA.");
+    blockers.push("The confirmed Spicebush seed reference listing is not active in BaseCampNorthPA.");
   }
   if (!taxonomyId || !shippingProfileId || !readinessStateId || !itemWeight || !itemLength || !itemWidth || !itemHeight) {
     blockers.push("The reference seed listing does not expose complete category, fulfillment, and package settings.");
