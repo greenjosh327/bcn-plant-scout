@@ -5,6 +5,7 @@ import { useState } from "react";
 type Preflight = {
   ready: boolean;
   fingerprint: string;
+  recoveryListingId: number | null;
   products: Array<{ key: string; title: string; scientificName: string; duplicateListingIds: number[] }>;
   taxonomy: { id: number; path: string } | null;
   shippingProfile: { id: number; title: string } | null;
@@ -43,7 +44,11 @@ export function AdminEtsySeedProductDrafts({ accessToken }: { accessToken: strin
       const payload = (await response.json()) as Preflight & { error?: string };
       if (!response.ok) throw new Error(payload.error || "The draft preflight failed.");
       setPreflight(payload);
-      setMessage(payload.ready ? "Preflight passed. No matching Etsy listings were found." : "Preflight blocked creation.");
+      setMessage(payload.ready
+        ? payload.recoveryListingId
+          ? `Preflight passed. Partial draft ${payload.recoveryListingId} will be recovered; no duplicate will be created.`
+          : "Preflight passed. No matching Etsy listings were found."
+        : "Preflight blocked creation.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The draft preflight failed.");
     } finally {
@@ -66,7 +71,7 @@ export function AdminEtsySeedProductDrafts({ accessToken }: { accessToken: strin
         throw new Error(`${payload.error || "Draft creation failed."}${payload.listingId ? ` Listing ${payload.listingId} may need review.` : ""}`);
       }
       setResults(payload.results);
-      setMessage("Both Etsy listings were created and verified as disabled zero-quantity drafts.");
+      setMessage("Both Etsy listings were created and verified as unavailable zero-quantity drafts.");
       setPreflight(null);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Draft creation failed.");
@@ -83,7 +88,7 @@ export function AdminEtsySeedProductDrafts({ accessToken }: { accessToken: strin
           <h2 className="mt-2 text-2xl font-black text-pine">Create approved Snailseed and Milkweed drafts</h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-ink/70">
             This operation creates exactly two Etsy drafts, adds no images, publishes nothing, and verifies both Pack Size
-            offerings as disabled with quantity zero.
+            offerings at quantity zero, so neither pack size is available for purchase.
           </p>
         </div>
         <div className="flex flex-wrap gap-3">

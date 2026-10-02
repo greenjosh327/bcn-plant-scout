@@ -10,6 +10,7 @@ import type { EtsyListingInventory, EtsySelf, EtsyShop } from "./types";
 
 const SHOP_ID = 62898597;
 const REFERENCE_SEED_LISTING_ID = 4579251897;
+const RECOVERABLE_SNAILSEED_DRAFT_ID = 4587402614;
 const CUSTOM_PACK_SIZE_PROPERTY_ID = 513;
 const REQUIRED_SCOPES = ["shops_r", "listings_r", "listings_w"] as const;
 const LISTING_STATES = ["active", "inactive", "sold_out", "draft", "removed", "expired"] as const;
@@ -173,6 +174,7 @@ type SeedProductDefinition = (typeof SEED_PRODUCT_DRAFTS)[number];
 export type SeedProductDraftPreflight = {
   ready: boolean;
   fingerprint: string;
+  recoveryListingId: number | null;
   shop: { shopId: number; shopName: string };
   products: Array<{
     key: string;
@@ -313,7 +315,7 @@ export function buildSeedProductDraftInventoryPayload(
       offerings: [{
         price: variation.price,
         quantity: 0,
-        is_enabled: false,
+        is_enabled: true,
         readiness_state_id: readinessStateId
       }]
     })),
@@ -342,7 +344,7 @@ function verifyInventory(product: SeedProductDefinition, inventory: EtsyListingI
     actual.name === expected.name &&
     Math.abs(actual.price - expected.price) < 0.001 &&
     actual.quantity === 0 &&
-    actual.isEnabled === false
+    actual.isEnabled === true
   ));
 }
 
@@ -508,12 +510,46 @@ async function preflightWithSession(session: EtsySession): Promise<SeedProductDr
   if (!processing) blockers.push("The reference seed processing profile is not currently available.");
 
   const listings = await collectListings(session);
+  const snailseed = SEED_PRODUCT_DRAFTS.find((product) => product.key === "carolina-snailseed")!;
+  const recoveryCandidate = listings.find((listing) =>
+    positiveInteger(listing.listing_id) === RECOVERABLE_SNAILSEED_DRAFT_ID
+  );
+  let recoveryListingId: number | null = null;
+  if (recoveryCandidate) {
+    session.addTarget(RECOVERABLE_SNAILSEED_DRAFT_ID);
+    const recoveryListing = await session.requestJson<ListingRecord>(
+      "GET",
+      `/listings/${RECOVERABLE_SNAILSEED_DRAFT_ID}`
+    );
+    const recoveryImages = await session.requestJson<Page<ListingImage>>(
+      "GET",
+      `/listings/${RECOVERABLE_SNAILSEED_DRAFT_ID}/images`
+    );
+    const exactRecoveryMatch = positiveInteger(recoveryListing.shop_id) === SHOP_ID &&
+      recoveryListing.state === "draft" &&
+      recoveryListing.title === snailseed.title &&
+      decodeEtsyText(recoveryListing.description || "") === snailseed.description &&
+      JSON.stringify(recoveryListing.tags || []) === JSON.stringify(snailseed.tags) &&
+      JSON.stringify(recoveryListing.materials || []) === JSON.stringify(snailseed.materials) &&
+      (recoveryImages.results || []).length === 0;
+    if (exactRecoveryMatch) {
+      recoveryListingId = RECOVERABLE_SNAILSEED_DRAFT_ID;
+    } else {
+      blockers.push(
+        `The partial Snailseed draft ${RECOVERABLE_SNAILSEED_DRAFT_ID} no longer exactly matches this operation; no listing will be changed.`
+      );
+    }
+  }
   const products = SEED_PRODUCT_DRAFTS.map((product) => {
     const duplicateListingIds = listings
       .filter((listing) => seedProductDraftMatchesExistingTitle(product, listing.title || ""))
       .map((listing) => positiveInteger(listing.listing_id))
       .filter(Boolean);
-    if (duplicateListingIds.length) {
+    const isExactRecovery = product.key === "carolina-snailseed" &&
+      recoveryListingId === RECOVERABLE_SNAILSEED_DRAFT_ID &&
+      duplicateListingIds.length === 1 &&
+      duplicateListingIds[0] === RECOVERABLE_SNAILSEED_DRAFT_ID;
+    if (duplicateListingIds.length && !isExactRecovery) {
       blockers.push(`${product.commonName} already has a matching Etsy listing (${duplicateListingIds.join(", ")}).`);
     }
     return { key: product.key, title: product.title, scientificName: product.scientificName, duplicateListingIds };
@@ -531,12 +567,14 @@ async function preflightWithSession(session: EtsySession): Promise<SeedProductDr
     itemLength,
     itemWidth,
     itemHeight,
-    itemDimensionsUnit
+    itemDimensionsUnit,
+    recoveryListingId
   })).digest("hex");
 
   return {
     ready: blockers.length === 0,
     fingerprint,
+    recoveryListingId,
     shop: { shopId: SHOP_ID, shopName: shop.shop_name || "" },
     products,
     taxonomy,
@@ -564,7 +602,10 @@ async function preflightWithSession(session: EtsySession): Promise<SeedProductDr
     blockers,
     warnings: [
       "The two listings will remain drafts and receive no images.",
-      "Etsy requires a positive bootstrap quantity to create a physical draft. Each draft will immediately be changed to two disabled zero-quantity offerings and verified by a fresh GET before success is reported.",
+      ...(recoveryListingId ? [
+        `The exact partial Snailseed draft ${recoveryListingId}, created by the interrupted attempt, will be recovered instead of creating a duplicate.`
+      ] : []),
+      "Etsy requires a positive bootstrap quantity to create a physical draft and at least one offering to remain enabled. Each draft will be verified with two enabled zero-quantity offerings, so neither pack size is available for purchase.",
       "No Etsy listing state or publication endpoint is available to this operation."
     ]
   };
@@ -635,6 +676,7 @@ export async function createSeedProductDrafts(
   const results: SeedProductDraftReadback[] = [];
 
   for (const product of SEED_PRODUCT_DRAFTS) {
+    let listingId = product.key === "carolina-snailseed" ? preflight.recoveryListingId || 0 : 0;
     const createBody = new URLSearchParams({
       quantity: "1",
       title: product.title,
@@ -663,10 +705,12 @@ export async function createSeedProductDrafts(
     if (returnPolicyId) createBody.set("return_policy_id", String(returnPolicyId));
     if (shopSectionId) createBody.set("shop_section_id", String(shopSectionId));
 
-    const created = await session.requestJson<ListingRecord>("POST", `/shops/${SHOP_ID}/listings`, () => createBody);
-    const listingId = positiveInteger(created.listing_id);
-    if (!listingId || created.state !== "draft") {
-      throw new SeedProductDraftError(`Etsy did not return a verified ${product.commonName} draft.`, 502, listingId || null);
+    if (!listingId) {
+      const created = await session.requestJson<ListingRecord>("POST", `/shops/${SHOP_ID}/listings`, () => createBody);
+      listingId = positiveInteger(created.listing_id);
+      if (!listingId || created.state !== "draft") {
+        throw new SeedProductDraftError(`Etsy did not return a verified ${product.commonName} draft.`, 502, listingId || null);
+      }
     }
     session.addTarget(listingId);
 
