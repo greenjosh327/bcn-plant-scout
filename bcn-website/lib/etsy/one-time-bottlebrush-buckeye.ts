@@ -152,6 +152,22 @@ export type BottlebrushPreflight = {
   warnings: string[];
   etsyDraftId: number | null;
   bcnProductState: "missing" | "exact-recovery";
+  draftDiagnostics: {
+    inventoryMatches: boolean;
+    inventory: {
+      sku: string;
+      propertyValueCount: number;
+      offeringCount: number;
+      quantity: number;
+      isEnabled: boolean;
+      priceAmount: number;
+      priceDivisor: number;
+      normalizedPrice: number;
+    } | null;
+    imageCount: number;
+    imageOrder: string[];
+    expectedImageOrder: string[];
+  } | null;
   reference: {
     taxonomyId: number;
     shippingProfileId: number;
@@ -461,6 +477,7 @@ async function preflightWithSession(
     return title.includes("aesculus parviflora") || title.startsWith("bottlebrush buckeye seeds");
   });
   let etsyDraftId: number | null = null;
+  let draftDiagnostics: BottlebrushPreflight["draftDiagnostics"] = null;
   if (matches.length === 1) {
     const listingId = positiveInteger(matches[0].listing_id);
     session.allowListing(listingId);
@@ -468,6 +485,31 @@ async function preflightWithSession(
     if (etsyListingIsExactDraft(candidate)) {
       etsyDraftId = listingId;
       const images = await session.requestJson<Page<ListingImage>>("GET", `/listings/${listingId}/images`);
+      const inventory = await session.requestJson<EtsyListingInventory>("GET", `/listings/${listingId}/inventory`);
+      const product = (inventory.products || []).find((item) => !item.is_deleted);
+      const offerings = (product?.offerings || []).filter((item) => !item.is_deleted);
+      const offering = offerings[0];
+      const priceAmount = Number(offering?.price?.amount || 0);
+      const priceDivisor = Number(offering?.price?.divisor || 0);
+      const imageOrder = [...(images.results || [])]
+        .sort((left, right) => Number(left.rank) - Number(right.rank))
+        .map((image) => String(image.alt_text || ""));
+      draftDiagnostics = {
+        inventoryMatches: inventoryMatches(inventory),
+        inventory: product && offering ? {
+          sku: String(product.sku || ""),
+          propertyValueCount: (product.property_values || []).length,
+          offeringCount: offerings.length,
+          quantity: Number(offering.quantity || 0),
+          isEnabled: Boolean(offering.is_enabled),
+          priceAmount,
+          priceDivisor,
+          normalizedPrice: priceDivisor ? priceAmount / priceDivisor : 0
+        } : null,
+        imageCount: imageOrder.length,
+        imageOrder,
+        expectedImageOrder: [...INPUT_IMAGES, PROMO_IMAGE].map((image) => image.altText)
+      };
       const allowedAlt = new Set<string>([...INPUT_IMAGES, PROMO_IMAGE].map((image) => image.altText));
       if ((images.results || []).some((image) => !allowedAlt.has(String(image.alt_text || "")))) {
         blockers.push(`The recoverable Etsy draft ${listingId} contains an unexpected image.`);
@@ -516,6 +558,7 @@ async function preflightWithSession(
     ],
     etsyDraftId,
     bcnProductState,
+    draftDiagnostics,
     reference: referenceValues
   };
 }
