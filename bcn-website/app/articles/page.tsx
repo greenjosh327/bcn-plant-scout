@@ -3,6 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { JsonLd } from "@/components/json-ld";
 import { SectionHeading } from "@/components/section-heading";
+import { articleViewCountMap, formatArticleViewCount, loadArticleViewCounts, normalizeArticleViewCounts } from "@/lib/analytics/article-views";
 import { articles } from "@/lib/articles";
 import { buildPageMetadata } from "@/lib/seo";
 import { buildBreadcrumbList } from "@/lib/structured-data";
@@ -14,7 +15,11 @@ export const metadata: Metadata = buildPageMetadata({
   path: "/articles"
 });
 
-export default function ArticlesPage() {
+export const dynamic = "force-dynamic";
+
+export default async function ArticlesPage() {
+  const viewCounts = articleViewCountMap(await loadViewCountsForPage());
+
   return (
     <main className="container py-12">
       <JsonLd
@@ -35,7 +40,7 @@ export default function ArticlesPage() {
             </div>
             <div className="p-6">
               <p className="text-xs font-black uppercase tracking-[0.16em] text-stone">
-                {formatArticleDate(article.publishedAt)} / {article.readingMinutes} min read
+                {formatArticleDate(article.publishedAt)} / {article.readingMinutes} min read / {formatArticleViewCount(viewCounts.get(article.slug) ?? 0)}
               </p>
               <h2 className="mt-3 text-2xl font-black text-pine">{article.title}</h2>
               <p className="mt-4 text-sm leading-6 text-ink/70">{article.excerpt}</p>
@@ -45,6 +50,17 @@ export default function ArticlesPage() {
       </div>
     </main>
   );
+}
+
+async function loadViewCountsForPage() {
+  try {
+    return await loadArticleViewCounts();
+  } catch (error) {
+    console.error("Article list view counts could not be loaded.", {
+      message: error instanceof Error ? error.message : "Unknown error"
+    });
+    return normalizeArticleViewCounts([]);
+  }
 }
 
 function formatArticleDate(value: string) {

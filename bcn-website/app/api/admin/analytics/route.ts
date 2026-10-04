@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin-api";
 import { buildAnalyticsSummary, type AnalyticsOrderRow, type ShopAnalyticsEventRow } from "@/lib/analytics/admin-summary";
+import { articles } from "@/lib/articles";
 import { getSupabaseServiceClient } from "@/lib/supabase-service";
 
 export const runtime = "nodejs";
@@ -88,7 +89,11 @@ export async function GET(request: Request) {
     until: range.until,
     rangeLabel: range.label,
     timeZone: range.timeZone,
-    knownReturningVisitorIds
+    knownReturningVisitorIds,
+    articlePages: articles.map((article) => ({
+      title: article.title,
+      path: `/articles/${article.slug}`
+    }))
   });
 
   return NextResponse.json({ summary });

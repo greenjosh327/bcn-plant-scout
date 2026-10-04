@@ -3,7 +3,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { JsonLd } from "@/components/json-ld";
-import { articles, getArticleBySlug, type FieldArticleSection } from "@/lib/articles";
+import { articleViewCountMap, formatArticleViewCount, loadArticleViewCounts, normalizeArticleViewCounts } from "@/lib/analytics/article-views";
+import { getArticleBySlug, type FieldArticleSection } from "@/lib/articles";
 import { buildNoindexMetadata, buildPageMetadata } from "@/lib/seo";
 import { buildArticlePageStructuredData } from "@/lib/structured-data";
 
@@ -11,9 +12,7 @@ type ArticlePageProps = {
   params: Promise<{ slug: string }>;
 };
 
-export function generateStaticParams() {
-  return articles.map((article) => ({ slug: article.slug }));
-}
+export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: ArticlePageProps): Promise<Metadata> {
   const resolvedParams = await params;
@@ -32,6 +31,7 @@ export default async function ArticlePage({ params }: ArticlePageProps) {
   const resolvedParams = await params;
   const article = getArticleBySlug(resolvedParams.slug);
   if (!article) notFound();
+  const viewCounts = articleViewCountMap(await loadViewCountsForPage());
 
   return (
     <main className="container py-12">
@@ -45,6 +45,8 @@ export default async function ArticlePage({ params }: ArticlePageProps) {
           <span>{formatArticleDate(article.publishedAt)}</span>
           <span>/</span>
           <span>{article.readingMinutes} min read</span>
+          <span>/</span>
+          <span>{formatArticleViewCount(viewCounts.get(article.slug) ?? 0)}</span>
         </div>
 
         <div className="relative mt-8 aspect-[16/10] overflow-hidden rounded-lg bg-sage">
@@ -75,6 +77,17 @@ export default async function ArticlePage({ params }: ArticlePageProps) {
       </article>
     </main>
   );
+}
+
+async function loadViewCountsForPage() {
+  try {
+    return await loadArticleViewCounts();
+  } catch (error) {
+    console.error("Article detail view count could not be loaded.", {
+      message: error instanceof Error ? error.message : "Unknown error"
+    });
+    return normalizeArticleViewCounts([]);
+  }
 }
 
 function ArticleSection({ section }: { section: FieldArticleSection }) {

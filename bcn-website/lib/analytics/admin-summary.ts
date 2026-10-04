@@ -84,6 +84,13 @@ type LandingPageAccumulator = Omit<LandingPageSummary, "visitors" | "sessions"> 
   sessionIds: Set<string>;
 };
 
+type ArticlePerformanceAccumulator = {
+  title: string;
+  path: string;
+  views: number;
+  visitorIds: Set<string>;
+};
+
 type SourceDetailSummary = {
   source: string;
   medium: string;
@@ -111,6 +118,7 @@ export function buildAnalyticsSummary(input: {
   rangeLabel?: string;
   timeZone?: string;
   knownReturningVisitorIds?: string[];
+  articlePages?: Array<{ title: string; path: string }>;
   now?: Date;
 }) {
   const now = input.now ?? new Date();
@@ -127,6 +135,12 @@ export function buildAnalyticsSummary(input: {
   const landingPageMap = new Map<string, LandingPageAccumulator>();
   const landingPageByJourney = new Map<string, string>();
   const visitorMap = new Map<string, VisitorAccumulator>();
+  const articlePerformanceMap = new Map<string, ArticlePerformanceAccumulator>(
+    (input.articlePages ?? []).map((article) => [
+      cleanPath(article.path),
+      { title: article.title, path: cleanPath(article.path), views: 0, visitorIds: new Set<string>() }
+    ])
+  );
   const knownReturningVisitorIds = new Set(input.knownReturningVisitorIds ?? []);
   const visitors = new Set<string>();
   const sessions = new Set<string>();
@@ -153,6 +167,13 @@ export function buildAnalyticsSummary(input: {
     recordLandingPageEntry(landingPageMap, landingPageByJourney, event);
 
     if (event.event_name === "page_view") totals.pageViews += 1;
+    if (event.event_name === "page_view") {
+      const article = articlePerformanceMap.get(cleanPath(event.path));
+      if (article) {
+        article.views += 1;
+        if (event.visitor_id) article.visitorIds.add(event.visitor_id);
+      }
+    }
     if (event.event_name === "view_item") totals.productViews += 1;
     if (event.event_name === "add_to_cart") totals.addToCarts += 1;
     if (event.event_name === "begin_checkout") totals.checkouts += 1;
@@ -281,6 +302,14 @@ export function buildAnalyticsSummary(input: {
     .slice(0, 8);
 
   const visitorMix = buildVisitorMix(visitorMap, knownReturningVisitorIds);
+  const articlePerformance = Array.from(articlePerformanceMap.values())
+    .map((article) => ({
+      title: article.title,
+      path: article.path,
+      views: article.views,
+      uniqueVisitors: article.visitorIds.size
+    }))
+    .sort((a, b) => b.views - a.views || b.uniqueVisitors - a.uniqueVisitors || a.title.localeCompare(b.title));
 
   return {
     days,
@@ -304,6 +333,7 @@ export function buildAnalyticsSummary(input: {
     sources,
     sourceDetails,
     landingPages,
+    articlePerformance,
     visitorMix,
     recentEvents: events
       .slice()

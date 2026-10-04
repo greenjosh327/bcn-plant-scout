@@ -183,6 +183,35 @@ test("shop analytics summary reports landing, drop-off, abandonment, source deta
   assert.equal(summary.cartAbandonment[0].abandonedCarts, 1);
 });
 
+test("shop analytics summary reports article performance within the selected range", () => {
+  const summary = buildAnalyticsSummary({
+    events: [
+      event("1", "page_view", "2026-07-22T13:00:00Z", { visitor_id: "v1", path: "/articles/field-guide" }),
+      event("2", "page_view", "2026-07-22T13:02:00Z", { visitor_id: "v1", path: "/articles/field-guide?source=email" }),
+      event("3", "page_view", "2026-07-22T13:04:00Z", { visitor_id: "v2", path: "/articles/field-guide" }),
+      event("4", "page_view", "2026-07-22T13:06:00Z", { visitor_id: "v3", path: "/articles/seed-collection" }),
+      event("5", "view_item", "2026-07-22T13:08:00Z", { visitor_id: "v4", path: "/articles/field-guide" }),
+      event("outside", "page_view", "2026-07-21T23:59:59Z", { visitor_id: "v5", path: "/articles/field-guide" })
+    ],
+    orders: [],
+    articlePages: [
+      { title: "Field Guide", path: "/articles/field-guide" },
+      { title: "Seed Collection", path: "/articles/seed-collection" },
+      { title: "Unused Article", path: "/articles/unused" }
+    ],
+    since: new Date("2026-07-22T00:00:00Z"),
+    until: new Date("2026-07-23T00:00:00Z"),
+    rangeLabel: "Today",
+    now: new Date("2026-07-23T12:00:00Z")
+  });
+
+  assert.deepEqual(summary.articlePerformance, [
+    { title: "Field Guide", path: "/articles/field-guide", views: 3, uniqueVisitors: 2 },
+    { title: "Seed Collection", path: "/articles/seed-collection", views: 1, uniqueVisitors: 1 },
+    { title: "Unused Article", path: "/articles/unused", views: 0, uniqueVisitors: 0 }
+  ]);
+});
+
 function event(
   id: string,
   event_name: ShopAnalyticsEventRow["event_name"],

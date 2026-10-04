@@ -1829,6 +1829,35 @@ function AdminAnalyticsDashboard() {
             </div>
           </section>
 
+          <section className="field-card p-5">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <h2 className="text-2xl font-black text-pine">Article Performance</h2>
+                <p className="mt-1 text-sm font-bold text-stone">Article page views and distinct visitors for {summary.rangeLabel.toLowerCase()}.</p>
+              </div>
+            </div>
+            <div className="mt-5 grid gap-3">
+              {summary.articlePerformance.length > 0 ? summary.articlePerformance.map((article) => (
+                <div key={article.path} className="grid gap-3 rounded-md border border-pine/15 bg-white/70 p-4 md:grid-cols-[minmax(0,1fr)_110px_150px] md:items-center">
+                  <div className="min-w-0">
+                    <p className="font-black text-pine">{article.title}</p>
+                    <p className="mt-1 break-all text-xs font-bold text-stone">{article.path}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.14em] text-stone">Views</p>
+                    <p className="mt-1 text-xl font-black text-pine">{article.views}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.14em] text-stone">Unique visitors</p>
+                    <p className="mt-1 text-xl font-black text-pine">{article.uniqueVisitors}</p>
+                  </div>
+                </div>
+              )) : (
+                <p className="rounded-md bg-sage/60 p-4 text-sm font-bold text-stone">No article pages are configured.</p>
+              )}
+            </div>
+          </section>
+
           <section className="grid gap-6 lg:grid-cols-[0.85fr_1.15fr]">
             <div className="field-card p-5">
               <h2 className="text-2xl font-black text-pine">Funnel</h2>
