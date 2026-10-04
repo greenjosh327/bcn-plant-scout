@@ -728,15 +728,17 @@ export async function applyBottlebrushBuckeye(
     throw new BottlebrushOperationError("The recoverable Etsy draft image set does not exactly match.", 409, listingId);
   }
 
+  const expectedAltOrder = expectedImages.map((image) => image.altText);
   let etsy = await readEtsyResult(session, listingId);
-  for (let attempt = 0; attempt < 10 && etsy.images.length !== expectedImages.length; attempt += 1) {
+  let verified = false;
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const actualAltOrder = etsy.images.map((image) => String(image.alt_text || ""));
+    verified = etsyListingIsExactDraft(etsy.listing) && inventoryMatches(etsy.inventory) &&
+      stable(actualAltOrder) === stable(expectedAltOrder);
+    if (verified) break;
     await wait(750);
     etsy = await readEtsyResult(session, listingId);
   }
-  const expectedAltOrder = expectedImages.map((image) => image.altText);
-  const actualAltOrder = etsy.images.map((image) => String(image.alt_text || ""));
-  const verified = etsyListingIsExactDraft(etsy.listing) && inventoryMatches(etsy.inventory) &&
-    stable(actualAltOrder) === stable(expectedAltOrder);
   if (!verified) throw new BottlebrushOperationError("Etsy draft read-back verification failed.", 502, listingId);
 
   return {
