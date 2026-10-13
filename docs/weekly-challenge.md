@@ -6,7 +6,10 @@ Public information preview and homepage promotion are approved for publication.
 Public page visibility is ON; entries and drawings are OFF. The disabled form
 collects no information. No production migration, new secret, mobile release,
 EAS build, real entry, drawing or subscription change is included.
-Deployment verification is recorded in the delivery report after publication.
+Feature commit 797a1925db21232bbea4d7166080291c28951791 was pushed to main.
+Vercel production deployment dpl_kgBHLxcZnCrUW98CEbHamB819NpE is READY and
+serves basecampnorthpa.com. Homepage promotion and the public preview are live.
+The mobile card is committed source only; no mobile release was published.
 
 Public URL: https://basecampnorthpa.com/plant-scout-challenge
 
@@ -137,3 +140,11 @@ Production-mode local preview shows Coming Soon and disabled fields, responds
 closed, rejects entry POST and unauthenticated admin. Mobile 390px layout has no
 horizontal overflow. Homepage promotion is checked on desktop/mobile.
 Generated export/cache files remain untracked and excluded from release.
+
+Production verification (October 12, 2026 ET): landing, homepage, shop and cart
+return 200. /api/challenge reports open=false, pageVisible=true,
+entriesEnabled=false and drawingsEnabled=false. Web/app/photo entry POSTs all
+return 403; anonymous admin returns 401. Browser confirms disabled form fields,
+Coming Soon status, no executable Google analytics/advertising scripts on the
+contest page, and the homepage promotion. No participant data was submitted.
+No production migration, new secret or subscription change was performed.
