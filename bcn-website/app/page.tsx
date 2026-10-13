@@ -8,6 +8,7 @@ import { getFeaturedArticles } from "@/lib/articles";
 import { getFeaturedCatalogProducts } from "@/lib/catalog-db";
 import { buildPageMetadata } from "@/lib/seo";
 import { buildHomepageStructuredData } from "@/lib/structured-data";
+import { pageVisible } from "@/lib/challenge/server";
 
 export const dynamic = "force-dynamic";
 
@@ -74,6 +75,10 @@ export default async function HomePage() {
         </div>
       </section>
 
+      {pageVisible() ? <section className="container pt-10" aria-labelledby="giveaway-promo-title"><div className="field-card grid gap-5 bg-sage/60 p-6 md:grid-cols-[1fr_auto] md:items-center md:p-8">
+        <div><p className="text-xs font-black uppercase tracking-widest text-rust">Coming Soon — Entries Not Yet Open</p><h2 id="giveaway-promo-title" className="mt-2 text-2xl font-black text-pine">🌱 Weekly Plant Scout Giveaway!</h2><p className="mt-3 max-w-3xl leading-7 text-ink/80">Save 10 plants in BCN Plant Scout during the week and receive an entry into our drawing for 3 free seed packs!</p><p className="mt-2 text-sm font-bold text-pine">No purchase necessary. Free alternative entry available.</p></div>
+        <a className="button button-primary" href="/plant-scout-challenge">View the Weekly Giveaway</a>
+      </div></section> : null}
       <section className="container py-12">
         <SectionHeading eyebrow="Start here" title="Base Camp North jump-off points">
           One front door for the nursery, Plant Scout app, and field notes.

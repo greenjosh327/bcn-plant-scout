@@ -1,0 +1,139 @@
+# BCN Plant Scout Weekly Seed Giveaway
+
+## Preview release
+
+Public information preview and homepage promotion are approved for publication.
+Public page visibility is ON; entries and drawings are OFF. The disabled form
+collects no information. No production migration, new secret, mobile release,
+EAS build, real entry, drawing or subscription change is included.
+Deployment verification is recorded in the delivery report after publication.
+
+Public URL: https://basecampnorthpa.com/plant-scout-challenge
+
+## Architecture and simplified eligibility
+
+The Expo App.tsx, nested bcn-website Next.js app, Supabase auth/observations,
+profiles, trials, RevenueCat, shop inventory and bcn_admins were inspected.
+Unrelated local changes are excluded from this feature commit.
+
+Ten NEW saved record IDs during the week qualify automatically; repeated species
+are welcome. Extra photos and edits do not increase the count. No contest camera
+or Submit Entry button. The mobile home card shows progress, eligibility details
+and opt-out when active, Coming Soon otherwise. Normal saving, trials and paid
+subscriptions stay unchanged. Free web entry needs no app, photos or payment,
+including after an app trial expires; the giveaway grants no paid capabilities.
+
+The unapplied migration preserves first server-save and original creation stamps.
+Both must fall within the week; old records cannot qualify through edits or later
+sync. Verified identities sync progress on insertion and authenticated status
+retrieval. Optional contest failures do not break normal saves. Unconfirmed age,
+residency and rules details go to eligibility review rather than being assumed.
+
+Progress contains record IDs/timestamps, not copies of photos, names of plants or
+GPS. Direct anonymous/authenticated table access is denied. Backend service-only
+functions, restricted private triggers and existing admin auth protect data.
+Contest routes exclude analytics/advertising; promo links use full navigation.
+
+Free entry retains validation, Turnstile, honeypot, durable HMAC rate limits and
+verified email codes. No marketing opt-in. Verified email/auth ID prevent duplicate
+tickets across methods. Similar name/state goes to manual review; households,
+shared IPs and devices are not automatically disqualified. Different emails do not
+prove different people, so identity review remains necessary.
+
+Opt-out withdraws app entries in undrawn weeks, leaving explicit free entries
+intact. Rejoining recalculates progress; previous entries require review.
+Account deletion anonymizes entry contact information, removes progress and
+preserves immutable audit IDs. The Edge Function tolerates an absent contest schema.
+
+## Draft rules and schedule - legal/privacy review required
+
+Age 18+, 50 U.S. states and D.C., subject to legal review. One eligible entry per
+person per week across both methods. No purchase necessary; purchases and
+subscriptions do not improve odds. All times America/New_York. Sunday midnight
+cutoffs use these exclusive UTC boundaries:
+
+| Week | Entry dates (2026, ET) | Opens UTC | Exclusive closes UTC | Monday drawing |
+|---|---|---|---|---|
+| 1 | October 19-25 | Oct 19 04:00 | Oct 26 04:00 | October 26 |
+| 2 | October 26-November 1 | Oct 26 04:00 | Nov 2 05:00 | November 2 |
+| 3 | November 2-8 | Nov 2 05:00 | Nov 9 05:00 | November 9 |
+| 4 | November 9-15 | Nov 9 05:00 | Nov 16 05:00 | November 16 |
+
+Week 2 lasts 169 hours because of DST. Server time controls acceptance. Drawing
+requires the designated Monday, closed week, reviewed rules, enabled gates and
+resolution of every pending entry. No automatic drawing scheduler is deployed.
+One equal ticket per eligible person, regardless of method. Cryptographic random
+entropy and unbiased rejection sampling select from a locked cohort; immutable
+records contain cohort, decisions, actor, entropy, index and winner. Repeat
+weekly drawings are blocked.
+
+One winner weekly chooses three eligible in-stock seed packs, standard domestic
+shipping included. Reviewed allowlist and current stock checks protect fulfillment.
+No automatic inventory decrement, shipping purchase or notification. Admin tracks
+notifications and fulfillment manually. Repeat winners across weeks are currently
+allowed; alternates/unclaimed prizes require reviewed rules and implementation.
+
+## Independent controls
+
+- SCOUT_CHALLENGE_PAGE_VISIBLE defaults true; preview needs no contest schema/secrets.
+- SCOUT_CHALLENGE_ENTRIES_ENABLED defaults false; APIs reject before processing.
+- SCOUT_CHALLENGE_DRAWINGS_ENABLED defaults false; backend drawings reject.
+- Database entries_enabled/drawings_enabled default false and require approved
+  bcn-scout-2026-draft-v2 rules and reviewed_at. Service cannot update config.
+- Disabled preview form cannot submit and does not load Turnstile. Legacy contest
+  photo upload endpoint always rejects.
+
+Admin /admin/challenge lists week, app users, ten-record accounts, free entries,
+eligible pool, private name/email, progress, method, opt-out, reviews, immutable
+drawings and notification/fulfillment status. Before migration it shows a disabled
+migration-pending state. No public participant list.
+
+## Launch blockers
+
+1. Final legal/privacy approval: sponsor identity/address, state and staff exclusions,
+   prize ARV/mailing restrictions, claim deadlines, repeats, alternates, publicity,
+   retention and deletion policy.
+2. Review/apply migration in staging, run database advisors and production-shaped
+   sync/RLS tests; separately approve production migration. None applied here.
+3. Configure stable HMAC/Turnstile secrets, reviewed sponsor/rules/prize/retention
+   details, seed allowlist, OTP email template, SMTP quotas/delivery and hosting
+   rate-limit/origin tests. Preview requires no new configuration.
+4. Device/browser QA: old/offline record sync, timestamps, nine/ten counts, opt-out,
+   households, cross-method duplicates, OTP retries, accessibility, DST/cutoff,
+   expired trials and unpaid accounts, normal shop/subscription flows.
+5. Approve/redeploy deletion Edge Function; implement scheduled retention cleanup
+   for entries/contact information, abandoned email identities and rate buckets.
+   No automatic time-based purge exists yet.
+6. Establish staff Monday drawing, eligibility review, notification, stock reservation
+   and shipping procedures. No notification/drawing scheduler deployed.
+7. Separately approve mobile release; no version/build changes or stores/EAS release.
+8. After all approvals deliberately enable backend AND database gates. Keep OFF now.
+
+## Feature file manifest
+
+- App.tsx: only import and home card staged; other edits preserved.
+- components/WeeklyChallenge.tsx; tsconfig.json Edge Function exclusion.
+- supabase/functions/delete-account/index.ts: optional contest cleanup.
+- bcn-website/app/page.tsx and app/plant-scout-challenge/page.tsx: promo/preview.
+- bcn-website/app/layout.tsx; components/challenge-analytics-boundary.tsx;
+  components/shop-analytics-page-view.tsx: contest analytics exclusion.
+- bcn-website/components/challenge-entry-form.tsx: preview/free verified email flow.
+- bcn-website/app/api/challenge/route.ts, app/route.ts, photos/route.ts.
+- bcn-website/app/admin/challenge/page.tsx; app/api/admin/challenge/route.ts;
+  components/admin-challenge.tsx; components/admin-catalog-editor.tsx.
+- bcn-website/lib/challenge/core.ts, server.ts, http.ts, jpeg.ts (retained unused utility).
+- bcn-website/supabase/migrations/20261013000140_bcn_plant_scout_weekly_challenge.sql.
+- bcn-website/tests/challenge.test.ts and challenge-db.test.ts.
+- bcn-website/package.json/package-lock.json: pinned PGlite test dependency.
+- bcn-website/.env.challenge.example; docs/weekly-challenge.md.
+
+## Validation
+
+Website 143 tests pass including real PostgreSQL/PGlite. Next.js production build
+and typecheck pass. Mobile TypeScript, Deno Edge Function check and iOS/Android
+JavaScript exports pass. No native build or app release.
+
+Production-mode local preview shows Coming Soon and disabled fields, responds
+closed, rejects entry POST and unauthenticated admin. Mobile 390px layout has no
+horizontal overflow. Homepage promotion is checked on desktop/mobile.
+Generated export/cache files remain untracked and excluded from release.

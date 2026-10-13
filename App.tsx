@@ -14,6 +14,7 @@ import { captureRef } from "react-native-view-shot";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { createClient } from "@supabase/supabase-js";
 import JSZip from "jszip";
+import { WeeklyChallenge } from "./components/WeeklyChallenge";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
@@ -2622,6 +2623,7 @@ export default function App() {
                 onPress={() => navigate("saved")}
                 variant="secondary"
               />
+              <WeeklyChallenge client={supabase} />
             </View>
           ) : null}
 

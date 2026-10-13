@@ -1377,6 +1377,7 @@ export function AdminCatalogEditor({ initialTab = "orders" }: { initialTab?: Adm
           <button className="button button-secondary" type="button" onClick={() => void openScoutAdmin()}>
             Scout Admin
           </button>
+          <a className="button button-secondary" href="/admin/challenge">Weekly Challenge</a>
           <a
             className={`button ${activeTab === "etsy" ? "button-primary" : "button-secondary"}`}
             href="/admin/etsy"

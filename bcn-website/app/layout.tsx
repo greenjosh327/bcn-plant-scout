@@ -4,6 +4,7 @@ import Script from "next/script";
 import "./globals.css";
 import { Footer } from "@/components/footer";
 import { ShopAnalyticsPageView } from "@/components/shop-analytics-page-view";
+import { ChallengeAnalyticsBoundary } from "@/components/challenge-analytics-boundary";
 import { SiteHeader } from "@/components/site-header";
 import { buildRootMetadata } from "@/lib/seo";
 
@@ -17,6 +18,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en">
       <body>
+        <ChallengeAnalyticsBoundary>
         {googleTagId ? (
           <>
             <Script
@@ -37,6 +39,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <Suspense fallback={null}>
           <ShopAnalyticsPageView />
         </Suspense>
+        </ChallengeAnalyticsBoundary>
         <SiteHeader />
         {children}
         <Footer />

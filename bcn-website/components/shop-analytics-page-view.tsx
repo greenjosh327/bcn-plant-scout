@@ -10,6 +10,7 @@ export function ShopAnalyticsPageView() {
   const lastTracked = useRef("");
 
   useEffect(() => {
+    if (pathname?.startsWith("/plant-scout-challenge") || pathname?.startsWith("/admin/challenge")) return;
     const search = searchParams.toString();
     const path = `${pathname}${search ? `?${search}` : ""}`;
     if (!pathname || lastTracked.current === path) return;
