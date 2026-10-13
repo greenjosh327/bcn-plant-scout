@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import { ChallengeEntryForm } from "@/components/challenge-entry-form";
+import { getCatalogProducts } from "@/lib/catalog-db";
+import { DEFAULT_PRODUCT_IMAGE_URL, getPrimaryProductImage } from "@/lib/product-images";
 import { currentWeek, DRAWINGS, WEEKS } from "@/lib/challenge/core";
 import { available, pageVisible } from "@/lib/challenge/server";
 export const dynamic = "force-dynamic";
@@ -18,6 +21,13 @@ export default async function ChallengePage() {
   if (!pageVisible()) return <main className="container py-12"><h1 className="text-3xl font-black">Giveaway information is unavailable.</h1></main>;
   let active = false; try { await available(); active = Boolean(currentWeek(new Date())); } catch { /* Preview requires no database or secrets. */ }
   const week = currentWeek(new Date());
+  const seedExamples = (await getCatalogProducts()).filter(product => {
+    const image = getPrimaryProductImage(product);
+    return product.active && product.category === "Seeds" && product.productType !== "bundle"
+      && product.price === 5.99 && product.inventory > 0
+      && (!product.variations?.length || product.variations.some(variant => variant.price === 5.99 && variant.inventory > 0))
+      && !image.isFallback && image.url !== DEFAULT_PRODUCT_IMAGE_URL;
+  }).slice(0, 3);
   return <main>
     <section className="bg-pine text-white"><div className="container grid gap-10 py-12 md:grid-cols-[1.2fr_0.8fr] md:py-20">
       <div><p className="inline-block rounded-full bg-white/10 px-4 py-2 text-sm font-bold">{active ? "Weekly entries are open" : "Coming Soon — Entries Not Yet Open."}</p>
@@ -28,8 +38,10 @@ export default async function ChallengePage() {
         <div className="mt-8 flex flex-wrap gap-3"><a className="button bg-white text-pine hover:bg-sage" href="#how-it-works">How it works</a><a className="button border border-white/40 text-white" href="#free-entry">Free email entry</a></div>
       </div>
       <div className="flex flex-col justify-center rounded-xl border border-white/20 bg-white/5 p-7"><p className="text-sm font-black uppercase tracking-widest text-sage">One winner every week</p><h2 className="mt-3 text-3xl font-black">Three seed packs.<br />Your choice.</h2>
-        <div className="my-8 grid grid-cols-3 gap-3" aria-hidden="true">{[1, 2, 3].map(n => <div key={n} className="rounded-md border border-white/25 bg-parchment px-2 py-6 text-center text-pine"><span className="text-3xl">🌱</span><p className="mt-3 text-xs font-black uppercase tracking-widest">BCN Seeds</p><p className="mt-2 text-xs">Pack {n}</p></div>)}</div>
-        <p className="text-lg">Choose from eligible, in-stock seed packs. Standard domestic shipping is included.</p><p className="mt-3 text-sm text-sage">Four weekly prizes · October 19–November 15, 2026</p>
+        <div className="my-8 grid grid-cols-3 gap-3">{seedExamples.map(product => { const image = getPrimaryProductImage(product); return <figure key={product.id} className="overflow-hidden rounded-md border border-white/25 bg-parchment text-pine"><div className="relative aspect-square"><Image src={image.url} alt={image.altText} fill sizes="(min-width: 768px) 130px, 30vw" className="object-cover" /></div><figcaption className="px-2 py-3 text-center text-xs font-bold">{product.commonName || product.name}</figcaption></figure>; })}</div>
+        <p className="text-lg">Choose 3 eligible seed packs — $17.97 retail value, plus free standard domestic shipping!</p>
+        <a className="button mt-5 bg-white text-center text-pine hover:bg-sage" href="https://basecampnorthpa.com/shop">Browse the Seeds You Could Win</a>
+        <p className="mt-4 text-sm leading-6 text-white/85">Prizes are limited to eligible, in-stock standard $5.99 seed packs. Bundles, larger packs, plants and other shop products do not qualify. Photos show examples from the BCN catalog; availability and final eligibility apply.</p><p className="mt-3 text-sm text-sage">Four weekly prizes · October 19–November 15, 2026</p>
       </div>
     </div></section>
     <div className="container max-w-5xl py-12">
@@ -45,6 +57,7 @@ export default async function ChallengePage() {
       </section>
       <section id="privacy" className="mt-10"><h2 className="text-3xl font-black text-pine">Your field records stay private.</h2><p className="mt-4 leading-7 text-ink/75">The giveaway uses record IDs and timestamps to count new saved plants, plus name, email, state and eligibility details to administer entries. It does not copy or publicly share your private plant photographs or GPS coordinates. App users can opt out of automatic participation. No automatic marketing opt-in.</p><p className="mt-3 leading-7 text-ink/75">Free entry uses email verification and bot protection when active. Access is restricted to authorized administrators. Retention and deletion procedures will be finalized before launch. This disabled preview collects no contest entries.</p><p className="mt-4"><a className="underline" href="https://scout.basecampnorthpa.com/privacy-policy">BCN Privacy Policy</a> · <a className="underline" href="/contact">Questions? Contact BCN</a></p></section>
       <section className="mt-12"><h2 className="text-3xl font-black text-pine">A few things to know</h2><div className="mt-5 grid gap-3">{faqs.map(([q,a]) => <details key={q} className="field-card p-5"><summary className="cursor-pointer font-bold text-pine">{q}</summary><p className="mt-3 leading-7 text-ink/75">{a}</p></details>)}</div></section>
+      <p className="mt-10"><a className="button button-primary" href="https://basecampnorthpa.com/shop">Browse BCN Seeds</a></p>
     </div>
   </main>;
 }

@@ -5,6 +5,7 @@ import { CartLink } from "@/components/cart-link";
 const navItems = [
   ["Shop", "/shop"],
   ["Scout App", "https://scout.basecampnorthpa.com"],
+  ["Weekly Giveaway", "/plant-scout-challenge"],
   ["Articles", "/articles"],
   ["About", "/about"],
   ["Contact", "/contact"]
@@ -32,8 +33,9 @@ export function SiteHeader() {
             </span>
           </span>
         </Link>
-        <nav className="hidden items-center gap-6 text-sm font-bold text-pine md:flex">
+        <nav aria-label="Main navigation" className="hidden flex-wrap items-center justify-end gap-x-4 gap-y-2 text-sm font-bold text-pine md:flex">
           {navItems.map(([label, href]) => (
+            href === "/plant-scout-challenge" ? <a key={href} href={href} className="hover:text-rust">{label}</a> :
             <Link key={href} href={href} className="hover:text-rust">
               {label}
             </Link>
@@ -41,6 +43,7 @@ export function SiteHeader() {
         </nav>
         <CartLink />
       </div>
+      <nav aria-label="Mobile giveaway navigation" className="container pb-3 text-sm font-bold text-pine md:hidden"><a href="/plant-scout-challenge" className="hover:text-rust">Weekly Giveaway</a></nav>
     </header>
   );
 }
