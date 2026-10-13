@@ -228,3 +228,8 @@ downloaded and its eight-column header verified; it contains no participant rows
 The Analytics tab shows the four-week giveaway summary and unavailable RevenueCat
 conversions. Anonymous dashboard/CSV/summary/analytics API requests return 401.
 Production still reports entriesEnabled=false and drawingsEnabled=false.
+
+Repeated Supabase sign-in events with the same session no longer clear a loaded
+report or invalidate its pending request. Real session/token changes and sign-out
+still clear private data and reload using the new session. This avoids a blank
+dashboard when returning focus to the admin browser tab.

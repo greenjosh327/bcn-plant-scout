@@ -14,8 +14,11 @@ export function AdminChallenge() {
   const [message, setMessage] = useState(""); const [busy, setBusy] = useState(false);
   const [eligibility, setEligibility] = useState("all"); const [method, setMethod] = useState("all");
   const generation = useRef(0);
-  useEffect(() => { let active = true; void (async () => { await completeAdminSessionHandoff(); const session = await supabase?.auth.getSession(); if (active) setToken(session?.data.session?.access_token ?? ""); })();
-    const listener = supabase?.auth.onAuthStateChange((_event, session) => { if (active) { generation.current++; setData(null); setToken(session?.access_token ?? ""); } });
+  const sessionToken = useRef("");
+  useEffect(() => { let active = true;
+    const updateSession = (next: string) => { if (active && sessionToken.current !== next) { sessionToken.current = next; generation.current++; setData(null); setToken(next); } };
+    void (async () => { await completeAdminSessionHandoff(); const session = await supabase?.auth.getSession(); updateSession(session?.data.session?.access_token ?? ""); })();
+    const listener = supabase?.auth.onAuthStateChange((_event, session) => updateSession(session?.access_token ?? ""));
     return () => { active = false; listener?.data.subscription.unsubscribe(); }; }, []);
   const load = useCallback(async () => { const current = ++generation.current; if (!token) return; try { const response = await fetch(`/api/admin/challenge?week=${week}`, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
     const result = await response.json(); if (!response.ok) throw new Error(result.error); if (current === generation.current) setData(result);
