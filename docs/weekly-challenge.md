@@ -217,3 +217,14 @@ TypeScript checks pass. Supabase schema and security advisors were inspected
 read-only; no DDL/RLS/privilege changes were made. Mobile source is unchanged.
 Production deployment and authenticated browser/export verification are recorded
 in the delivery report after publication.
+
+Production verification completed October 12, 2026 ET: feature commit 141d7c2
+was pushed and deployment dpl_DxjyADfuX2hKBAhEu6dK4J9R5fLB is READY. The signed-in
+admin dashboard shows all seven counters, week selection, participant filters,
+aggregate summary and disabled Draw Winner. Weekly activity totals are zero
+before October 19, matching an independent read-only Supabase aggregate. Official
+counts are correctly Unavailable while the migration is pending. Week 1 CSV was
+downloaded and its eight-column header verified; it contains no participant rows.
+The Analytics tab shows the four-week giveaway summary and unavailable RevenueCat
+conversions. Anonymous dashboard/CSV/summary/analytics API requests return 401.
+Production still reports entriesEnabled=false and drawingsEnabled=false.
