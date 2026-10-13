@@ -233,3 +233,42 @@ Repeated Supabase sign-in events with the same session no longer clear a loaded
 report or invalidate its pending request. Real session/token changes and sign-out
 still clear private data and reload using the new session. This avoids a blank
 dashboard when returning focus to the admin browser tab.
+
+## All-user activity before launch
+
+The admin dashboard now defaults to All-user activity, separate from Official
+contest reporting. The current Eastern Monday-Sunday week and the preceding
+52 weeks are selectable, so activity before October 19 is visible. Every row,
+the view banner and activity CSV are labeled Activity Only — Not Official
+Contest Entries. Reaching ten is an activity threshold, not eligibility.
+
+All profile accounts appear, including zero-save accounts, plus record owners
+whose profile is missing. No friend/tester, plan_role, role or subscription filter
+is applied. Separate non-deleted record IDs are counted by existing created_at;
+photos, species and updated_at do not affect counts. Future timestamps are
+excluded. Cloud sync is required; unsynced device-only saves cannot be reported.
+Account email/username and counts are visible only after existing admin auth.
+The activity view supports week, local account search and count bands (0, 1-9,
+10+) and an authenticated activity-only CSV. Refresh is automatic while visible.
+
+Existing saved contest opt-outs, when installed, conservatively exclude those
+accounts from named activity and activity totals. Missing opt-out storage is
+explicitly labeled; any other preference-read error fails closed. No private
+locations, images, plant names, trials or billing information are queried.
+
+GET /api/admin/challenge?mode=activity only performs SELECTs. It never calls
+qualification/entry/drawing RPCs, and neither view nor CSV can convert historic
+or pre-launch activity into entries. The existing public page remains Coming
+Soon, and official app entries, free submissions and drawings stay OFF.
+No production migration, new secret, customer edit or permission change is
+required for these activity reports. Official launch still requires the reviewed
+contest migration, immutable timestamps and explicit non-retroactive launch QA.
+
+Files added: lib/challenge/activity.ts, components/plant-scout-activity.tsx and
+tests/challenge-activity.test.ts. Existing protected admin route, reporting-server
+and admin-challenge components are extended. Mobile code is unchanged.
+
+Validation: 156 website tests, website TypeScript and Next.js production build
+pass. Read-only production aggregates show 16 profile accounts; October 5-11 has
+four new non-deleted records across three accounts, while October 12-18 has zero
+records as of the October 12 review. These are activity counts, never entries.

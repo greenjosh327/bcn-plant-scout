@@ -1,7 +1,8 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { ChallengeError, available, drawingsEnabled, jsonBody, publicEnabled } from "@/lib/challenge/server";
 import { challengeAdmin } from "@/lib/challenge/admin";
-import { loadGiveawayReporting } from "@/lib/challenge/reporting-server";
+import { loadGiveawayReporting, loadPlantScoutActivity } from "@/lib/challenge/reporting-server";
+import { activityCsv } from "@/lib/challenge/activity";
 import { weeklyReportCsv, weeklySummaryText } from "@/lib/challenge/reporting";
 import { WEEKS } from "@/lib/challenge/core";
 import { challengeFailure, challengeResponse } from "@/lib/challenge/http";
@@ -10,6 +11,12 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   try {
     const { db } = await challengeAdmin(request); const params = new URL(request.url).searchParams;
+    if (params.get("mode") === "activity") {
+      const result = await loadPlantScoutActivity(db, params.get("activityWeek"));
+      if (params.get("format") === "csv") return new Response(activityCsv(result.activity), { headers: { "Cache-Control": "private, no-store", "Content-Type": "text/csv; charset=utf-8", "X-Content-Type-Options": "nosniff", "Content-Disposition": `attachment; filename="bcn-activity-${result.activity.week.id}.csv"` } });
+      if (params.has("format")) throw new ChallengeError("Invalid activity report format.");
+      return challengeResponse(result);
+    }
     const week = Number(params.get("week") ?? 1); if (![1, 2, 3, 4].includes(week)) throw new ChallengeError("Invalid week.");
     if (params.get("photo")) throw new ChallengeError("Giveaway photo review is not used.");
     const { report, config, migrationPending } = await loadGiveawayReporting(db);
