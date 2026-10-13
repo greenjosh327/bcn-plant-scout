@@ -148,3 +148,72 @@ return 403; anonymous admin returns 401. Browser confirms disabled form fields,
 Coming Soon status, no executable Google analytics/advertising scripts on the
 contest page, and the homepage promotion. No participant data was submitted.
 No production migration, new secret or subscription change was performed.
+
+## Admin dashboard and reporting update
+
+Dashboard: https://basecampnorthpa.com/admin/challenge. Shop admin has a Weekly
+Giveaway link; its Analytics tab includes a separate four-week giveaway summary.
+Both use the existing verified Supabase bearer session and bcn_admins membership.
+
+Seven counters are derived from database records: accounts with 1+ new records,
+accounts reaching ten, accounts with 1-9, verified free email entries, official
+eligible participants, total new records and winners. Active means saving a new
+record, not login/launch activity. Photo counts and species are not consulted.
+Accounts are activity counts; drawing participants are deduplicated people.
+
+The participant table shows account email/username, new record count, method,
+qualification status/date and winner status, with eligibility and method filters.
+Similar households remain separate; normalized verified email and account IDs
+are deduplication keys. Pending eligibility/identity review is distinguished from
+the ten-record threshold. Free entry remains eligible even with app opt-out.
+App qualification date is the tenth save; free entry date is accepted entry time.
+Dates display in Eastern Time; CSV timestamps use UTC.
+
+Existing production schema was checked read-only on October 12, 2026 ET. Contest
+tables and immutable observation stamps are absent. Therefore the deployed admin
+can preview actual observations.created_at counts without inserting entries or
+calling qualification RPCs. These client timestamps are provisional. Official
+free-entry, winner and eligible counts display Unavailable until the schema is
+reviewed and installed; they are not fabricated zeros. Future-dated records and
+soft-deleted records are excluded. New immutable-stamp reporting requires both
+creation and save timestamps within the half-open Eastern contest week.
+
+Download Weekly Report exports all selected-week participants independently of
+screen filters. The authenticated GET /api/admin/challenge?week=N&format=csv
+provides CSV with quoted cells, formula-injection protection and private/no-store
+headers. format=summary returns a PII-free text summary suitable for authorized
+ChatGPT review. view=analytics returns only aggregates, never participant rows.
+The browser periodically refreshes counters while visible; viewing/exporting does
+not create official entries, send email or purchase shipping labels.
+
+RevenueCat subscription conversions are explicitly Unavailable: no reliable
+purchase/renewal event history exists in the reporting schema. Profile roles and
+subscription_status are not treated as contest conversions or eligibility gates.
+
+Draw Winner still requires typed confirmation, entries and drawing gates,
+reviewed rules, a closed week on its scheduled Monday and resolved pending
+entries. Secure randomness and immutable SQL drawing snapshots are reused. Repeat
+drawings are blocked. Existing contact/three-pack/fulfillment tracking remains
+manual; historic selected product names remain visible even when stock changes.
+
+No migration or secret was added for reporting. The existing Vercel server-side
+service credential is configured; local checkout lacks it, so authenticated live
+verification uses the signed-in admin browser instead of copying production keys.
+The production database, subscriptions, customer rows, stock and pricing remain
+unchanged. Mobile is unaffected and no mobile release is included.
+
+Additional feature files: lib/challenge/admin.ts, reporting.ts,
+reporting-server.ts, components/giveaway-analytics.tsx and
+tests/challenge-reporting.test.ts. Existing admin route/dashboard/catalog
+navigation and this document are extended. Website tests include nine/ten/fifteen
+records, cutoffs/DST, old edits, verified free entry, identity deduplication,
+opt-out, missing-schema previews, authorization, read-only exports and CSV safety.
+Launch blockers above remain, particularly approval of the contest migration and
+immutable timestamps, retention, legal/privacy review and operational setup.
+
+Validation for this update: 151 website tests pass, including the PGlite database
+test extended to fifteen records/one official entry. Production Next.js build and
+TypeScript checks pass. Supabase schema and security advisors were inspected
+read-only; no DDL/RLS/privilege changes were made. Mobile source is unchanged.
+Production deployment and authenticated browser/export verification are recorded
+in the delivery report after publication.

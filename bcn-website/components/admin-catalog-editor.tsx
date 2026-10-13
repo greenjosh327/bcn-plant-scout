@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { AdminEtsyDashboard } from "@/components/admin-etsy-dashboard";
+import { GiveawayAnalytics } from "@/components/giveaway-analytics";
 import { buildAdminSessionHandoffUrl } from "@/lib/admin-session-handoff";
 import type { AnalyticsSummary } from "@/lib/analytics/admin-summary";
 import { normalizeProductSlug } from "@/lib/product-slug";
@@ -1377,7 +1378,7 @@ export function AdminCatalogEditor({ initialTab = "orders" }: { initialTab?: Adm
           <button className="button button-secondary" type="button" onClick={() => void openScoutAdmin()}>
             Scout Admin
           </button>
-          <a className="button button-secondary" href="/admin/challenge">Weekly Challenge</a>
+          <a className="button button-secondary" href="/admin/challenge">Weekly Giveaway</a>
           <a
             className={`button ${activeTab === "etsy" ? "button-primary" : "button-secondary"}`}
             href="/admin/etsy"
@@ -1742,6 +1743,7 @@ function AdminAnalyticsDashboard() {
 
   return (
     <div className="mt-8 grid gap-6">
+      <GiveawayAnalytics getAccessToken={getAdminAccessToken} />
       <section className="field-card p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>

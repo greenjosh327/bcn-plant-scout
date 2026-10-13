@@ -46,6 +46,9 @@ test("PostgreSQL: saved-record qualification, preview gates, opt-out, duplicates
     await db.exec('set role authenticated'); await db.query("insert into observations(id,user_id,created_at,updated_at,common_name) values('r9',$1,'2026-10-19T04:30Z',now(),'Same oak species')",[user]);
     await db.exec('reset role'); assert.equal(await count('scout_challenge_progress'),10); assert.equal(await count('scout_challenge_entries'),1);
     assert.equal((await db.query<{status:string}>('select status from scout_challenge_entries')).rows[0].status,'eligible');
+    await db.exec('set role authenticated');
+    for (let i=10;i<15;i++) await db.query("insert into observations(id,user_id,created_at,updated_at,common_name) values($1,$2,'2026-10-19T04:30Z',now(),'Same oak species')",[`r${i}`,user]);
+    await db.exec('reset role'); assert.equal(await count('scout_challenge_progress'),15); assert.equal(await count('scout_challenge_entries'),1);
     const first=(await db.query<{scout_saved_at:Date}>('select scout_saved_at from observations where id=\'r0\'')).rows[0].scout_saved_at;
     await db.exec("set app.test_now='2026-10-19T06:00:00Z'; set role authenticated; update observations set scout_saved_at='2026-10-20T04:00Z' where id='r0'; reset role");
     assert.equal(String((await db.query<{scout_saved_at:Date}>('select scout_saved_at from observations where id=\'r0\'')).rows[0].scout_saved_at),String(first));
