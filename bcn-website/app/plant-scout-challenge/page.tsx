@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import { ChallengeEntryForm } from "@/components/challenge-entry-form";
+import { ChallengePreviewForm } from "@/components/challenge-preview-form";
+import { previewReady } from "@/lib/challenge/preview-server";
 import { getCatalogProducts } from "@/lib/catalog-db";
 import { DEFAULT_PRODUCT_IMAGE_URL, getPrimaryProductImage } from "@/lib/product-images";
 import { currentWeek, DRAWINGS, WEEKS } from "@/lib/challenge/core";
@@ -14,12 +16,13 @@ const faqs = [
   ["Can I enter by both methods?", "One eligible entry per person per week across app and email methods. Using both does not improve your odds."],
   ["When are the drawings?", "Weekly periods close Sunday night Eastern Time. Drawings are Monday, October 26, November 2, November 9, and November 16, 2026."],
   ["Will my photos or locations be public?", "No. The giveaway counts saved record IDs and timestamps. It does not publish or copy your private photographs or GPS coordinates."],
-  ["Can I enter right now?", "Not yet. This is a public information preview. App participation, free email entry, and winner drawings are disabled."],
+  ["Can I enter right now?", "You can test the public preview form when enabled. Test submissions are not official entries and have no prize eligibility. Official email entries, automatic app qualification, drawings and fulfillment remain OFF."],
   ["What if my trial has ended?", "Existing app trials and subscriptions stay unchanged. Free website entry requires no purchase or app download."]
 ];
 export default async function ChallengePage() {
   if (!pageVisible()) return <main className="container py-12"><h1 className="text-3xl font-black">Giveaway information is unavailable.</h1></main>;
   let active = false; try { await available(); active = Boolean(currentWeek(new Date())); } catch { /* Preview requires no database or secrets. */ }
+  let previewEnabled = false; try { await previewReady(); previewEnabled = true; } catch { /* Fail closed unless preview storage, privacy and cleanup are ready. */ }
   const week = currentWeek(new Date());
   const seedExamples = (await getCatalogProducts()).filter(product => {
     const image = getPrimaryProductImage(product);
@@ -30,7 +33,9 @@ export default async function ChallengePage() {
   }).slice(0, 3);
   return <main>
     <section className="bg-pine text-white"><div className="container grid gap-10 py-12 md:grid-cols-[1.2fr_0.8fr] md:py-20">
-      <div><p className="inline-block rounded-full bg-white/10 px-4 py-2 text-sm font-bold">{active ? "Weekly entries are open" : "Coming Soon — Entries Not Yet Open."}</p>
+      <div><p className="inline-block rounded-full bg-white/10 px-4 py-2 text-sm font-bold">{active ? "Weekly entries are open" : "PUBLIC PREVIEW — GIVEAWAY STARTS OCTOBER 19, 2026"}</p>
+        <p className="mt-4 font-black text-sage">4 WEEKS • 4 WINNERS</p><p className="mt-2 font-bold">October 19 – November 15, 2026</p>
+        {!active ? <p className="mt-3 text-sm">Official giveaway: Coming Soon. Preview submissions: {previewEnabled ? "ON" : "OFF"}. Official entries, automatic contest qualification, drawings and prize fulfillment: OFF.</p> : null}
         <p className="mt-8 text-sm font-bold uppercase tracking-[0.18em] text-sage">BCN Plant Scout Weekly Seed Giveaway</p>
         <h1 className="mt-4 text-4xl font-black leading-tight md:text-6xl">Save 10 Plants.<br />Get Entered.<br /><span className="text-sage">Win Free Seeds!</span></h1>
         <p className="mt-6 max-w-xl text-lg leading-8 text-white/85">Explore nature with Plant Scout. Save ten new plant records in a week for a chance to choose three free seed packs from Base Camp North.</p>
@@ -50,12 +55,12 @@ export default async function ChallengePage() {
       </section>
       <section className="my-10 rounded-lg bg-sage/60 p-6 md:p-8"><h2 className="text-2xl font-black text-pine">Bring Plant Scout on your next walk.</h2><p className="mt-3 text-ink/75">Record plants, explore nature, and follow your weekly progress. Downloading the app is optional for the giveaway.</p><div className="mt-5 flex flex-wrap gap-3"><a className="button button-primary" href="https://apps.apple.com/us/app/bcn-plant-scout/id6784878818">Download for iPhone</a><a className="button button-secondary" href="https://play.google.com/store/apps/details?id=com.basecampnorth.bcnplantscout">Download for Android</a></div></section>
       <section id="schedule"><h2 className="text-3xl font-black text-pine">Four weeks. Four Monday drawings.</h2><div className="mt-5 overflow-x-auto"><table className="w-full text-left"><thead><tr className="border-b border-pine/20"><th className="p-3">Week</th><th className="p-3">Save / enter during</th><th className="p-3">Drawing</th></tr></thead><tbody>{WEEKS.map((w,i) => <tr key={w.id} className="border-b border-pine/10"><td className="p-3">{w.id}</td><td className="p-3">{w.label}, 2026</td><td className="p-3">Monday, {DRAWINGS[i]}, 2026</td></tr>)}</tbody></table></div><p className="mt-4 text-sm text-ink/70">Weeks open Monday at 12:00 a.m. and close Sunday at 11:59:59 p.m. Eastern Time. New app records must sync before the weekly cutoff. The final November 15 entry period is drawn November 16.</p></section>
-      <ChallengeEntryForm week={week?.id ?? 1} siteKey={process.env.NEXT_PUBLIC_SCOUT_CHALLENGE_TURNSTILE_SITE_KEY ?? ""} preview={!active} />
-      <section id="rules" className="mt-12"><h2 className="text-3xl font-black text-pine">Official rules — review draft</h2><p className="mt-4 rounded-md bg-parchment p-4 font-bold">This preview is not an invitation to enter. Final rules and privacy terms require review before launch.</p>
+      {active ? <ChallengeEntryForm week={week?.id ?? 1} siteKey={process.env.NEXT_PUBLIC_SCOUT_CHALLENGE_TURNSTILE_SITE_KEY ?? ""} /> : <ChallengePreviewForm enabled={previewEnabled} />}
+      <section id="rules" className="mt-12"><h2 className="text-3xl font-black text-pine">Official rules — review draft</h2><p className="mt-4 rounded-md bg-parchment p-4 font-bold">The public preview form is for testing only, not an invitation to enter the official giveaway. Final contest rules and privacy terms require review before official launch.</p>
         <ul className="mt-5 list-disc space-y-3 pl-6 text-ink/80"><li>Proposed eligibility: age 18+, residing in the 50 U.S. states or D.C., subject to final reviewed exclusions.</li><li>No purchase or subscription required. One eligible entry per person per week across both methods, with equal drawing odds.</li><li>App method: ten new saved plant records during the week qualify automatically, with opt-out available. Species need not differ; multiple photos on one record count once. Eligibility confirmation and duplicate-person review apply.</li><li>Alternative method: free verified-email entry using this website. No app, photos, payment, or subscription required.</li><li>Each weekly winner chooses three eligible, in-stock seed packs with standard domestic shipping included. No payment to claim the prize. Odds depend on the number of eligible entries.</li><li>Sponsor legal details, prize value/list, seed shipping restrictions, response deadlines, alternate-winner handling, retention and other terms are being reviewed. Apple and Google do not sponsor this promotion.</li></ul>
         {process.env.SCOUT_CHALLENGE_RULES_URL ? <p className="mt-4"><a className="underline" href={process.env.SCOUT_CHALLENGE_RULES_URL}>Read reviewed full rules</a></p> : null}
       </section>
-      <section id="privacy" className="mt-10"><h2 className="text-3xl font-black text-pine">Your field records stay private.</h2><p className="mt-4 leading-7 text-ink/75">The giveaway uses record IDs and timestamps to count new saved plants, plus name, email, state and eligibility details to administer entries. It does not copy or publicly share your private plant photographs or GPS coordinates. App users can opt out of automatic participation. No automatic marketing opt-in.</p><p className="mt-3 leading-7 text-ink/75">Free entry uses email verification and bot protection when active. Access is restricted to authorized administrators. Retention and deletion procedures will be finalized before launch. This disabled preview collects no contest entries.</p><p className="mt-4"><a className="underline" href="https://scout.basecampnorthpa.com/privacy-policy">BCN Privacy Policy</a> · <a className="underline" href="/contact">Questions? Contact BCN</a></p></section>
+      <section id="privacy" className="mt-10"><h2 className="text-3xl font-black text-pine">Your field records stay private.</h2><p className="mt-4 leading-7 text-ink/75">The giveaway uses record IDs and timestamps to count new saved plants, plus name, email, state and eligibility details to administer entries. It does not copy or publicly share your private plant photographs or GPS coordinates. App users can opt out of automatic participation. No automatic marketing opt-in.</p><p className="mt-3 leading-7 text-ink/75">Free entry uses email verification and bot protection when active. Access is restricted to authorized administrators. Retention and deletion procedures will be finalized before launch. This public preview creates no official contest entries. See the test form above for its separate privacy and deletion disclosure.</p><p className="mt-4"><a className="underline" href="https://scout.basecampnorthpa.com/privacy-policy">BCN Privacy Policy</a> · <a className="underline" href="/contact">Questions? Contact BCN</a></p></section>
       <section className="mt-12"><h2 className="text-3xl font-black text-pine">A few things to know</h2><div className="mt-5 grid gap-3">{faqs.map(([q,a]) => <details key={q} className="field-card p-5"><summary className="cursor-pointer font-bold text-pine">{q}</summary><p className="mt-3 leading-7 text-ink/75">{a}</p></details>)}</div></section>
       <p className="mt-10"><a className="button button-primary" href="https://basecampnorthpa.com/shop">Browse BCN Seeds</a></p>
     </div>

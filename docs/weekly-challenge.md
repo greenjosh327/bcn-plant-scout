@@ -1,5 +1,208 @@
 # BCN Plant Scout Weekly Seed Giveaway
 
+## Public preview form implementation - October 12, 2026 ET
+
+The user authorized a simple public test form with NO email verification, account
+creation, email delivery or notifications. This supersedes the email-verification
+proposal below. The preview has its own endpoint, storage, security gate and admin
+category; official entries, automatic qualification, drawings and fulfillment
+remain OFF. Preview rows have permanent PREVIEW ONLY status and never enter
+official reporting or drawing pools. No conversion/backfill is implemented.
+
+Public URL: https://basecampnorthpa.com/plant-scout-challenge
+Admin URL: https://basecampnorthpa.com/admin/challenge -> Preview Submissions
+
+### Exact migration review and production scope
+
+Migration: bcn-website/supabase/migrations/
+20261013021123_bcn_weekly_preview_submissions.sql, generated with Supabase CLI.
+Only four new scout_preview tables and three new SECURITY INVOKER functions are
+created. No existing table, role definition, account, trigger, product or official
+contest object is altered. The pending official challenge migration is NOT applied.
+There are no account/contest foreign keys, signup calls, email integrations or
+qualification triggers. Submission ID/time/expiry are database-generated.
+
+RLS is enabled with explicit deny policies on all four tables. Public/anon/
+authenticated privileges are revoked, including function execution. The server
+service role has only needed grants; it cannot update the configuration gate or
+submission rows. Admin API access first verifies the user through existing
+requireAdmin/bcn_admins. No service credential appears in browser assets.
+
+The exact migration passed real PostgreSQL/PGlite tests for public CRUD/RPC denial,
+service grants, closed gate, duplicate email/week, token replay, permanent test
+status, server timestamps and scoped retention deletion. It was applied through
+Supabase apply_migration to hjcskfmssgpdgrhhqzvk successfully. Post-migration
+security advisors report no scout_preview findings. Pre-existing article, shop
+function and Auth advisory findings remain unchanged and outside this migration.
+
+### Preview spam controls and configuration
+
+Turnstile is not configured. Its deliberate alternative is a signed browser
+SHA-256 proof-of-work challenge (16 zero bits), bound to the proxy-derived IP hash,
+valid for 5 minutes with a minimum 1.5-second age. Challenges are single-use;
+consumption and submission insert occur in one database transaction. This is
+lightweight bot friction, not a claim that determined automation is impossible.
+The browser worker uses Web Crypto with a 60-second timeout; unsupported/failed
+security checks fail closed. No private form data enters the worker.
+
+Durable atomic limits: challenge issuance 30/IP/hour and 500/global/hour;
+submission attempts 10/IP/hour and 200/global/hour; normalized email 3/day.
+Keys are HMACs, never raw IPs/emails. Limits work across serverless instances and
+may temporarily throttle a shared network; this is abuse prevention, not household
+contest disqualification. Same-origin JSON requests, bounded bodies, server-side
+name/email/state/week/consent validation and a honeypot are also required.
+Duplicate normalized email + selected week returns the same generic success,
+without additional rows or publicly revealing whether that email already exists.
+Different weeks/emails remain distinct; plus tags are not silently merged.
+
+Production configuration: SCOUT_PREVIEW_ENABLED=true, a generated server-only
+SCOUT_PREVIEW_SECRET, and a generated CRON_SECRET. Secrets are sensitive Vercel
+variables; they are not checked in. Official SCOUT_CHALLENGE entry/drawing gates
+are unchanged. Database enabled starts false; reviewed_at and cleanup_verified_at
+must be set after validation before enabling collection. A config failure returns
+closed/unavailable, never writes through to official entry handling.
+
+### Retention, consent and deletion
+
+The notice version is preview-2026-v1. Explicit acknowledgment is required before
+submit. Collect only first/last name, email, state, interested week and server time.
+No age/account/plant/photo/GPS/payment data is collected. Emails are UNVERIFIED
+and must not be treated as proof of identity. No messages or marketing enrollment.
+
+Retention: seven days. Expired rows immediately disappear from admin views/CSV;
+Vercel cron at 08:00 UTC daily invokes /api/challenge/preview/cleanup to purge them
+within 24 hours of expiry. The endpoint requires CRON_SECRET and only calls the
+preview purge function. Proofs expire after ten minutes; rate rows expire one day
+after their bucket. Daily cleanup also removes these. Monitor the Vercel cron
+deployment/logs and investigate any non-200 run. No database extension is added.
+If cleanup/configuration fails, disable the database preview gate while repairing.
+Backups/provider logs can outlast active-table deletion; no immediate backup
+deletion promise is made. No raw submitted bodies or participant PII are logged.
+
+Early deletion: visitor uses /contact with submission email and selected week.
+Authorized staff confirm the requester's control of that email out of band, then
+delete ONLY the matching scout_preview_submissions row(s) through a reviewed,
+parameterized database operation. Never delete a Plant Scout account or edit
+official immutable records. Exported CSV files contain private data; restrict
+access and delete staff copies on the same schedule or earlier upon request.
+Retain only a PII-free deletion outcome if operational auditing is necessary.
+
+Admin Preview Submissions shows total, name, email, state, week, time (Eastern)
+and PREVIEW ONLY status, with unverified-email notice, filters, pagination and
+CSV of all matching rows. Both the list and export exclude expired submissions
+and require authorized admin membership. They are separate from activity and
+official participant reports. CSV neutralizes formula prefixes.
+
+Validation so far: 160 tests passed, TypeScript and Next.js production build
+passed. Production deployment, cleanup verification, activation and one synthetic
+browser submission are recorded below after completion.
+
+## Historical email-verification readiness review - superseded
+
+Status: BLOCKED, not launched. The public page remains Coming Soon with a
+disabled form. No preview submissions, official entries, emails or drawings
+were created during this review. No production migration or configuration was
+changed. The existing all-user activity dashboard remains available.
+
+Read-only production checks confirmed:
+
+- The public API reports open=false, entriesEnabled=false and drawingsEnabled=false.
+- The anonymous admin API returns 401; existing authorized reporting uses
+  requireAdmin and bcn_admins membership.
+- No scout_challenge tables are installed. Existing profiles, observations and
+  bcn_admins have RLS enabled. There is no preview submission/verification store.
+- Vercel production has the existing server-side Supabase credential, but no
+  challenge HMAC secret, Turnstile keys or identifiable standalone transactional
+  email-provider configuration. Secret values were not retrieved.
+- The current web-entry handler is an OFF-gated official-entry flow. Its email
+  step calls Supabase Auth signInWithOtp with shouldCreateUser=true and verification
+  signs in that identity before writing an official entry. It must not be reused
+  for this preview: a new visitor would create an Auth account, contrary to the
+  requirement to leave Plant Scout accounts unchanged.
+- The available Supabase connector does not expose Auth SMTP settings. Auth email
+  delivery/provider/domain status therefore has not been confirmed. Auth OTP
+  configuration alone would not establish an independent preview email service.
+
+### Separate implementation required before collecting test data
+
+Prepare and review a preview-only migration separately from the pending official
+contest migration. Do not apply the official migration to enable the test form.
+The preview design must have its own default-OFF switch and privacy-review gate,
+submission store, one-time verification store and atomic durable rate limiter.
+No Auth/profile/observation/subscription/inventory writes or triggers are allowed.
+No foreign keys to account or official contest tables are needed.
+
+Proposed submission fields: random ID, normalized email duplicate key, name,
+email, state, age confirmation, privacy acknowledgment/version, submission time,
+verification time and expires_at. Test status is always PREVIEW ONLY; official
+eligibility is always false. Keep raw codes and IP addresses out of storage and
+logs. Store only an HMAC of the random verification token, a short expiry and
+bounded failed-attempt count. Verification must atomically consume the token.
+Service-only database grants and RLS must deny anon/authenticated direct reads
+and writes. Admin reports must exclude token hashes and abuse-control keys.
+
+The independent request endpoint must fail closed unless all preview prerequisites
+are ready. Require same-origin requests, bounded bodies, server validation,
+honeypot, hostname/action-validated Turnstile and atomic email/IP rate limits.
+Use a standalone transactional email integration, not an account-sign-in flow.
+Normalize case/whitespace for duplicates without stripping plus tags or merging
+households. Avoid exposing whether an email has already submitted. No marketing
+list integration or automatic marketing consent. Official routes and drawings
+must keep their existing OFF gates.
+
+Public text must say: PREVIEW ONLY - this is a test submission, not an official
+contest entry, and it provides no prize eligibility. Explain the data collected,
+verification email, purpose, retention, deletion contact and absence of marketing
+signup before consent. Do not require agreement to draft official contest rules
+as if they were approved. Add a separate admin Preview submissions category with
+submitted time, email verification status and permanent test status. Preview rows
+must never feed official totals, drawing pools or a future conversion/backfill.
+
+### Proposed retention and deletion procedure - approval required
+
+Proposed limits, not an approved policy: verification tokens expire in 15 minutes;
+unverified submissions are deleted after 24 hours, verified test submissions after
+7 days, and rate buckets after 24 hours. A scheduled, monitored purge must run
+before public collection is enabled; documentation alone is not a working purge.
+Deletion must remove the submission and associated verification material, without
+touching Auth accounts or official immutable drawing/audit records. An authorized
+admin should handle deletion requests through the existing BCN contact channel,
+verify control of the supplied email, and record only a PII-free deletion outcome.
+There must be no automatic migration of preview contacts to official entries or
+marketing lists. Include database backup and provider-log retention in the reviewed
+privacy policy; immediate active-table deletion is not a guarantee of immediate
+backup deletion. Final timing/contact and provider processing require approval.
+
+### Approval and end-to-end launch checklist
+
+1. Confirm the standalone email provider, verified sender/domain and test inbox.
+   Configure credentials securely; never request or paste secrets in chat.
+2. Review the separate preview-only SQL, RLS/grants, privacy notice and retention
+   schedule. Obtain explicit approval before applying a production migration or
+   adding production secrets/configuration. No SQL is applied by this document.
+3. Implement/test the isolated handler, form, admin category and purge against
+   an isolated database, including duplicates, concurrency, retries, token expiry,
+   failed delivery, rate limits and bot failures.
+4. Run the installed-schema security advisors and direct anon/authenticated
+   denial tests. Test authorized admin access and exclusion from official totals.
+5. Verify an actual provider-delivered email in an authorized test inbox and
+   complete one-time verification end-to-end. Check replay/expiry/retry behavior
+   and that no Auth/profile row, official entry or marketing signup is created.
+6. Run automated tests, TypeScript and production build. Deploy only after all
+   safeguards pass. Official entries, app qualification, drawings and fulfillment
+   remain OFF; separately enable only the reviewed preview mode.
+
+Current email end-to-end result: NOT RUN / BLOCKED. No independent configured
+preview email integration or installed preview schema exists. Preview admin
+reporting is not implemented or live. Existing tests/build validate the existing
+disabled implementation, not a usable public email test form. No deployment commit
+is produced by this readiness review.
+
+Readiness validation: all 156 existing website tests passed; npx.cmd tsc --noEmit
+and npm.cmd run build passed. Only this documentation file was changed. No
+application code, production data, environment variables or account records were
+modified. Existing unrelated local edits remain excluded.
+
 ## Preview release
 
 Public information preview and homepage promotion are approved for publication.

@@ -4,6 +4,7 @@ import { completeAdminSessionHandoff, supabase } from "@/lib/supabase-browser";
 import { currentWeek, WEEKS } from "@/lib/challenge/core";
 import type { GiveawayReport, Participant, WeeklyCounters } from "@/lib/challenge/reporting";
 import { PlantScoutActivity } from "@/components/plant-scout-activity";
+import { ChallengePreviewAdmin } from "@/components/challenge-preview-admin";
 type Entry = { id: string; user_id: string | null; full_name: string; email: string; state: string; status: string; method: string; submitted_at: string; review_reason: string | null };
 type Drawing = { id: string; winner_entry_id: string; drawn_at: string; eligible_entry_ids: string[]; selected_index: number; entropy: string; algorithm: string };
 type Fulfillment = { drawing_id: string; notification_status: string; fulfillment_status: string; seed_product_ids: string[]; tracking_reference: string | null };
@@ -14,7 +15,7 @@ export function AdminChallenge() {
   const [week, setWeek] = useState<number>(() => currentWeek(new Date())?.id ?? 1); const [token, setToken] = useState(""); const [data, setData] = useState<Data | null>(null);
   const [message, setMessage] = useState(""); const [busy, setBusy] = useState(false);
   const [eligibility, setEligibility] = useState("all"); const [method, setMethod] = useState("all");
-  const [mode, setMode] = useState<"activity" | "contest">("activity");
+  const [mode, setMode] = useState<"activity" | "contest" | "preview">("activity");
   const generation = useRef(0);
   const sessionToken = useRef("");
   useEffect(() => { let active = true;
@@ -44,8 +45,8 @@ export function AdminChallenge() {
   return <main className="container py-12"><h1 className="text-4xl font-black text-pine">Weekly Seed Giveaway administration</h1>
     <p className="my-4"><a className="underline" href="/admin">Shop admin / sign in</a></p>
     {!token ? <p>Sign in through the existing BCN admin page, then return here.</p> : <>
-      <div className="my-4 flex flex-wrap gap-3"><button className={`button ${mode === "activity" ? "button-primary" : "button-secondary"}`} onClick={() => setMode("activity")}>All-user activity</button><button className={`button ${mode === "contest" ? "button-primary" : "button-secondary"}`} onClick={() => setMode("contest")}>Official contest reporting</button></div>
-      {mode === "activity" ? <PlantScoutActivity token={token} /> : <>
+      <div className="my-4 flex flex-wrap gap-3"><button className={`button ${mode === "activity" ? "button-primary" : "button-secondary"}`} onClick={() => setMode("activity")}>All-user activity</button><button className={`button ${mode === "preview" ? "button-primary" : "button-secondary"}`} onClick={() => setMode("preview")}>Preview Submissions</button><button className={`button ${mode === "contest" ? "button-primary" : "button-secondary"}`} onClick={() => setMode("contest")}>Official contest reporting</button></div>
+      {mode === "activity" ? <PlantScoutActivity token={token} /> : mode === "preview" ? <ChallengePreviewAdmin token={token} /> : <>
       <label>Contest week <select value={week} onChange={e => setWeek(Number(e.target.value))}>{WEEKS.map(w => <option key={w.id} value={w.id}>{w.label}</option>)}</select></label>
       <button className="button button-secondary ml-4" onClick={() => void load()}>Refresh</button>
       <button className="button button-secondary ml-4" disabled={busy || !data} onClick={() => void downloadReport()}>Download Weekly Report</button>

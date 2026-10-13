@@ -3,6 +3,7 @@ import { ChallengeError, available, drawingsEnabled, jsonBody, publicEnabled } f
 import { challengeAdmin } from "@/lib/challenge/admin";
 import { loadGiveawayReporting, loadPlantScoutActivity } from "@/lib/challenge/reporting-server";
 import { activityCsv } from "@/lib/challenge/activity";
+import { previewReport } from "@/lib/challenge/preview-report";
 import { weeklyReportCsv, weeklySummaryText } from "@/lib/challenge/reporting";
 import { WEEKS } from "@/lib/challenge/core";
 import { challengeFailure, challengeResponse } from "@/lib/challenge/http";
@@ -11,6 +12,11 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   try {
     const { db } = await challengeAdmin(request); const params = new URL(request.url).searchParams;
+    if (params.get("mode") === "preview") {
+      const result = await previewReport(db, params);
+      if (typeof result === "string") return new Response(result, { headers: { "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff", "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": "attachment; filename=\"bcn-preview-submissions.csv\"" } });
+      return challengeResponse(result);
+    }
     if (params.get("mode") === "activity") {
       const result = await loadPlantScoutActivity(db, params.get("activityWeek"));
       if (params.get("format") === "csv") return new Response(activityCsv(result.activity), { headers: { "Cache-Control": "private, no-store", "Content-Type": "text/csv; charset=utf-8", "X-Content-Type-Options": "nosniff", "Content-Disposition": `attachment; filename="bcn-activity-${result.activity.week.id}.csv"` } });
