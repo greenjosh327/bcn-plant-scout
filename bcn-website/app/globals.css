@@ -80,3 +80,19 @@ img {
   outline: 2px solid rgba(187, 106, 46, 0.35);
   border-color: #bb6a2e;
 }
+
+/* Giveaway controls keep clear keyboard focus and avoid iOS input zoom. */
+.giveaway-page .button { min-height: 48px; }
+.giveaway-page :is(a, button, input, select, summary):focus-visible,
+header :is(a, summary):focus-visible {
+  outline: 3px solid #bb6a2e;
+  outline-offset: 3px;
+}
+.giveaway-page :is(input:not([type="checkbox"]), select) {
+  min-height: 48px;
+  min-width: 0;
+  font-size: 16px;
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+}

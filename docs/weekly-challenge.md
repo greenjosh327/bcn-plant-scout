@@ -1,5 +1,54 @@
 # BCN Plant Scout Weekly Seed Giveaway
 
+## Mobile-first presentation redesign - October 12, 2026 ET
+
+The giveaway page now prioritizes Plant Scout downloads for mobile social traffic.
+The forest-green hero leads with the BCN giveaway title, 4 Weeks. 4 Winners. /
+Win Free Seeds!, dates, three-pack prize value/shipping and a short ten-save
+explanation. Existing iPhone/Android store URLs move into the hero as full-width
+stacked phone buttons, followed by a visible secondary free-entry anchor. Both
+store URLs were fetched and returned 200 with BCN Plant Scout titles. Equal odds
+and no-purchase text remain visible. Customer-facing launch/test language replaces
+technical activation flags; backend gates are unchanged.
+
+Three actual eligible-catalog example photos retain their existing data selection
+and restrictions. Phone presentation uses two columns with a centered third pack;
+tablet/desktop use three columns. Square image containers reserve space and names
+wrap. Desktop retains the forest-green hero/prize panel and cream BCN styling;
+the two-panel hero starts at 1024px to keep tablet photos readable. Steps use
+short descriptions and compact phone rows. The four Eastern-Time schedule dates
+are mobile cards below 768px and a semantic table above that width.
+
+The preview form preserves the exact handler/payload/required acknowledgment,
+honeypot, rate/proof controls and success message. Its button says Submit Test
+Entry. Fields use readable 16px text and 48px targets; name has a first/last-name
+hint. Privacy uses the requested concise summary and keyboard-accessible native
+details, retaining server time, seven-day retention/daily purge, deletion contact,
+no-account/no-email/no-marketing, admin-only access and backup limitations.
+Keyboard focus outlines and reduced-motion scrolling are provided. Small text
+uses pine for contrast; rust accents remain on large step numbers.
+
+The shared header is more compact on phones (56px logo/cart row) with visible
+Shop and Weekly Giveaway links. A native Menu disclosure retains Scout App,
+Articles, About and Contact; desktop navigation and CartLink behavior are intact.
+All giveaway controls are at least 48px high; mobile nav targets are at least 44px.
+
+Changed files: app/plant-scout-challenge/page.tsx, components/challenge-preview-form.tsx,
+components/site-header.tsx, app/globals.css (under bcn-website) and this document.
+No API, schema, environment variable, record, account, subscription, inventory,
+admin, drawing control or mobile app source changes. No production form submit
+is part of this redesign verification. Existing backend regression tests exercise
+the submission flow without changing production records.
+
+Validation: 160 website tests passed, website TypeScript and production build
+passed. Local browser checks cover 375px iPhone, 412px Android, 768px tablet and
+1440px desktop with no horizontal overflow; the three real catalog images load,
+phone CTAs stack, schedule cards/table switch and store hrefs remain identical.
+Local preview collection fails closed without production secrets. Enabled form
+presentation and unchanged live activation are checked after deployment without
+creating new submissions. Local Next image-cache write warnings occur on Windows;
+images still decode successfully. Live image delivery is checked separately.
+
 ## Public preview form implementation - October 12, 2026 ET
 
 The user authorized a simple public test form with NO email verification, account
