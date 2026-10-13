@@ -93,9 +93,51 @@ CSV of all matching rows. Both the list and export exclude expired submissions
 and require authorized admin membership. They are separate from activity and
 official participant reports. CSV neutralizes formula prefixes.
 
-Validation so far: 160 tests passed, TypeScript and Next.js production build
-passed. Production deployment, cleanup verification, activation and one synthetic
-browser submission are recorded below after completion.
+Validation: all 160 tests passed, website TypeScript and Next.js production build
+passed. Feature commit 985f311fec14e18c45133a27a2c51621d6da4691 was pushed to main;
+production deployment dpl_5scLdWe9xW5DxDvjXkQke9tNXoLT is READY with the BCN
+production domains assigned. The sensitive preview/cron secrets and preview-only
+environment gate are configured; no secret values were printed or committed.
+
+Live verification (October 12, 2026 ET): cleanup invocation with the configured
+secret returned 200/deleted=0; unauthenticated cleanup returns 401. The daily cron
+is configured in the deployed vercel.json at 08:00 UTC. Its first scheduled run
+has not occurred yet; the same protected handler was exercised successfully.
+Preview database gate was enabled only after migration/advisor/build/admin/cleanup
+checks passed, with reviewed_at and cleanup_verified_at recorded. The public page
+now reports preview ON and official entries/automatic qualification/drawings/
+fulfillment OFF, with the specified start date and four-winners banner.
+
+An actual browser submission using synthetic name BCN Preview Test and reserved
+email preview-test-20261012@example.invalid received the exact requested success
+message. One PREVIEW ONLY row is visible in the signed-in admin tab, with PA,
+week 1 and server submission time 2026-10-13T02:23:59.402969Z. Week 2 filters it
+out, week 1 and name search show it, and the downloaded CSV contains exactly the
+synthetic row, test-only status and unverified-email notice. This disposable test
+row is left for the user to inspect and will expire normally after seven days.
+
+Independent production queries confirm exactly one matching preview row, zero
+matching Auth accounts, no installed official challenge tables, RLS ON for all
+four new tables and no public/authenticated CRUD or function-execution privileges.
+Anonymous admin preview list/CSV endpoints return 401. The official public API
+still reports open=false, entriesEnabled=false and drawingsEnabled=false. No
+email/notification or marketing action was performed. Existing records, customers,
+subscriptions and inventory were not modified.
+
+Mobile viewport check: the live form renders enabled with no horizontal overflow.
+Desktop public submit and protected admin filtering/export were verified. Browser
+proof-work completed successfully in the public flow. An optional repeat mobile
+submission was interrupted when the browser tab moved away; duplicate/replay
+protection is verified by automated handler/PostgreSQL tests, and the stored
+synthetic row count remains one. No repeated public test row was created.
+
+No blocker remains for this simple unverified preview. Continue monitoring the
+daily retention job. Official launch still requires its separate legal/privacy,
+schema/immutable timestamp and operational approvals. Existing unrelated Supabase
+advisories are unchanged: see the documented [view security](https://supabase.com/docs/guides/database/database-linter?lint=0010_security_definer_view),
+[function search path](https://supabase.com/docs/guides/database/database-linter?lint=0011_function_search_path_mutable)
+and [Auth protection](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection)
+guidance; none apply to the new preview objects or were bypassed for this release.
 
 ## Historical email-verification readiness review - superseded
 
